@@ -1,56 +1,81 @@
-# Docker Dev Env for Python Flask
+# Sleeper Backend - KTC API
 
-# Running tests
+A Flask API for scraping and serving KeepTradeCut fantasy football rankings.
 
-This command builds a docker image with the code of this repository and runs the repository's tests
+## Quick Start
 
-```sh
-./build_docker.sh sleeper-backend
-docker run -t sleeper-backend ./run_tests.sh
-```
+### Prerequisites
 
-```
-[+] Building 0.1s (10/10) FINISHED                                                            docker:default
- => [internal] load build definition from Dockerfile                                                    0.0s
- => => transferring dockerfile: 248B                                                                    0.0s
- => [internal] load metadata for docker.io/library/python:3.13.2-alpine3.21@sha256:323a717dc4a010fee21  0.0s
- => [internal] load .dockerignore                                                                       0.0s
- => => transferring context: 94B                                                                        0.0s
- => [1/5] FROM docker.io/library/python:3.13.2-alpine3.21@sha256:323a717dc4a010fee21e3f1aac738ee10bb48  0.0s
- => [internal] load build context                                                                       0.0s
- => => transferring context: 253B                                                                       0.0s
- => CACHED [2/5] WORKDIR /app                                                                           0.0s
- => CACHED [3/5] COPY requirements.txt .                                                                0.0s
- => CACHED [4/5] RUN pip install --no-cache-dir -r requirements.txt                                     0.0s
- => CACHED [5/5] COPY . .                                                                               0.0s
- => exporting to image                                                                                  0.0s
- => => exporting layers                                                                                 0.0s
- => => writing image sha256:4e6c980fbf83b2131359af3d3730e61c89ae7dc85e23c151114b0d9d4a749158            0.0s
- => => naming to docker.io/library/sleeper-backend                                                               0.0s
+- Docker installed on your system
 
-....
-----------------------------------------------------------------------
-Ran 4 tests in 0.069s
-
-OK
-```
-
-# Running a specific test
-
-This example runs a single test in the class TodoTestCase, with the name "test_home"
+### Run the App
 
 ```sh
-./build_docker.sh sleeper-backend
-docker run -t sleeper-backend ./run_tests.sh TodoTestCase.test_home
+./run_app.sh
 ```
 
-# Running a flask dev server
+The API will be available at `http://localhost:5000`
 
-Run this command to enable hot reloading via docker.
+### Run Tests
 
 ```sh
-./build_docker.sh sleeper-backend
-docker run -p 5000:5000 -v .:/app -t sleeper-backend flask init_db
-docker run -p 5000:5000 -v .:/app -t sleeper-backend flask run --host=0.0.0.0 --port=5000
+./run_tests.sh
 ```
-<!-- --network=host -->
+
+## Available Scripts
+
+| Script | Description |
+|--------|-------------|
+| `./run_app.sh` | Build and run the Flask API in Docker |
+| `./run_tests.sh` | Build and run the test suite in Docker |
+| `./build_docker.sh` | Build the Docker image (used by other scripts) |
+
+## API Endpoints
+
+### Refresh Rankings
+
+Scrape fresh data from KeepTradeCut and store in database:
+
+```sh
+curl -X POST "http://localhost:5000/api/ktc/refresh?is_redraft=false&league_format=SF&tep=1"
+```
+
+### Get Rankings
+
+Retrieve stored rankings from database:
+
+```sh
+curl "http://localhost:5000/api/ktc/rankings?is_redraft=false&league_format=SF&tep=1"
+```
+
+## Parameters
+
+- `is_redraft`: `true` or `false` (default: `false`)
+- `league_format`: `1QB` or `SF` (default: `1QB`)
+- `tep`: `0`, `1`, `2`, or `3` (default: `0`) - Tight End Premium scoring
+
+## Notes
+
+- **S3 Upload**: The app includes S3 upload functionality but it's not needed for basic usage. The `S3_BUCKET` environment variable is not needed for this project to work.
+- **Database**: Uses SQLite database that's automatically initialized in the Docker container.
+- **Docker**: The app runs in a containerized environment with Python 3.13 and includes a virtual environment for dependency isolation.
+
+## Local Development (Without Docker)
+
+If needed, you can run locally:
+
+```sh
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+flask init_db
+python app.py
+```
+
+## Key terms to know
+
+- `tep`: Tight End Premium scoring
+- `sf`: Superflex scoring
+- `rdrft`: Redraft scoring
+- `dynasty`: Dynasty Football scoring
+- `fantasy`: Fantasy Foootball scoring

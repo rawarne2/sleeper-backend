@@ -2,4 +2,11 @@
 !**/*.py
 !requirements.txt
 !run_tests.sh
-!templates/
+!test_ktc_api.py
+!startup.sh
+.git/
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+ktc.csv

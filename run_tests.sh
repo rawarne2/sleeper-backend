@@ -1,3 +1,3 @@
 #!/bin/sh
-
-python3 unit_tests.py ${@}
+./build_docker.sh sleeper-backend
+docker run --rm sleeper-backend pytest unit_tests.py -v ${@}
