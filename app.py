@@ -292,7 +292,6 @@ def scrape_ktc(is_redraft, league_format, tep=0):
         format_code = 0
         value_key = 'SFValue'
         pos_rank_key = 'SFPosition Rank'
-        # Remove TEP parameter since KTC loads TEP values via JavaScript
         base_url = "https://keeptradecut.com/dynasty-rankings?page={0}&filters=QB|WR|RB|TE|RDP&format={1}"
         # base_url = "https://keeptradecut.com/dynasty-rankings"
         players = scrape_players(
