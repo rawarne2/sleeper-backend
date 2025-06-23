@@ -1,0 +1,21 @@
+services:
+  sleeper-backend:
+    build: .
+    container_name: sleeper-backend
+    ports:
+      - "5000:5000"
+    volumes:
+      # Mount local instance directory for SQLite database
+      - ./instance:/app/instance
+      # Mount local data-files directory 
+      - ./data-files:/app/data-files
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/ktc/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s 

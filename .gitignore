@@ -1,5 +1,10 @@
 __pycache__/
+*.pyc
+*.pyo
 .env
-instance/
+instance/db.sqlite
 .DS_Store
 .vscode/
+.pytest_cache/
+*.log
+data-files/*.json

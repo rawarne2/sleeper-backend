@@ -6,9 +6,21 @@ A Flask API for scraping and serving KeepTradeCut fantasy football rankings.
 
 ### Prerequisites
 
-- Docker installed on your system
+- Docker and Docker Compose installed on your system
 
 ### Run the App
+
+#### Option 1: Using Docker Compose (Recommended)
+
+```sh
+# Start the application with persistent database
+./docker-compose.sh up
+
+# Or use docker-compose directly
+docker-compose up -d
+```
+
+#### Option 2: Using Docker directly
 
 ```sh
 ./run_app.sh
@@ -26,7 +38,12 @@ The API will be available at `http://localhost:5000`
 
 | Script | Description |
 |--------|-------------|
-| `./run_app.sh` | Build and run the Flask API in Docker |
+| `./docker-compose.sh up` | Start the app with Docker Compose and persistent database |
+| `./docker-compose.sh down` | Stop the Docker Compose application |
+| `./docker-compose.sh rebuild` | Rebuild and restart the application |
+| `./docker-compose.sh logs` | View application logs |
+| `./docker-compose.sh status` | Check container and volume status |
+| `./run_app.sh` | Build and run the Flask API in Docker (alternative method) |
 | `./run_tests.sh` | Build and run the test suite in Docker |
 | `./build_docker.sh` | Build the Docker image (used by other scripts) |
 
@@ -162,3 +179,93 @@ python app.py
 - `1QB`: Traditional single quarterback league format
 
 **Note**: Redraft and fantasy football are the same thing. Both redraft/fantasy and dynasty leagues can use 1QB or Superflex formats, and both can have TEP levels (though TEP for redraft/fantasy is not yet implemented in the API or script).
+
+## Data Persistence
+
+### Database Persistence
+
+The application uses SQLite database that persists data between container restarts:
+
+#### Docker Compose (Recommended)
+
+- **Database**: Stored in a Docker volume `database_data` that persists between container restarts
+- **Data files**: Stored in a Docker volume `data_files` for JSON export files
+- **Automatic**: No manual volume mounting needed - Docker Compose handles everything
+
+#### Direct Docker
+
+- **Database**: Mounted to `./instance/` directory on host
+- **Data files**: Mounted to `./data-files/` directory on host
+
+### JSON Data Files
+
+When you use the `/api/ktc/refresh` endpoint, the scraped data is saved to JSON files that persist:
+
+- **Docker Compose**: Files saved to `data_files` volume
+- **Local development**: Files saved to `./data-files/`
+- **Direct Docker**: Files saved to `/app/data-files/` (mounted to `./data-files/` on host)
+
+#### File naming convention
+
+- `ktc_refresh_{league_format}_{dynasty/redraft}_tep{tep_value}.json`
+- Examples:
+  - `ktc_refresh_1qb_dynasty_tep0.json`
+  - `ktc_refresh_sf_redraft_tep2.json`
+
+#### Volume Information
+
+Check volume status with:
+
+```bash
+./docker-compose.sh status
+```
+
+Or directly with Docker:
+
+```bash
+docker volume ls
+docker volume inspect sleeper-backend_database_data
+```
+
+## Docker Setup
+
+### Quick Start
+
+The application is now configured with a simplified Docker setup:
+
+```bash
+# Start the application
+./docker-compose.sh up
+
+# View logs
+./docker-compose.sh logs
+
+# Stop the application
+./docker-compose.sh down
+
+# Clean up (remove containers)
+./docker-compose.sh clean
+```
+
+The application will be available at: <http://localhost:5000>
+Health check: <http://localhost:5000/api/ktc/health>
+
+### Directory Structure
+
+```
+sleeper-backend/
+├── instance/           # SQLite database storage
+│   └── db.sqlite      # Database file (local & mounted to container)
+├── data-files/        # JSON data files (mounted to container)
+├── docker-compose.yml # Docker configuration
+├── docker-compose.sh  # Helper script
+├── Dockerfile        # Container definition
+└── app.py            # Main application
+```
+
+### How it works
+
+- **Database**: SQLite database stored in `instance/db.sqlite`
+- **Volume Mounts**: Local directories are mounted to container for persistence
+- **No Docker Volumes**: Uses local directory mounts instead of Docker volumes
+- **Development Ready**: Changes to local files are reflected in container

@@ -2,27 +2,87 @@ from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, UTC
 import requests
-from bs4 import BeautifulSoup
 import os
 import boto3
 from botocore.exceptions import NoCredentialsError, ClientError
-from sqlalchemy import inspect
+from sqlalchemy import text
 import json
 import tempfile
+import re
 from dotenv import load_dotenv
+import logging
+from typing import Dict, List, Optional, Union, Any
 
 # Load environment variables from .env file
 load_dotenv()
 
-app = Flask(__name__)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-# /// = relative path, //// = absolute path
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite'
+# Constants
+LEAGUE_FORMATS = ['1QB', 'SF']
+TEP_VALUES = [0, 1, 2, 3]
+BOOLEAN_STRINGS = ['true', 't', 'yes', 'y', '1']
+MAX_SCRAPE_PAGES = 10
+DYNASTY_URL = "https://keeptradecut.com/dynasty-rankings"
+FANTASY_URL = "https://keeptradecut.com/fantasy-rankings"
+
+# Database configuration
+DATABASE_URI = 'sqlite:////app/instance/db.sqlite'
+
+# HTTP status codes
+HTTP_BAD_REQUEST = 400
+HTTP_NOT_FOUND = 404
+HTTP_INTERNAL_SERVER_ERROR = 500
+
+# Request timeout
+REQUEST_TIMEOUT = 30
+
+# File extensions
+JSON_EXTENSION = '.json'
+
+# Player data constants
+PLAYER_NAME_KEY = "Player Name"
+POSITION_KEY = "Position"
+TEAM_KEY = "Team"
+VALUE_KEY = "Value"
+AGE_KEY = "Age"
+ROOKIE_KEY = "Rookie"
+RANK_KEY = "Rank"
+TREND_KEY = "Trend"
+TIER_KEY = "Tier"
+POSITION_RANK_KEY = "Position Rank"
+REDRAFT_VALUE_KEY = "RdrftValue"
+REDRAFT_RANK_KEY = "RdrftRank"
+REDRAFT_TREND_KEY = "RdrftTrend"
+REDRAFT_TIER_KEY = "RdrftTier"
+REDRAFT_POSITION_RANK_KEY = "RdrftPosition Rank"
+
+# Default values
+DEFAULT_ROOKIE = "No"
+DEFAULT_TREND = "0"
+UNKNOWN_PLAYER = "Unknown"
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URI
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 3600,
+    'connect_args': {
+        'timeout': 30,
+        'check_same_thread': False
+    }
+}
 db = SQLAlchemy(app)
 
 
 class KTCPlayer(db.Model):
+    """SQLAlchemy model for KTC player data"""
     id = db.Column(db.Integer, primary_key=True)
     player_name = db.Column(db.String(100), nullable=False)
     position = db.Column(db.String(10), nullable=False)
@@ -34,553 +94,692 @@ class KTCPlayer(db.Model):
     trend = db.Column(db.String(10))
     tier = db.Column(db.String(10))
     position_rank = db.Column(db.String(10))
-    league_format = db.Column(db.String(10), nullable=False)  # '1QB' or 'SF'
+    league_format = db.Column(db.String(10), nullable=False)
     is_redraft = db.Column(db.Boolean, nullable=False)
     tep = db.Column(db.Integer, nullable=False)
     last_updated = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.now(UTC))
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert player object to dictionary"""
         return {
-            "Player Name": self.player_name,
-            "Position": self.position,
-            "Team": self.team,
-            "Value": self.value,
-            "Age": self.age,
-            "Rookie": self.rookie,
-            "Rank": self.rank,
-            "Trend": self.trend,
-            "Tier": self.tier,
-            "Position Rank": self.position_rank
+            'id': self.id,
+            RANK_KEY: self.rank,
+            VALUE_KEY: self.value,
+            PLAYER_NAME_KEY: self.player_name,
+            POSITION_RANK_KEY: self.position_rank,
+            POSITION_KEY: self.position,
+            TEAM_KEY: self.team,
+            AGE_KEY: self.age,
+            ROOKIE_KEY: self.rookie,
+            TREND_KEY: self.trend,
+            TIER_KEY: self.tier
         }
 
 
-def fetch_ktc_page(url):
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        return response
-    except requests.RequestException as e:
-        return None
+class KTCScraper:
+    """Class to handle KTC scraping operations"""
 
-
-def scrape_players(base_url, format_code, value_key, pos_rank_key, max_pages=10):
-    all_elements = []
-
-    for page_num in range(max_pages):
-        url = base_url.format(page_num, format_code)
-        page = fetch_ktc_page(url)
-        if not page:
-            continue
-        soup = BeautifulSoup(page.content, "html.parser")
-        player_elements = soup.find_all(class_="onePlayer")
-        all_elements.extend(player_elements)
-
-    players = []
-    for player_element in all_elements:
-        player_name_element = player_element.find(class_="player-name")
-        player_position_element = player_element.find(class_="position")
-        player_value_element = player_element.find(class_="value")
-        player_age_element = player_element.find(class_="position hidden-xs")
-
-        # Extract rank number
-        rank_element = player_element.find(class_="rank-number")
+    @staticmethod
+    def fetch_ktc_page(url: str) -> Optional[requests.Response]:
+        """Fetch a page from KTC website"""
         try:
-            player_rank = int(rank_element.get_text(
-                strip=True)) if rank_element else None
-        except (ValueError, AttributeError):
-            player_rank = None
+            response = requests.get(url, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as e:
+            logger.error(f"Failed to fetch page {url}: {e}")
+            return None
 
-        # Extract trend with direction
-        trend_element = player_element.find(class_="trend")
-        player_trend = None
-        if trend_element:
-            trend_value = trend_element.get_text(strip=True)
-            if trend_element.contents and len(trend_element.contents) > 1:
-                try:
-                    trend_class = trend_element.contents[1].attrs.get("class", [""])[
-                        0]
-                    if trend_class == "trend-up":
-                        player_trend = f"+{trend_value}" if trend_value else "+0"
-                    elif trend_class == "trend-down":
-                        player_trend = f"-{trend_value}" if trend_value else "-0"
-                    else:
-                        player_trend = "0"
-                except (IndexError, AttributeError):
-                    player_trend = "0"
+    @staticmethod
+    def extract_players_array(html_content: str) -> List[Dict[str, Any]]:
+        """Extract the playersArray from the JavaScript in the HTML source"""
+        try:
+            pattern = r'var playersArray = (\[.*?\]);'
+            match = re.search(pattern, html_content, re.DOTALL)
+
+            if not match:
+                logger.error("Could not find playersArray in HTML source")
+                return []
+
+            players_json = match.group(1)
+            return json.loads(players_json)
+
+        except (json.JSONDecodeError, AttributeError) as e:
+            logger.error(f"Error parsing playersArray: {e}")
+            return []
+
+    @staticmethod
+    def parse_player_data(player_obj: Dict[str, Any], league_format: str, is_redraft: bool = False, tep: int = 0) -> Optional[Dict[str, Any]]:
+        """Parse a player object from the playersArray"""
+        try:
+            is_1qb = league_format == '1QB'
+            base_values = player_obj.get('oneQBValues', {}) if is_1qb else player_obj.get(
+                'superflexValues', {})
+
+            # Select the appropriate values object based on TEP setting
+            if tep == 1:
+                tep_values = base_values.get('tep', {})
+                # Use TEP values if available, otherwise fall back to base values
+                value = tep_values.get('value', base_values.get('value', 0))
+                rank = tep_values.get('rank', base_values.get('rank'))
+                tier = tep_values.get(
+                    'overallTier', base_values.get('overallTier'))
+            elif tep == 2:
+                tepp_values = base_values.get('tepp', {})
+                # Use TEPP values if available, otherwise fall back to base values
+                value = tepp_values.get('value', base_values.get('value', 0))
+                rank = tepp_values.get('rank', base_values.get('rank'))
+                tier = tepp_values.get(
+                    'overallTier', base_values.get('overallTier'))
+            elif tep == 3:
+                teppp_values = base_values.get('teppp', {})
+                # Use TEPPP values if available, otherwise fall back to base values
+                value = teppp_values.get('value', base_values.get('value', 0))
+                rank = teppp_values.get('rank', base_values.get('rank'))
+                tier = teppp_values.get(
+                    'overallTier', base_values.get('overallTier'))
             else:
-                player_trend = "0"
-        else:
-            player_trend = "0"
+                # TEP = 0, use base values
+                value = base_values.get('value', 0)
+                rank = base_values.get('rank')
+                tier = base_values.get('overallTier')
 
-        # Extract tier
-        player_tier = None
-        player_info_element = player_element.find(class_="player-info")
-        if player_info_element and len(player_info_element.contents) > 1:
-            try:
-                player_tier = player_info_element.contents[1].get_text(
-                    strip=True)
-            except (IndexError, AttributeError):
-                player_tier = None
+            # Extract basic player info
+            player_name = player_obj.get('playerName', '')
+            position = player_obj.get('position', '')
+            team = player_obj.get('team', '')
+            age = player_obj.get('age')
+            rookie = "Yes" if player_obj.get(
+                'rookie', False) else DEFAULT_ROOKIE
 
-        if not (player_name_element and player_position_element and player_value_element):
-            continue
+            # Format trend using base values (trend typically doesn't change with TEP)
+            trend = KTCScraper._format_trend(
+                base_values.get('overallTrend', 0))
 
-        player_name = player_name_element.get_text(strip=True)
-        team_suffix = (
-            player_name[-3:] if player_name[-3:] == 'RFA' else
-            player_name[-4:] if len(player_name) >= 4 and player_name[-4] == 'R' else
-            player_name[-2:] if player_name[-2:] == 'FA' else
-            player_name[-3:] if player_name[-3:].isupper() else ""
-        )
-        player_name = player_name.replace(team_suffix, "").strip()
-        player_position_rank = player_position_element.get_text(strip=True)
-        player_position = player_position_rank[:2]
-        try:
-            player_value = int(player_value_element.get_text(strip=True))
-        except Exception:
-            player_value = 0
+            # Format tier string
+            tier_str = f"Tier {tier}" if tier else ""
 
-        # Always extract age regardless of league type
-        player_age = None
-        if player_age_element:
-            player_age_text = player_age_element.get_text(strip=True)
-            try:
-                player_age = float(
-                    player_age_text[:4]) if player_age_text else None
-            except Exception:
-                player_age = None
+            # Extract positional rank using base values (positional rank typically doesn't change with TEP)
+            pos_rank = base_values.get('positionalRank')
+            position_rank = f"{position}{pos_rank}" if pos_rank else None
 
-        # Always determine rookie status
-        if team_suffix and team_suffix[0] == 'R':
-            player_team = team_suffix[1:]
-            player_rookie = "Yes"
-        else:
-            player_team = team_suffix
-            player_rookie = "No"
-
-        if player_position == "PI":  # Player Inactive
-            player_info = {
-                "Player Name": player_name,
-                pos_rank_key: None,
-                "Position": player_position,
-                "Team": None,
-                value_key: player_value,
-                "Age": player_age,
-                "Rookie": player_rookie,
-                "Rank": player_rank,
-                "Trend": player_trend,
-                "Tier": player_tier
-            }
-        else:
-            player_info = {
-                "Player Name": player_name,
-                pos_rank_key: player_position_rank,
-                "Position": player_position,
-                "Team": player_team,
-                value_key: player_value,
-                "Age": player_age,
-                "Rookie": player_rookie,
-                "Rank": player_rank,
-                "Trend": player_trend,
-                "Tier": player_tier
-            }
-        players.append(player_info)
-    return players
-
-
-def merge_redraft_values(players, base_url, format_code, value_key, pos_rank_key, max_pages=10):
-    all_elements = []
-    for page_num in range(max_pages):
-        url = base_url.format(page_num, format_code)
-        page = fetch_ktc_page(url)
-        if not page:
-            continue
-        soup = BeautifulSoup(page.content, "html.parser")
-        player_elements = soup.find_all(class_="onePlayer")
-        all_elements.extend(player_elements)
-
-    for player_element in all_elements:
-        player_name_element = player_element.find(class_="player-name")
-        player_position_element = player_element.find(class_="position")
-        player_value_element = player_element.find(class_="value")
-
-        # Extract rank number
-        rank_element = player_element.find(class_="rank-number")
-        try:
-            redraft_rank = int(rank_element.get_text(
-                strip=True)) if rank_element else None
-        except (ValueError, AttributeError):
-            redraft_rank = None
-
-        # Extract trend with direction
-        trend_element = player_element.find(class_="trend")
-        redraft_trend = None
-        if trend_element:
-            trend_value = trend_element.get_text(strip=True)
-            if trend_element.contents and len(trend_element.contents) > 1:
-                try:
-                    trend_class = trend_element.contents[1].attrs.get("class", [""])[
-                        0]
-                    if trend_class == "trend-up":
-                        redraft_trend = f"+{trend_value}" if trend_value else "+0"
-                    elif trend_class == "trend-down":
-                        redraft_trend = f"-{trend_value}" if trend_value else "-0"
-                    else:
-                        redraft_trend = "0"
-                except (IndexError, AttributeError):
-                    redraft_trend = "0"
-            else:
-                redraft_trend = "0"
-        else:
-            redraft_trend = "0"
-
-        # Extract tier
-        redraft_tier = None
-        player_info_element = player_element.find(class_="player-info")
-        if player_info_element and len(player_info_element.contents) > 1:
-            try:
-                redraft_tier = player_info_element.contents[1].get_text(
-                    strip=True)
-            except (IndexError, AttributeError):
-                redraft_tier = None
-
-        if not (player_name_element and player_position_element and player_value_element):
-            continue
-
-        player_name = player_name_element.get_text(strip=True)
-        team_suffix = (
-            player_name[-3:] if player_name[-3:] == 'RFA' else
-            player_name[-4:] if len(player_name) >= 4 and player_name[-4] == 'R' else
-            player_name[-2:] if player_name[-2:] == 'FA' else
-            player_name[-3:] if player_name[-3:].isupper() else ""
-        )
-        player_name = player_name.replace(team_suffix, "").strip()
-        player_position_rank = player_position_element.get_text(strip=True)
-        try:
-            player_value = int(player_value_element.get_text(strip=True))
-        except Exception:
-            player_value = 0
-
-        for player in players:
-            if player["Player Name"] == player_name:
-                player[pos_rank_key] = player_position_rank
-                player[value_key] = player_value
-                player["RdrftRank"] = redraft_rank
-                player["RdrftTrend"] = redraft_trend
-                player["RdrftTier"] = redraft_tier
-                break
-    return players
-
-
-def scrape_ktc(is_redraft, league_format, tep=0):
-    # Only scrape the format the user selected
-    if league_format == '1QB':
-        format_code = 1
-        value_key = 'Value'
-        pos_rank_key = 'Position Rank'
-        base_url = "https://keeptradecut.com/dynasty-rankings?page={0}&filters=QB|WR|RB|TE&format={1}"
-        # base_url = "https://keeptradecut.com/dynasty-rankings"
-        players = scrape_players(
-            base_url, format_code, value_key, pos_rank_key)
-        if is_redraft:
-            redraft_url = "https://keeptradecut.com/fantasy-rankings?page={0}&filters=QB|WR|RB|TE&format={1}"
-            # redraft_url = "https://keeptradecut.com/fantasy-rankings"
-            players = merge_redraft_values(
-                players, redraft_url, 1, 'RdrftValue', 'RdrftPosition Rank')
-    else:  # SF
-        format_code = 0
-        value_key = 'SFValue'
-        pos_rank_key = 'SFPosition Rank'
-        base_url = "https://keeptradecut.com/dynasty-rankings?page={0}&filters=QB|WR|RB|TE|RDP&format={1}"
-        # base_url = "https://keeptradecut.com/dynasty-rankings"
-        players = scrape_players(
-            base_url, format_code, value_key, pos_rank_key)
-        if is_redraft:
-            redraft_url = "https://keeptradecut.com/fantasy-rankings?page={0}&filters=QB|WR|RB|TE&format={1}"
-            # redraft_url = "https://keeptradecut.com/fantasy-rankings"
-            players = merge_redraft_values(
-                players, redraft_url, 2, 'SFRdrftValue', 'SFRdrftPosition Rank')
-    return players
-
-
-def tep_adjust(players, tep, value_key):
-    # Adjusted multipliers to match KTC's actual TEP system
-    s = 0.2
-    if tep == 0:
-        return players
-    elif tep == 1:
-        t_mult = 1.1
-        r = 250
-    elif tep == 2:
-        t_mult = 1.2
-        r = 350
-    elif tep == 3:
-        t_mult = 1.3
-        r = 450
-    else:
-        print(f"Error: invalid TEP value -- {tep}")
-        return players
-
-    # Sort players by value to establish consistent ranking
-    players = sorted(players, key=lambda x: x.get(value_key, 0), reverse=True)
-
-    # Find max player value to use as cap
-    max_player_val = max(player.get(value_key, 0) for player in players)
-
-    # Apply TEP adjustment only to tight ends
-    for rank, player in enumerate(players):
-        if player.get("Position") == "TE":
-            original_value = player.get(value_key, 0)
-            # print(f"original_value: {original_value}")
-            if original_value > 0:
-                t = t_mult * original_value
-                n = rank / (len(players) - 25) * r + s * r
-                player[value_key] = min(max_player_val - 1, round(t + n, 2))
-
-    # Re-sort players by adjusted values to maintain proper rankings
-    return sorted(players, key=lambda x: x.get(value_key, 0), reverse=True)
-
-
-def upload_json_to_s3(json_data, bucket_name, object_key):
-    """
-    Upload JSON data to an S3 bucket
-
-    Parameters:
-    json_data (dict): The JSON data to upload
-    bucket_name (str): The name of the S3 bucket
-    object_key (str): The S3 object key (path/filename.json)
-
-    Returns:
-    bool: True if upload was successful, False otherwise
-    """
-    try:
-        s3_client = boto3.client('s3')
-
-        # Create a temporary file to write JSON data
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
-            json.dump(json_data, temp_file, indent=2, default=str)
-            temp_file_path = temp_file.name
-
-        print(f"Uploading JSON to s3://{bucket_name}/{object_key}...")
-        s3_client.upload_file(temp_file_path, bucket_name, object_key)
-        print(f"Successfully uploaded JSON to s3://{bucket_name}/{object_key}")
-
-        # Clean up temporary file
-        os.unlink(temp_file_path)
-        return True
-    except NoCredentialsError:
-        print("Error: AWS credentials not found. Make sure you've configured your AWS credentials.")
-        return False
-    except ClientError as e:
-        print(f"Error uploading to S3: {e}")
-        return False
-    except Exception as e:
-        print(f"Unexpected error uploading to S3: {e}")
-        return False
-
-
-@app.route('/api/ktc/refresh', methods=['POST'])
-def refresh_rankings():
-    """Endpoint to fetch fresh data from KTC and store in database"""
-    try:
-        # Get parameters from query string only
-        is_redraft = request.args.get('is_redraft', 'false').lower() in [
-            'true', 't', 'yes', 'y', '1']
-        league_format = request.args.get('league_format', '1QB').upper()
-        tep = int(request.args.get('tep', '0'))
-
-        # Validate parameters
-        if league_format not in ['1QB', 'SF']:
-            return jsonify({'error': 'Invalid league format. Must be 1QB or SF'}), 400
-        if tep not in [0, 1, 2, 3]:
-            return jsonify({'error': 'Invalid TEP value. Must be 0, 1, 2, or 3'}), 400
-
-        # Scrape fresh data
-        players = scrape_ktc(is_redraft, league_format, tep)
-        print(f"Scraped {len(players)} players")
-
-        # Apply TEP adjustments manually since KTC loads TEP values via JavaScript
-        # which server-side scraping cannot capture
-        if not is_redraft and tep > 0:
-            value_key = 'Value' if league_format == '1QB' else 'SFValue'
-            players = tep_adjust(players, tep, value_key)
-            print(f"Applied TEP adjustments, now have {len(players)} players")
-
-        # Create tables if they don't exist
-        db.create_all()
-
-        # Delete existing data for this configuration
-        deleted_count = KTCPlayer.query.filter_by(
-            league_format=league_format,
-            is_redraft=is_redraft,
-            tep=tep
-        ).count()
-
-        KTCPlayer.query.filter_by(
-            league_format=league_format,
-            is_redraft=is_redraft,
-            tep=tep
-        ).delete()
-        print(f"Deleted {deleted_count} existing records")
-
-        # Store new data
-        added_count = 0
-        for player in players:
-            # Get the correct value based on format and redraft status
+            # Build result based on format type
             if is_redraft:
-                if league_format == '1QB':
-                    value = player.get("RdrftValue", 0)
-                    position_rank = player.get("RdrftPosition Rank")
-                else:
-                    value = player.get("SFRdrftValue", 0)
-                    position_rank = player.get("SFRdrftPosition Rank")
+                return {
+                    PLAYER_NAME_KEY: player_name,
+                    POSITION_KEY: position,
+                    TEAM_KEY: team,
+                    REDRAFT_VALUE_KEY: value,
+                    AGE_KEY: age,
+                    ROOKIE_KEY: rookie,
+                    REDRAFT_RANK_KEY: rank,
+                    REDRAFT_TREND_KEY: trend,
+                    REDRAFT_TIER_KEY: tier_str,
+                    REDRAFT_POSITION_RANK_KEY: position_rank
+                }
             else:
-                if league_format == '1QB':
-                    value = player.get("Value", 0)
-                    position_rank = player.get("Position Rank")
-                else:
-                    value = player.get("SFValue", 0)
-                    position_rank = player.get("SFPosition Rank")
+                return {
+                    PLAYER_NAME_KEY: player_name,
+                    POSITION_KEY: position,
+                    TEAM_KEY: team,
+                    VALUE_KEY: value,
+                    AGE_KEY: age,
+                    ROOKIE_KEY: rookie,
+                    RANK_KEY: rank,
+                    TREND_KEY: trend,
+                    TIER_KEY: tier_str,
+                    POSITION_RANK_KEY: position_rank
+                }
 
-            # Skip players with no value to avoid bad data
-            if value is None or value == 0:
-                print(
-                    f"Skipping player {player.get('Player Name', 'Unknown')} - no value")
-                continue
+        except Exception as e:
+            logger.error(
+                f"Error parsing player {player_obj.get('playerName', UNKNOWN_PLAYER)}: {e}")
+            return None
 
-            ktc_player = KTCPlayer(
-                player_name=player["Player Name"],
-                position=player["Position"],
-                team=player.get("Team"),  # Use .get() since team can be None
-                value=value,
-                age=player.get("Age"),
-                rookie=player.get("Rookie", "No"),
-                rank=player.get("Rank"),
-                trend=player.get("Trend", "0"),
-                tier=player.get("Tier"),
-                position_rank=position_rank,
-                league_format=league_format,
-                is_redraft=is_redraft,
-                tep=tep
-            )
-            db.session.add(ktc_player)
-            added_count += 1
+    @staticmethod
+    def _format_trend(trend_value: int) -> str:
+        """Format trend value for display"""
+        return f"+{trend_value}" if trend_value > 0 else str(trend_value)
 
-        print(f"Adding {added_count} new records to database")
-
-        # Add debugging before commit
-        print(f"Database session has {len(db.session.new)} new objects")
-        print(f"Database session has {len(db.session.dirty)} dirty objects")
-
+    @staticmethod
+    def scrape_players_from_array(url: str, league_format: str, is_redraft: bool = False, tep: int = 0) -> List[Dict[str, Any]]:
+        """Scraping function that uses the playersArray from JavaScript source"""
         try:
-            db.session.commit()
-            print("Database commit successful")
+            logger.info(f"Fetching data from: {url}")
+            response = KTCScraper.fetch_ktc_page(url)
+            if not response:
+                logger.error(f"Failed to fetch page: {url}")
+                return []
 
-            # Verify the commit worked
-            verify_count = KTCPlayer.query.filter_by(
+            players_array = KTCScraper.extract_players_array(response.text)
+            if not players_array:
+                logger.warning("No players found in playersArray")
+                return []
+
+            logger.info(f"Found {len(players_array)} players in playersArray")
+
+            players = []
+            for player_obj in players_array:
+                parsed_player = KTCScraper.parse_player_data(
+                    player_obj, league_format, is_redraft, tep)
+                if parsed_player:
+                    players.append(parsed_player)
+
+            logger.info(f"Successfully parsed {len(players)} players")
+            return players
+
+        except Exception as e:
+            logger.error(f"Error in scrape_players_from_array: {e}")
+            return []
+
+    @staticmethod
+    def merge_dynasty_fantasy_data(dynasty_players: List[Dict[str, Any]], fantasy_players: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Merge dynasty and fantasy player data"""
+        try:
+            fantasy_dict = {player[PLAYER_NAME_KEY]: player for player in fantasy_players}
+
+            merged_players = []
+            for dynasty_player in dynasty_players:
+                player_name = dynasty_player[PLAYER_NAME_KEY]
+                fantasy_player = fantasy_dict.get(player_name)
+
+                merged_player = dynasty_player.copy()
+                if fantasy_player:
+                    merged_player.update({
+                        REDRAFT_VALUE_KEY: fantasy_player.get(REDRAFT_VALUE_KEY),
+                        REDRAFT_POSITION_RANK_KEY: fantasy_player.get(REDRAFT_POSITION_RANK_KEY),
+                        REDRAFT_RANK_KEY: fantasy_player.get(REDRAFT_RANK_KEY),
+                        REDRAFT_TREND_KEY: fantasy_player.get(REDRAFT_TREND_KEY),
+                        REDRAFT_TIER_KEY: fantasy_player.get(REDRAFT_TIER_KEY)
+                    })
+
+                merged_players.append(merged_player)
+
+            logger.info(
+                f"Merged {len(merged_players)} players from dynasty and fantasy data")
+            return merged_players
+
+        except Exception as e:
+            logger.error(f"Error merging dynasty and fantasy data: {e}")
+            return dynasty_players
+
+    @staticmethod
+    def scrape_ktc(is_redraft: bool, league_format: str, tep: int = 0) -> List[Dict[str, Any]]:
+        """Main scraping function using the playersArray approach"""
+        try:
+            if is_redraft:
+                logger.info(
+                    f"Scraping dynasty data for {league_format} format with TEP={tep}...")
+                dynasty_players = KTCScraper.scrape_players_from_array(
+                    DYNASTY_URL, league_format, is_redraft=False, tep=tep)
+
+                logger.info(
+                    f"Scraping fantasy data for {league_format} format with TEP={tep}...")
+                fantasy_players = KTCScraper.scrape_players_from_array(
+                    FANTASY_URL, league_format, is_redraft=True, tep=tep)
+
+                players = KTCScraper.merge_dynasty_fantasy_data(
+                    dynasty_players, fantasy_players)
+            else:
+                logger.info(
+                    f"Scraping dynasty data for {league_format} format with TEP={tep}...")
+                players = KTCScraper.scrape_players_from_array(
+                    DYNASTY_URL, league_format, is_redraft=False, tep=tep)
+
+            logger.info(f"Total players after scraping: {len(players)}")
+            return players
+
+        except Exception as e:
+            logger.error(f"Error in scrape_ktc: {e}")
+            return []
+
+
+class FileManager:
+    """Class to handle file operations"""
+
+    @staticmethod
+    def get_data_directory() -> str:
+        """Get the appropriate data directory path"""
+        return '/app/data-files' if os.path.exists('/app') else './data-files'
+
+    @staticmethod
+    def create_json_filename(league_format: str, is_redraft: bool, tep: int, prefix: str = "ktc") -> str:
+        """Create standardized JSON filename"""
+        format_type = 'redraft' if is_redraft else 'dynasty'
+        return f"{prefix}_{league_format.lower()}_{format_type}_tep{tep}.json"
+
+    @staticmethod
+    def save_json_to_file(json_data: Dict[str, Any], filename: str) -> bool:
+        """Save JSON data to a local file in the data-files directory"""
+        try:
+            data_dir = FileManager.get_data_directory()
+            os.makedirs(data_dir, exist_ok=True)
+            file_path = os.path.join(data_dir, filename)
+
+            logger.info(f"Saving JSON data to {file_path}...")
+            with open(file_path, 'w') as json_file:
+                json.dump(json_data, json_file, indent=2, default=str)
+
+            logger.info(f"Successfully saved JSON data to {file_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving JSON to file: {e}")
+            return False
+
+    @staticmethod
+    def upload_json_to_s3(json_data: Dict[str, Any], bucket_name: str, object_key: str) -> bool:
+        """Upload JSON data to an S3 bucket"""
+        try:
+            s3_client = boto3.client('s3')
+
+            with tempfile.NamedTemporaryFile(mode='w', suffix=JSON_EXTENSION, delete=False) as temp_file:
+                json.dump(json_data, temp_file, indent=2, default=str)
+                temp_file_path = temp_file.name
+
+            logger.info(
+                f"Uploading JSON to s3://{bucket_name}/{object_key}...")
+            s3_client.upload_file(temp_file_path, bucket_name, object_key)
+            logger.info(
+                f"Successfully uploaded JSON to s3://{bucket_name}/{object_key}")
+
+            os.unlink(temp_file_path)
+            return True
+        except NoCredentialsError:
+            logger.error(
+                "AWS credentials not found. Make sure you've configured your AWS credentials.")
+            return False
+        except ClientError as e:
+            logger.error(f"Error uploading to S3: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error uploading to S3: {e}")
+            return False
+
+
+class RequestValidator:
+    """Class to handle request validation"""
+
+    @staticmethod
+    def validate_parameters(is_redraft: str, league_format: str, tep: str) -> tuple[bool, str, int, Optional[str]]:
+        """Validate request parameters"""
+        try:
+            # Validate is_redraft
+            is_redraft_bool = is_redraft.lower() in BOOLEAN_STRINGS
+
+            # Validate league_format
+            league_format_upper = league_format.upper()
+            if league_format_upper not in LEAGUE_FORMATS:
+                return False, '', 0, f'Invalid league format. Must be one of: {", ".join(LEAGUE_FORMATS)}'
+
+            # Validate tep
+            try:
+                tep_int = int(tep)
+                if tep_int not in TEP_VALUES:
+                    return False, '', 0, f'Invalid TEP value. Must be one of: {", ".join(map(str, TEP_VALUES))}'
+            except ValueError:
+                return False, '', 0, 'TEP value must be an integer'
+
+            return True, league_format_upper, tep_int, None
+
+        except Exception as e:
+            logger.error(f"Error validating parameters: {e}")
+            return False, '', 0, 'Parameter validation error'
+
+
+class DatabaseManager:
+    """Class to handle database operations"""
+
+    @staticmethod
+    def save_players_to_db(players: List[Dict[str, Any]], league_format: str, is_redraft: bool, tep: int) -> int:
+        """Save players to database with simplified error handling"""
+        try:
+            # Create tables if they don't exist
+            db.create_all()
+
+            logger.info(
+                f"Starting database operation for {league_format}, redraft={is_redraft}, tep={tep}")
+
+            # Delete existing data for this configuration
+            deleted_count = KTCPlayer.query.filter_by(
                 league_format=league_format,
                 is_redraft=is_redraft,
                 tep=tep
-            ).count()
-            print(f"Verified: {verify_count} records now in database")
+            ).delete(synchronize_session=False)
 
-        except Exception as commit_error:
-            print(f"Database commit failed: {commit_error}")
+            logger.info(f"Deleted {deleted_count} existing records")
+
+            # Process and add new data
+            added_count = 0
+            for player in players:
+                value, position_rank = DatabaseManager._extract_player_values(
+                    player, is_redraft)
+
+                if value is None or value == 0:
+                    logger.debug(
+                        f"Skipping player {player.get(PLAYER_NAME_KEY, UNKNOWN_PLAYER)} - no value")
+                    continue
+
+                # Validate required fields
+                player_name = player.get(PLAYER_NAME_KEY)
+                position = player.get(POSITION_KEY)
+
+                if not player_name or not position:
+                    logger.warning(
+                        f"Skipping player with missing required fields: {player}")
+                    continue
+
+                ktc_player = KTCPlayer(
+                    player_name=player_name,
+                    position=position,
+                    team=player.get(TEAM_KEY),
+                    value=value,
+                    age=player.get(AGE_KEY),
+                    rookie=player.get(ROOKIE_KEY, DEFAULT_ROOKIE),
+                    rank=player.get(RANK_KEY),
+                    trend=player.get(TREND_KEY, DEFAULT_TREND),
+                    tier=player.get(TIER_KEY),
+                    position_rank=position_rank,
+                    league_format=league_format,
+                    is_redraft=is_redraft,
+                    tep=tep
+                )
+                db.session.add(ktc_player)
+                added_count += 1
+
+            logger.info(f"Adding {added_count} records to database")
+            db.session.commit()
+            logger.info("Database commit successful")
+
+            return added_count
+
+        except Exception as e:
+            logger.error(f"Database operation failed: {e}")
             db.session.rollback()
-            raise commit_error
+            raise Exception(f"Database save operation failed: {e}")
 
-        # Upload JSON to S3 (same bucket as ktc-scrape.py)
-        bucket_name = os.getenv('S3_BUCKET')
-        print('bucket_name: ', bucket_name)
+    @staticmethod
+    def _extract_player_values(player: Dict[str, Any], is_redraft: bool) -> tuple[Optional[int], Optional[str]]:
+        """Extract value and position rank from player data"""
+        try:
+            if is_redraft:
+                value = player.get(REDRAFT_VALUE_KEY, 0)
+                position_rank = player.get(REDRAFT_POSITION_RANK_KEY)
+            else:
+                value = player.get(VALUE_KEY, 0)
+                position_rank = player.get(POSITION_RANK_KEY)
 
-        if bucket_name:
-            object_key = f"ktc_refresh_{league_format.lower()}_{'redraft' if is_redraft else 'dynasty'}_tep{tep}.json"
-            json_data = {
-                'message': 'Rankings refreshed successfully',
-                'timestamp': datetime.now(UTC).isoformat(),
-                'count': len(players),
-                'parameters': {
-                    'is_redraft': is_redraft,
-                    'league_format': league_format,
-                    'tep': tep
-                },
-                'players': players
-            }
-            upload_json_to_s3(json_data, bucket_name, object_key)
+            # Convert value to int if it's a string
+            if isinstance(value, str):
+                try:
+                    value = int(value)
+                except (ValueError, TypeError):
+                    logger.warning(
+                        f"Could not convert value '{value}' to int for player {player.get(PLAYER_NAME_KEY, UNKNOWN_PLAYER)}")
+                    value = 0
 
-        return jsonify({
-            'message': 'Rankings refreshed successfully',
-            'timestamp': datetime.now(UTC).isoformat(),
-            'count': len(players)
-        })
+            return value, position_rank
 
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error refreshing rankings: {e}")
-        return jsonify({'error': str(e)}), 500
+        except Exception as e:
+            logger.error(f"Error extracting player values: {e}")
+            return 0, None
 
-
-@app.route('/api/ktc/rankings', methods=['GET'])
-def get_rankings():
-    """Endpoint to retrieve stored rankings with optional filtering"""
-    try:
-        # Get parameters from query string
-        is_redraft = request.args.get('is_redraft', 'false').lower() in [
-            'true', 't', 'yes', 'y', '1']
-        league_format = request.args.get('league_format', '1QB').upper()
-        tep = int(request.args.get('tep', '0'))
-
-        # Validate parameters
-        if league_format not in ['1QB', 'SF']:
-            return jsonify({'error': 'Invalid league format. Must be 1QB or SF'}), 400
-        if tep not in [0, 1, 2, 3]:
-            return jsonify({'error': 'Invalid TEP value. Must be 0, 1, 2, or 3'}), 400
-
-        # Query the database
+    @staticmethod
+    def get_players_from_db(league_format: str, is_redraft: bool, tep: int) -> tuple[List[KTCPlayer], Optional[datetime]]:
+        """Get players from database"""
         players = KTCPlayer.query.filter_by(
             league_format=league_format,
             is_redraft=is_redraft,
             tep=tep
         ).order_by(KTCPlayer.rank.asc()).all()
 
+        last_updated = max(
+            player.last_updated for player in players) if players else None
+
+        return players, last_updated
+
+    @staticmethod
+    def verify_database_connection() -> bool:
+        """Verify database connection and basic functionality"""
+        try:
+            # Test basic query
+            player = db.session.execute(db.text("SELECT 1")).fetchone()
+            print(player)
+            logger.info("Database connection verified successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Database connection verification failed: {e}")
+            return False
+
+    @staticmethod
+    def get_database_stats() -> Dict[str, Any]:
+        """Get database statistics for debugging"""
+        try:
+            stats = {}
+
+            # Get total record count
+            total_records = KTCPlayer.query.count()
+            stats['total_records'] = total_records
+
+            # Get counts by configuration
+            configs = db.session.query(
+                KTCPlayer.league_format,
+                KTCPlayer.is_redraft,
+                KTCPlayer.tep,
+                db.func.count(KTCPlayer.id).label('count')
+            ).group_by(
+                KTCPlayer.league_format,
+                KTCPlayer.is_redraft,
+                KTCPlayer.tep
+            ).all()
+
+            stats['configurations'] = [
+                {
+                    'league_format': config.league_format,
+                    'is_redraft': config.is_redraft,
+                    'tep': config.tep,
+                    'count': config.count
+                }
+                for config in configs
+            ]
+
+            return stats
+
+        except Exception as e:
+            logger.error(f"Error getting database stats: {e}")
+            return {'error': str(e)}
+
+
+@app.route('/api/ktc/health', methods=['GET'])
+def health_check():
+    """Database health check endpoint"""
+    try:
+        # Test database connection
+        connection_ok = DatabaseManager.verify_database_connection()
+
+        if not connection_ok:
+            return jsonify({
+                'status': 'unhealthy',
+                'database': 'connection_failed',
+                'timestamp': datetime.now(UTC).isoformat()
+            }), HTTP_INTERNAL_SERVER_ERROR
+
+        # Get database statistics
+        stats = DatabaseManager.get_database_stats()
+
+        return jsonify({
+            'status': 'healthy',
+            'database': 'connected',
+            'timestamp': datetime.now(UTC).isoformat(),
+            'stats': stats
+        })
+
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return jsonify({
+            'status': 'unhealthy',
+            'database': 'error',
+            'error': str(e),
+            'timestamp': datetime.now(UTC).isoformat()
+        }), HTTP_INTERNAL_SERVER_ERROR
+
+
+@app.route('/api/ktc/refresh', methods=['POST'])
+def refresh_rankings():
+    """Endpoint to fetch fresh data from KTC and store in database"""
+    try:
+        # Get and validate parameters
+        is_redraft_str = request.args.get('is_redraft', 'false')
+        league_format_str = request.args.get('league_format', '1QB')
+        tep_str = request.args.get('tep', '0')
+
+        valid, league_format, tep, error_msg = RequestValidator.validate_parameters(
+            is_redraft_str, league_format_str, tep_str
+        )
+
+        if not valid:
+            return jsonify({'error': error_msg}), HTTP_BAD_REQUEST
+
+        is_redraft = is_redraft_str.lower() in BOOLEAN_STRINGS
+
+        # Scrape fresh data
+        players = KTCScraper.scrape_ktc(is_redraft, league_format, tep)
+        logger.info(f"Scraped {len(players)} players")
+
         if not players:
-            return jsonify({'error': 'No rankings found for the specified parameters'}), 404
+            return jsonify({'error': 'No players found during scraping'}), HTTP_INTERNAL_SERVER_ERROR
 
-        # Get the timestamp from the most recent player
-        last_updated = max(player.last_updated for player in players)
+        # Sort players by rank for consistent ordering
+        players_sorted = sorted(
+            players, key=lambda x: x.get(RANK_KEY) or float('inf'))
 
-        # Upload JSON to S3 (same bucket as ktc-scrape.py)
-        bucket_name = os.getenv('S3_BUCKET')
-        print('bucket_name: ', bucket_name)
-        if bucket_name:
-            object_key = f"ktc_rankings_{league_format.lower()}_{'redraft' if is_redraft else 'dynasty'}_tep{tep}.json"
-            json_data = {
-                'timestamp': last_updated.isoformat(),
+        # Save to database
+        added_count = DatabaseManager.save_players_to_db(
+            players_sorted, league_format, is_redraft, tep)
+        logger.info(f"Successfully saved {added_count} players to database")
+
+        # Create JSON data for file operations
+        json_data = {
+            'message': 'Rankings refreshed successfully',
+            'timestamp': datetime.now(UTC).isoformat(),
+            'count': len(players_sorted),
+            'database_count': added_count,
+            'parameters': {
                 'is_redraft': is_redraft,
                 'league_format': league_format,
-                'tep': tep,
-                'players': [player.to_dict() for player in players]
-            }
-            upload_json_to_s3(json_data, bucket_name, object_key)
+                'tep': tep
+            },
+            'players': players_sorted
+        }
+
+        # Save to file and S3
+        json_filename = FileManager.create_json_filename(
+            league_format, is_redraft, tep, "ktc_refresh")
+        file_saved = FileManager.save_json_to_file(json_data, json_filename)
+
+        s3_uploaded = False
+        bucket_name = os.getenv('S3_BUCKET')
+        if bucket_name:
+            object_key = FileManager.create_json_filename(
+                league_format, is_redraft, tep, "ktc_refresh")
+            s3_uploaded = FileManager.upload_json_to_s3(
+                json_data, bucket_name, object_key)
+
+        return jsonify({
+            'message': 'Rankings refreshed successfully',
+            'timestamp': datetime.now(UTC).isoformat(),
+            'count': added_count,
+            'file_saved': file_saved,
+            's3_uploaded': s3_uploaded
+        })
+
+    except Exception as e:
+        logger.error(f"Error refreshing rankings: {e}")
+        return jsonify({
+            'error': 'Internal server error during refresh',
+            'details': str(e)
+        }), HTTP_INTERNAL_SERVER_ERROR
+
+
+@app.route('/api/ktc/rankings', methods=['GET'])
+def get_rankings():
+    """Endpoint to retrieve stored rankings with optional filtering"""
+    try:
+        # Get and validate parameters
+        is_redraft_str = request.args.get('is_redraft', 'false')
+        league_format_str = request.args.get('league_format', '1QB')
+        tep_str = request.args.get('tep', '0')
+
+        valid, league_format, tep, error_msg = RequestValidator.validate_parameters(
+            is_redraft_str, league_format_str, tep_str
+        )
+
+        if not valid:
+            return jsonify({'error': error_msg}), HTTP_BAD_REQUEST
+
+        is_redraft = is_redraft_str.lower() in BOOLEAN_STRINGS
+
+        # Query the database
+        players, last_updated = DatabaseManager.get_players_from_db(
+            league_format, is_redraft, tep)
+
+        if not players:
+            return jsonify({
+                'error': 'No rankings found for the specified parameters',
+                'suggestion': 'Try calling the /api/ktc/refresh endpoint first to populate data',
+                'parameters': {
+                    'is_redraft': is_redraft,
+                    'league_format': league_format,
+                    'tep': tep
+                }
+            }), HTTP_NOT_FOUND
+
+        # Convert players to dict format
+        players_data = [player.to_dict() for player in players]
+
+        # Upload to S3 if configured
+        s3_uploaded = False
+        bucket_name = os.getenv('S3_BUCKET')
+        if bucket_name:
+            try:
+                object_key = FileManager.create_json_filename(
+                    league_format, is_redraft, tep, "ktc_rankings")
+                json_data = {
+                    'timestamp': last_updated.isoformat(),
+                    'is_redraft': is_redraft,
+                    'league_format': league_format,
+                    'tep': tep,
+                    'players': players_data
+                }
+                s3_uploaded = FileManager.upload_json_to_s3(
+                    json_data, bucket_name, object_key)
+            except Exception as s3_error:
+                logger.warning(f"S3 upload failed: {s3_error}")
+                # Don't fail the entire request if S3 upload fails
 
         return jsonify({
             'timestamp': last_updated.isoformat(),
             'is_redraft': is_redraft,
             'league_format': league_format,
             'tep': tep,
-            'players': [player.to_dict() for player in players]
+            'count': len(players),
+            's3_uploaded': s3_uploaded,
+            'players': players_data
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error retrieving rankings: {e}")
+        return jsonify({
+            'error': 'Internal server error during rankings retrieval',
+            'details': str(e)
+        }), HTTP_INTERNAL_SERVER_ERROR
 
 
 @app.cli.command("init_db")
 def init_db():
-    # Initialize the database
+    """Initialize the database"""
     db.create_all()
-    print("Initialized the database.")
+    logger.info("Initialized the database.")
 
 
 if __name__ == "__main__":
