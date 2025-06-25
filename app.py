@@ -32,7 +32,8 @@ DYNASTY_URL = "https://keeptradecut.com/dynasty-rankings"
 FANTASY_URL = "https://keeptradecut.com/fantasy-rankings"
 
 # Database configuration
-DATABASE_URI = 'sqlite:////app/instance/db.sqlite'
+# Use in-memory SQLite for Vercel serverless deployment
+DATABASE_URI = os.getenv('DATABASE_URL', 'sqlite:///:memory:')
 
 # HTTP status codes
 HTTP_BAD_REQUEST = 400
