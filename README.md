@@ -153,7 +153,7 @@ The script outputs a `ktc.csv` file with the scraped rankings data. This is usef
 
 ## Notes
 
-- **S3 Upload**: The app includes S3 upload functionality but it's not needed for basic usage. The `S3_BUCKET` environment variable is not needed for this project to work.
+- **S3 Upload**: The app includes S3 upload functionality but it's not needed for basic usage. See [S3 Configuration](#s3-configuration) section below for setup instructions.
 - **Database**: Uses SQLite database that's automatically initialized in the Docker container.
 - **Docker**: The app runs in a containerized environment with Python 3.13 and includes a virtual environment for dependency isolation.
 - **TEP Impact**: TEP only applies to dynasty leagues in this project; redraft leagues ignore TEP settings. TEP is available for redraft/fantasy in KTC, but not yet implemented in this project.
@@ -249,6 +249,61 @@ The application is now configured with a simplified Docker setup:
 
 The application will be available at: <http://localhost:5000>
 Health check: <http://localhost:5000/api/ktc/health>
+
+## S3 Configuration
+
+The application includes optional S3 upload functionality for storing JSON data files. To enable S3 uploads in Docker:
+
+### Method 1: Environment Variables (Recommended)
+
+1. Copy the provided `.env.example` file to `.env`:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edit `.env` and add your AWS credentials:
+
+   ```bash
+   AWS_ACCESS_KEY_ID=your_access_key_here
+   AWS_SECRET_ACCESS_KEY=your_secret_key_here
+   AWS_DEFAULT_REGION=us-east-1
+   S3_BUCKET=your-bucket-name
+   ```
+
+3. Docker Compose will automatically load these variables.
+
+### Method 2: Mount AWS Credentials Directory
+
+Uncomment the AWS credentials volume mount in `docker-compose.yml`:
+
+```yaml
+volumes:
+  # ... other volumes ...
+  - ~/.aws:/root/.aws:ro  # Uncomment this line
+```
+
+### Method 3: Set Environment Variables Directly
+
+Export the variables in your shell before running Docker Compose:
+
+```bash
+export AWS_ACCESS_KEY_ID=your_access_key_here
+export AWS_SECRET_ACCESS_KEY=your_secret_key_here
+export AWS_DEFAULT_REGION=us-east-1
+export S3_BUCKET=your-bucket-name
+./docker-compose.sh up
+```
+
+### Why S3 Upload Fails in Docker but Works Locally
+
+When running locally, boto3 can find AWS credentials from:
+
+- Your `~/.aws/credentials` file
+- Environment variables in your shell
+- AWS CLI configuration
+
+In Docker containers, these credentials aren't available unless explicitly provided through one of the methods above.
 
 ### Directory Structure
 

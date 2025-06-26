@@ -278,7 +278,8 @@ class KTCScraper:
     def merge_dynasty_fantasy_data(dynasty_players: List[Dict[str, Any]], fantasy_players: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Merge dynasty and fantasy player data"""
         try:
-            fantasy_dict = {player[PLAYER_NAME_KEY]: player for player in fantasy_players}
+            fantasy_dict = {player[PLAYER_NAME_KEY]
+                : player for player in fantasy_players}
 
             merged_players = []
             for dynasty_player in dynasty_players:
@@ -370,8 +371,9 @@ class FileManager:
 
     @staticmethod
     def upload_json_to_s3(json_data: Dict[str, Any], bucket_name: str, object_key: str) -> bool:
-        """Upload JSON data to an S3 bucket"""
+        """Upload JSON data to an S3 bucket or access point"""
         try:
+            # Check if bucket_name is an access point alias
             s3_client = boto3.client('s3')
 
             with tempfile.NamedTemporaryFile(mode='w', suffix=JSON_EXTENSION, delete=False) as temp_file:
@@ -380,18 +382,30 @@ class FileManager:
 
             logger.info(
                 f"Uploading JSON to s3://{bucket_name}/{object_key}...")
-            s3_client.upload_file(temp_file_path, bucket_name, object_key)
-            logger.info(
-                f"Successfully uploaded JSON to s3://{bucket_name}/{object_key}")
 
-            os.unlink(temp_file_path)
-            return True
+            # Upload to S3
+            try:
+                s3_client.upload_file(temp_file_path, bucket_name, object_key)
+                logger.info(
+                    f"Successfully uploaded JSON to s3://{bucket_name}/{object_key}")
+                os.unlink(temp_file_path)
+                return True
+            except Exception as e:
+                logger.error(f"Error uploading to S3: {e}")
+                os.unlink(temp_file_path)
+                return False
+
         except NoCredentialsError:
             logger.error(
                 "AWS credentials not found. Make sure you've configured your AWS credentials.")
             return False
         except ClientError as e:
             logger.error(f"Error uploading to S3: {e}")
+            # Log additional details for debugging
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            error_message = e.response.get(
+                'Error', {}).get('Message', 'Unknown error')
+            logger.error(f"Error Code: {error_code}, Message: {error_message}")
             return False
         except Exception as e:
             logger.error(f"Unexpected error uploading to S3: {e}")
@@ -691,7 +705,8 @@ def refresh_rankings():
             'timestamp': datetime.now(UTC).isoformat(),
             'count': added_count,
             'file_saved': file_saved,
-            's3_uploaded': s3_uploaded
+            's3_uploaded': s3_uploaded,
+            'data': json_data
         })
 
     except Exception as e:
@@ -738,33 +753,12 @@ def get_rankings():
         # Convert players to dict format
         players_data = [player.to_dict() for player in players]
 
-        # Upload to S3 if configured
-        s3_uploaded = False
-        bucket_name = os.getenv('S3_BUCKET')
-        if bucket_name:
-            try:
-                object_key = FileManager.create_json_filename(
-                    league_format, is_redraft, tep, "ktc_rankings")
-                json_data = {
-                    'timestamp': last_updated.isoformat(),
-                    'is_redraft': is_redraft,
-                    'league_format': league_format,
-                    'tep': tep,
-                    'players': players_data
-                }
-                s3_uploaded = FileManager.upload_json_to_s3(
-                    json_data, bucket_name, object_key)
-            except Exception as s3_error:
-                logger.warning(f"S3 upload failed: {s3_error}")
-                # Don't fail the entire request if S3 upload fails
-
         return jsonify({
             'timestamp': last_updated.isoformat(),
             'is_redraft': is_redraft,
             'league_format': league_format,
             'tep': tep,
             'count': len(players),
-            's3_uploaded': s3_uploaded,
             'players': players_data
         })
 

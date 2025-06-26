@@ -9,9 +9,19 @@ services:
       - ./instance:/app/instance
       # Mount local data-files directory 
       - ./data-files:/app/data-files
+      # Optional: Mount AWS credentials (uncomment if you prefer this approach)
+      # - ~/.aws:/root/.aws:ro
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
+      # AWS credentials - you can either:
+      # 1. Set these in your shell environment before running docker-compose
+      # 2. Create a .env file with these values
+      # 3. Uncomment and set directly (not recommended for production)
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - S3_BUCKET=${S3_BUCKET}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/ktc/health"]
