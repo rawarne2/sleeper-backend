@@ -5,8 +5,13 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Install system dependencies including curl
-RUN apk add --no-cache curl
+# Install system dependencies including PostgreSQL development packages
+RUN apk add --no-cache \
+    curl \
+    postgresql-dev \
+    gcc \
+    musl-dev \
+    libffi-dev
 
 # Create and activate virtual environment
 RUN python -m venv /opt/venv

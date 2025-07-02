@@ -6,7 +6,8 @@ import json
 @pytest.fixture
 def client():
     app.config['TESTING'] = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+    # Use PostgreSQL test database - assumes you have a test database set up
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:password@localhost:5433/sleeper_test_db'
 
     with app.test_client() as client:
         with app.app_context():
@@ -24,8 +25,8 @@ def test_refresh_endpoint_validation(client):
     data = json.loads(response.data)
     assert 'error' in data
 
-    # Test invalid TEP value
-    response = client.post('/api/ktc/refresh?tep=5')
+    # Test invalid TEP level value
+    response = client.post('/api/ktc/refresh?tep_level=invalid_tep')
     assert response.status_code == 400
     data = json.loads(response.data)
     assert 'error' in data
@@ -45,8 +46,8 @@ def test_rankings_invalid_parameters(client):
     data = json.loads(response.data)
     assert 'error' in data
 
-    # Test invalid TEP value
-    response = client.get('/api/ktc/rankings?tep=5')
+    # Test invalid TEP level value
+    response = client.get('/api/ktc/rankings?tep_level=invalid_tep')
     assert response.status_code == 400
     data = json.loads(response.data)
     assert 'error' in data
@@ -55,7 +56,7 @@ def test_rankings_invalid_parameters(client):
 def test_rankings_not_found(client):
     """Test that appropriate response is returned when no data exists"""
     response = client.get(
-        '/api/ktc/rankings?league_format=SF&is_redraft=true&tep=2')
+        '/api/ktc/rankings?league_format=superflex&is_redraft=true&tep_level=tepp')
     assert response.status_code == 404
     data = json.loads(response.data)
     assert 'error' in data

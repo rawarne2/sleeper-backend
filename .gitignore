@@ -1,10 +1,33 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
-.env
-instance/db.sqlite
-.DS_Store
-.vscode/
+*.pyd
+.Python
+*.so
 .pytest_cache/
+
+# Virtual environments
+.env
+.venv/
+venv/
+
+# IDE and editor files
+.vscode/
+.DS_Store
+
+# Application logs
 *.log
+
+# Flask instance folder
+instance/
+
+# JSON data exports (keep data-files structure but ignore contents)
 data-files/*.json
+
+# PostgreSQL
+*.sql
+*.dump
+
+# Docker
+.dockerignore

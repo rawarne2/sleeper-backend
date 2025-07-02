@@ -1,19 +1,38 @@
 services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: sleeper-postgres
+    environment:
+      - POSTGRES_DB=sleeper_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   sleeper-backend:
     build: .
     container_name: sleeper-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "5000:5000"
     volumes:
-      # Mount local instance directory for SQLite database
-      - ./instance:/app/instance
-      # Mount local data-files directory 
+      # Mount local data-files directory for JSON exports
       - ./data-files:/app/data-files
       # Optional: Mount AWS credentials (uncomment if you prefer this approach)
       # - ~/.aws:/root/.aws:ro
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/sleeper_db
       # AWS credentials - you can either:
       # 1. Set these in your shell environment before running docker-compose
       # 2. Create a .env file with these values
@@ -28,4 +47,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s 
+      start_period: 40s
+
+volumes:
+  postgres_data: 

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Initialize the database
+# Wait for database to be available (optional health check)
 echo "Initializing database..."
 flask init_db
 

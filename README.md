@@ -1,326 +1,344 @@
-# Sleeper Backend - KTC API
+# Sleeper Backend API
 
-A Flask API for scraping and serving KeepTradeCut fantasy football rankings.
+A Flask-based API for scraping and serving fantasy football player rankings from KeepTradeCut (KTC).
+
+## Features
+
+- **Player Rankings**: Scrape dynasty and redraft player rankings from KTC
+- **Multiple Formats**: Support for 1QB and Superflex league formats
+- **TEP Support**: Tight End Premium scoring for dynasty leagues (TEP+, TEP++, TEP+++)
+- **Database Storage**: PostgreSQL database for persistent data storage
+- **JSON Export**: Save rankings to JSON files locally and optionally upload to S3
+- **Health Monitoring**: Built-in health check endpoints
+- **Docker Support**: Containerized deployment with Docker Compose
 
 ## Quick Start
 
-### Prerequisites
+### Using Docker Compose (Recommended)
 
-- Docker and Docker Compose installed on your system
+```bash
+# Clone the repository
+git clone <repository-url>
+cd sleeper-backend
 
-### Run the App
+# Set up environment variables (optional)
+cp .env.example .env  # Edit with your settings
 
-#### Option 1: Using Docker Compose (Recommended)
-
-```sh
-# Start the application with persistent database
-./docker-compose.sh up
-
-# Or use docker-compose directly
+# Start the application and database
 docker-compose up -d
+
+# Check application health
+curl http://localhost:5000/api/ktc/health
+
+# Load initial data
+curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex&is_redraft=false&tep_level=tep"
 ```
 
-#### Option 2: Using Docker directly
+### Manual Setup
 
-```sh
-./run_app.sh
-```
+```bash
+# Clone the repository
+git clone <repository-url>
+cd sleeper-backend
 
-The API will be available at `http://localhost:5000`
-
-### Run Tests
-
-```sh
-./run_tests.sh
-```
-
-## Available Scripts
-
-| Script | Description |
-|--------|-------------|
-| `./docker-compose.sh up` | Start the app with Docker Compose and persistent database |
-| `./docker-compose.sh down` | Stop the Docker Compose application |
-| `./docker-compose.sh rebuild` | Rebuild and restart the application |
-| `./docker-compose.sh logs` | View application logs |
-| `./docker-compose.sh status` | Check container and volume status |
-| `./run_app.sh` | Build and run the Flask API in Docker (alternative method) |
-| `./run_tests.sh` | Build and run the test suite in Docker |
-| `./build_docker.sh` | Build the Docker image (used by other scripts) |
-
-## API Endpoints
-
-- run `./run_app.sh` to start the app and then run the following commands in a new terminal to test the API, or use Insomnia or Postman.
-
-### Using API Testing Tools
-
-For easier API testing, you can use **Postman** or **Insomnia** instead of curl commands:
-
-- **Base URL**: `http://localhost:5000`
-- **Content-Type**: `application/json` (for POST requests)
-
-### Refresh Rankings
-
-Scrape fresh data from KeepTradeCut and store in database:
-
-```sh
-curl -X POST "http://localhost:5000/api/ktc/refresh?is_redraft=false&league_format=SF&tep=1"
-```
-
-### Get Rankings
-
-Retrieve stored rankings from database:
-
-```sh
-curl "http://localhost:5000/api/ktc/rankings?is_redraft=false&league_format=SF&tep=1"
-```
-
-## Parameters
-
-All endpoints support the following query parameters:
-
-- `is_redraft`: `true` or `false` (default: `false`) - Fantasy/redraft vs dynasty league type
-- `league_format`: `1QB` or `SF` (default: `1QB`) - Single QB vs Superflex scoring
-- `tep`: `0`, `1`, `2`, or `3` (default: `0`) - Tight End Premium scoring level
-
-## Testing TE Values Across League Types
-
-To ensure TE (Tight End) values are correctly saved and calculated for different league configurations, test the key scenarios and compare values from the curl output, database, or CSV with the corresponding KTC URL. Modify or remove `| jq '.players[:100]` to get more or less data returned.
-
-### Test Different TEP (Tight End Premium) Levels
-
-```sh
-# TEP 0 (No TE Premium) - Dynasty SF
-curl -X POST "http://localhost:5000/api/ktc/refresh?is_redraft=false&league_format=SF&tep=0"
-curl "http://localhost:5000/api/ktc/rankings?is_redraft=false&league_format=SF&tep=0" | jq '.players[:100]'
-
-# TEP 1 (TE+) - Dynasty SF
-curl -X POST "http://localhost:5000/api/ktc/refresh?is_redraft=false&league_format=SF&tep=1"
-curl "http://localhost:5000/api/ktc/rankings?is_redraft=false&league_format=SF&tep=1" | jq '.players[:100]'
-
-# TEP 2 (TE++) - Dynasty SF
-curl -X POST "http://localhost:5000/api/ktc/refresh?is_redraft=false&league_format=SF&tep=2"
-curl "http://localhost:5000/api/ktc/rankings?is_redraft=false&league_format=SF&tep=2" | jq '.players[:100]'
-
-# TEP 3 (TE+++) - Dynasty SF
-curl -X POST "http://localhost:5000/api/ktc/refresh?is_redraft=false&league_format=SF&tep=3"
-curl "http://localhost:5000/api/ktc/rankings?is_redraft=false&league_format=SF&tep=3" | jq '.players[:100]'
-```
-
-### Test League Formats and Types
-
-```sh
-# Dynasty 1QB with TEP 1
-curl -X POST "http://localhost:5000/api/ktc/refresh?is_redraft=false&league_format=1QB&tep=1"
-curl "http://localhost:5000/api/ktc/rankings?is_redraft=false&league_format=1QB&tep=1" | jq '.players[:100]'
-
-# Dynasty SF with TEP 1
-curl -X POST "http://localhost:5000/api/ktc/refresh?is_redraft=false&league_format=SF&tep=1"
-curl "http://localhost:5000/api/ktc/rankings?is_redraft=false&league_format=SF&tep=1" | jq '.players[:100]'
-
-# Redraft SF (TEP not applicable)
-curl -X POST "http://localhost:5000/api/ktc/refresh?is_redraft=true&league_format=SF&tep=0"
-curl "http://localhost:5000/api/ktc/rankings?is_redraft=true&league_format=SF&tep=0" | jq '.players[:100]'
-```
-
-### Validation Steps
-
-1. **Compare TE values across TEP levels** - Higher TEP should increase TE values
-2. **Verify data consistency** - Multiple API calls should return identical data
-3. **Cross-reference with KTC** - Compare your results with the corresponding KTC URLs:
-   - Dynasty SF: `https://keeptradecut.com/dynasty-rankings?format=0&sf=true&tep=X`
-   - Dynasty 1QB: `https://keeptradecut.com/dynasty-rankings?format=1&sf=true&tep=X`
-   - Redraft SF: `https://keeptradecut.com/fantasy-rankings?format=0`
-4. **Run automated tests**: `./run_tests.sh`
-
-**Expected Results**: TE values should increase with higher TEP levels, differ between league formats, and match the corresponding KTC website data.
-
-## Standalone Scraper Script
-
-The `ktc-scrape.py` script can be used independently to scrape KTC data and export to CSV:
-
-```sh
-python ktc-scrape.py
-```
-
-The script will prompt you for:
-
-- League type (redraft/fantasy vs dynasty)
-- League format (1QB vs Superflex)  
-- TEP level (0-3, dynasty only in this project, but exists for redraft/fantasy in KTC)
-- S3 upload preference (optional)
-
-The script outputs a `ktc.csv` file with the scraped rankings data. This is useful for one-off data exports or integrating KTC data into other workflows.
-
-## Notes
-
-- **S3 Upload**: The app includes S3 upload functionality but it's not needed for basic usage. See [S3 Configuration](#s3-configuration) section below for setup instructions.
-- **Database**: Uses SQLite database that's automatically initialized in the Docker container.
-- **Docker**: The app runs in a containerized environment with Python 3.13 and includes a virtual environment for dependency isolation.
-- **TEP Impact**: TEP only applies to dynasty leagues in this project; redraft leagues ignore TEP settings. TEP is available for redraft/fantasy in KTC, but not yet implemented in this project.
-
-## Local Development (Without Docker)
-
-If needed, you can run locally:
-
-```sh
-python -m venv venv
-source venv/bin/activate
+# Install Python dependencies
 pip install -r requirements.txt
-flask init_db
+
+# Set up PostgreSQL databases
+python setup_postgres.py
+
+# Start the application
 python app.py
 ```
 
-## Key terms
+## API Endpoints
 
-- `tep`: Tight End Premium scoring (0=None, 1=TE+, 2=TE++, 3=TE+++)
-- `sf`: Superflex scoring format (allows starting 2 QBs)
-- `redraft`/`fantasy`: Redraft Fantasy Football (same thing) - league resets each year
-- `dynasty`: Dynasty Football - keep players across multiple seasons
-- `1QB`: Traditional single quarterback league format
-
-**Note**: Redraft and fantasy football are the same thing. Both redraft/fantasy and dynasty leagues can use 1QB or Superflex formats, and both can have TEP levels (though TEP for redraft/fantasy is not yet implemented in the API or script).
-
-## Data Persistence
-
-### Database Persistence
-
-The application uses SQLite database that persists data between container restarts:
-
-#### Docker Compose (Recommended)
-
-- **Database**: Stored in a Docker volume `database_data` that persists between container restarts
-- **Data files**: Stored in a Docker volume `data_files` for JSON export files
-- **Automatic**: No manual volume mounting needed - Docker Compose handles everything
-
-#### Direct Docker
-
-- **Database**: Mounted to `./instance/` directory on host
-- **Data files**: Mounted to `./data-files/` directory on host
-
-### JSON Data Files
-
-When you use the `/api/ktc/refresh` endpoint, the scraped data is saved to JSON files that persist:
-
-- **Docker Compose**: Files saved to `data_files` volume
-- **Local development**: Files saved to `./data-files/`
-- **Direct Docker**: Files saved to `/app/data-files/` (mounted to `./data-files/` on host)
-
-#### File naming convention
-
-- `ktc_refresh_{league_format}_{dynasty/redraft}_tep{tep_value}.json`
-- Examples:
-  - `ktc_refresh_1qb_dynasty_tep0.json`
-  - `ktc_refresh_sf_redraft_tep2.json`
-
-#### Volume Information
-
-Check volume status with:
+### Health Check
 
 ```bash
-./docker-compose.sh status
+GET /api/ktc/health
 ```
 
-Or directly with Docker:
+### Refresh Rankings
 
 ```bash
-docker volume ls
-docker volume inspect sleeper-backend_database_data
+POST /api/ktc/refresh?league_format={format}&is_redraft={boolean}&tep_level={tep}
 ```
 
-## Docker Setup
+**Parameters:**
 
-### Quick Start
+- `league_format`: `1qb` or `superflex`
+- `is_redraft`: `true` or `false`
+- `tep_level`: `tep`, `tepp`, `teppp` (dynasty only)
 
-The application is now configured with a simplified Docker setup:
+### Get Rankings
 
 ```bash
+GET /api/ktc/rankings?league_format={format}&is_redraft={boolean}&tep_level={tep}
+```
+
+### Database Cleanup
+
+```bash
+POST /api/ktc/cleanup?league_format={format}&is_redraft={boolean}&tep_level={tep}
+```
+
+## Configuration
+
+### Environment Variables
+
+Create a `.env` file in the root directory:
+
+```bash
+# Database Configuration
+DATABASE_URL=postgresql://postgres:password@localhost:5433/sleeper_db
+
+# AWS S3 Configuration (optional)
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_DEFAULT_REGION=us-east-1
+S3_BUCKET=your-bucket-name
+
+# Flask Configuration
+FLASK_ENV=development
+```
+
+### Database Configuration
+
+The application uses PostgreSQL with the following default settings:
+
+- Host: `localhost`
+- Port: `5433` (Docker), `5432` (local)
+- Database: `sleeper_db`
+- Test Database: `sleeper_test_db`
+- Username: `postgres`
+- Password: `password`
+
+## Development
+
+### Local Development Setup
+
+```bash
+# Clone repository
+git clone <repository-url>
+cd sleeper-backend
+
+# Set up Python environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start PostgreSQL (using Docker)
+docker-compose up postgres -d
+
 # Start the application
-./docker-compose.sh up
+python app.py
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+python -m pytest
+
+# Run specific test file
+python -m pytest unit_tests.py -v
+
+# Run with coverage
+python -m pytest --cov=app tests/
+```
+
+### Database Management
+
+```bash
+# Initialize database tables
+flask init_db
+
+# Set up PostgreSQL databases
+python setup_postgres.py
+```
+
+## Docker Deployment
+
+### Using Docker Compose
+
+```bash
+# Build and start all services
+docker-compose up --build
+
+# Start in background
+docker-compose up -d
 
 # View logs
-./docker-compose.sh logs
+docker-compose logs -f sleeper-backend
 
-# Stop the application
-./docker-compose.sh down
+# Stop services
+docker-compose down
 
-# Clean up (remove containers)
-./docker-compose.sh clean
+# Clean up volumes (removes database data)
+docker-compose down -v
 ```
 
-The application will be available at: <http://localhost:5000>
-Health check: <http://localhost:5000/api/ktc/health>
-
-## S3 Configuration
-
-The application includes optional S3 upload functionality for storing JSON data files. To enable S3 uploads in Docker:
-
-### Method 1: Environment Variables (Recommended)
-
-1. Copy the provided `.env.example` file to `.env`:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Edit `.env` and add your AWS credentials:
-
-   ```bash
-   AWS_ACCESS_KEY_ID=your_access_key_here
-   AWS_SECRET_ACCESS_KEY=your_secret_key_here
-   AWS_DEFAULT_REGION=us-east-1
-   S3_BUCKET=your-bucket-name
-   ```
-
-3. Docker Compose will automatically load these variables.
-
-### Method 2: Mount AWS Credentials Directory
-
-Uncomment the AWS credentials volume mount in `docker-compose.yml`:
-
-```yaml
-volumes:
-  # ... other volumes ...
-  - ~/.aws:/root/.aws:ro  # Uncomment this line
-```
-
-### Method 3: Set Environment Variables Directly
-
-Export the variables in your shell before running Docker Compose:
+### Using Docker Only
 
 ```bash
-export AWS_ACCESS_KEY_ID=your_access_key_here
-export AWS_SECRET_ACCESS_KEY=your_secret_key_here
-export AWS_DEFAULT_REGION=us-east-1
-export S3_BUCKET=your-bucket-name
-./docker-compose.sh up
+# Build the image
+docker build -t sleeper-backend .
+
+# Run with external PostgreSQL
+docker run -d \
+  --name sleeper-backend \
+  -p 5000:5000 \
+  -e DATABASE_URL=postgresql://user:pass@host:port/db \
+  sleeper-backend
 ```
 
-### Why S3 Upload Fails in Docker but Works Locally
+## API Usage Examples
 
-When running locally, boto3 can find AWS credentials from:
+### Dynasty Rankings
 
-- Your `~/.aws/credentials` file
-- Environment variables in your shell
-- AWS CLI configuration
+```bash
+# Get Superflex Dynasty TEP+ rankings
+curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=false&tep_level=tep"
 
-In Docker containers, these credentials aren't available unless explicitly provided through one of the methods above.
+# Refresh 1QB Dynasty base rankings
+curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=1qb&is_redraft=false&tep_level=tep"
+```
 
-### Directory Structure
+### Redraft Rankings
+
+```bash
+# Get Superflex redraft rankings
+curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=true"
+
+# Refresh 1QB redraft rankings
+curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=1qb&is_redraft=true"
+```
+
+## Data Storage
+
+### Local Files
+
+- JSON exports saved to `./data-files/` directory
+- **Standard naming**: `ktc_{league_format}_{format_type}_{tep_level}_{timestamp}.json`
+- **Descriptive naming**: `ktc_{operation}_{league_format}_{format_type}_{tep_level}_{timestamp}.json`
+- **Human-readable naming**: `KTC {Operation} - {League} {Format} {TEP} - {Timestamp}.json`
+
+**Examples:**
+
+- `ktc_superflex_dynasty_tep_20241201_143022.json`
+- `ktc_refresh_superflex_dynasty_tep_20241201_143022.json`
+- `KTC Refresh - Superflex Dynasty tep - 2024-12-01 14-30-22.json`
+
+**TEP Level Usage:**
+
+- `tep` → `tep`
+- `tepp` → `tepp`
+- `teppp` → `teppp`
+- `None` → `no_tep`
+
+### S3 Upload
+
+- Configurable via environment variables
+- Automatic upload after successful scraping
+- File naming matches local exports
+
+### Filename Generation
+
+The application provides three different filename generation methods:
+
+1. **`create_json_filename()`** - Standard naming with prefix support
+2. **`create_descriptive_filename()`** - Enhanced naming with operation type and optional timestamps
+3. **`create_human_readable_filename()`** - User-friendly naming with spaces and proper formatting
+
+All methods support:
+
+- League format detection (1QB/Superflex)
+- Format type (Dynasty/Redraft)
+- TEP level usage (tep/tepp/teppp/no_tep)
+- Timestamp inclusion for uniqueness
+
+### Database
+
+- PostgreSQL with connection pooling
+- Automatic cleanup of incomplete data
+- Index optimization for query performance
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Port 5432 already in use**
+   - The docker-compose uses port 5433 to avoid conflicts
+   - Update `DATABASE_URL` if needed
+
+2. **Database connection errors**
+   - Ensure PostgreSQL is running
+   - Check connection parameters
+   - Verify database exists
+
+3. **Scraping failures**
+   - Check internet connection
+   - Verify KTC website accessibility
+   - Review application logs
+
+### Database Issues
+
+```bash
+# Check database connection
+curl http://localhost:5000/api/ktc/health
+
+# Clean up incomplete data
+curl -X POST "http://localhost:5000/api/ktc/cleanup?league_format=superflex&is_redraft=false"
+
+# Recreate database tables
+flask init_db
+```
+
+### Docker Issues
+
+```bash
+# Rebuild containers
+docker-compose up --build --force-recreate
+
+# Check container logs
+docker-compose logs sleeper-backend
+docker-compose logs postgres
+
+# Reset database volume
+docker-compose down -v
+docker-compose up -d
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Run the test suite
+6. Submit a pull request
+
+## Architecture
 
 ```
 sleeper-backend/
-├── instance/           # SQLite database storage
-│   └── db.sqlite      # Database file (local & mounted to container)
-├── data-files/        # JSON data files (mounted to container)
-├── docker-compose.yml # Docker configuration
-├── docker-compose.sh  # Helper script
-├── Dockerfile        # Container definition
-└── app.py            # Main application
+├── app.py               # Main Flask application
+├── requirements.txt     # Python dependencies
+├── Dockerfile          # Container configuration
+├── docker-compose.yml  # Multi-container setup
+├── startup.sh          # Container startup script
+├── setup_postgres.py   # Database setup utility
+├── data-files/         # JSON export directory
+├── tests/              # Test suite
+│   ├── unit_tests.py
+│   ├── test_ktc_api.py
+│   └── test_ktc_simple.py
+└── README.md           # This file
 ```
 
-### How it works
+## License
 
-- **Database**: SQLite database stored in `instance/db.sqlite`
-- **Volume Mounts**: Local directories are mounted to container for persistence
-- **No Docker Volumes**: Uses local directory mounts instead of Docker volumes
-- **Development Ready**: Changes to local files are reflected in container
+This project is licensed under the MIT License - see the LICENSE file for details.

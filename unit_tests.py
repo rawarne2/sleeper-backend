@@ -1,7 +1,7 @@
 import pytest
 from app import app, db, KTCPlayer
 import json
-from typing import TypedDict, List, Union, Literal
+from typing import TypedDict, List, Union, Literal, Optional
 from datetime import datetime
 
 # Type definitions for our API responses
@@ -23,15 +23,16 @@ class Player(TypedDict):
 class KTCResponse(TypedDict):
     timestamp: str
     is_redraft: bool
-    league_format: Literal["1QB", "SF"]
-    tep: int
+    league_format: Literal["1qb", "superflex"]
+    tep_level: Optional[str]
     players: List[Player]
 
 
 @pytest.fixture
 def client():
     app.config['TESTING'] = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+    # Use PostgreSQL test database - assumes you have a test database set up
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:password@localhost:5433/sleeper_test_db'
 
     with app.test_client() as client:
         with app.app_context():
@@ -43,7 +44,8 @@ def client():
 
 def test_refresh_endpoint_exists(client):
     """Test that the refresh endpoint exists and accepts POST requests"""
-    response = client.post('/api/ktc/refresh?league_format=SF&tep=1')
+    response = client.post(
+        '/api/ktc/refresh?league_format=superflex&tep_level=tep')
     # Either success or invalid params
     assert response.status_code in [200, 400]
 
@@ -56,8 +58,8 @@ def test_refresh_endpoint_validation(client):
     data = json.loads(response.data)
     assert 'error' in data
 
-    # Test invalid TEP value
-    response = client.post('/api/ktc/refresh?tep=5')
+    # Test invalid TEP level value
+    response = client.post('/api/ktc/refresh?tep_level=invalid_tep')
     assert response.status_code == 400
     data = json.loads(response.data)
     assert 'error' in data
@@ -77,8 +79,8 @@ def test_rankings_invalid_parameters(client):
     data = json.loads(response.data)
     assert 'error' in data
 
-    # Test invalid TEP value
-    response = client.get('/api/ktc/rankings?tep=5')
+    # Test invalid TEP level value
+    response = client.get('/api/ktc/rankings?tep_level=invalid_tep')
     assert response.status_code == 400
     data = json.loads(response.data)
     assert 'error' in data
@@ -87,7 +89,7 @@ def test_rankings_invalid_parameters(client):
 def test_rankings_not_found(client):
     """Test that appropriate response is returned when no data exists"""
     response = client.get(
-        '/api/ktc/rankings?league_format=SF&is_redraft=true&tep=2')
+        '/api/ktc/rankings?league_format=superflex&is_redraft=true&tep_level=tepp')
     assert response.status_code == 404
     data = json.loads(response.data)
     assert 'error' in data
