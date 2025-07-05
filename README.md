@@ -5,340 +5,194 @@ A Flask-based API for scraping and serving fantasy football player rankings from
 ## Features
 
 - **Player Rankings**: Scrape dynasty and redraft player rankings from KTC
-- **Multiple Formats**: Support for 1QB and Superflex league formats
-- **TEP Support**: Tight End Premium scoring for dynasty leagues (TEP+, TEP++, TEP+++)
-- **Database Storage**: PostgreSQL database for persistent data storage
-- **JSON Export**: Save rankings to JSON files locally and optionally upload to S3
-- **Health Monitoring**: Built-in health check endpoints
-- **Docker Support**: Containerized deployment with Docker Compose
+- **Multiple Formats**: Support for 1QB and Superflex league formats  
+- **TEP Support**: Tight End Premium scoring (tep, tepp, teppp)
+- **Database Storage**: PostgreSQL database with Docker support
 
 ## Quick Start
 
-### Using Docker Compose (Recommended)
+### Using Docker (Recommended)
+
+Use the provided `docker-compose.sh` script to manage the application:
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd sleeper-backend
+# Start the application
+./docker-compose.sh up
 
-# Set up environment variables (optional)
-cp .env.example .env  # Edit with your settings
+# Check application status
+./docker-compose.sh status
 
-# Start the application and database
-docker-compose up -d
+# View logs
+./docker-compose.sh logs
 
-# Check application health
-curl http://localhost:5000/api/ktc/health
+# Stop the application
+./docker-compose.sh down
 
-# Load initial data
-curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex&is_redraft=false&tep_level=tep"
+# Clean up containers
+./docker-compose.sh clean
 ```
+
+The application will be available at `http://localhost:5000`
 
 ### Manual Setup
 
-```bash
-# Clone the repository
-git clone <repository-url>
-cd sleeper-backend
-
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Set up PostgreSQL databases
-python setup_postgres.py
-
-# Start the application
-python app.py
-```
-
-## API Endpoints
-
-### Health Check
+If you prefer to run without Docker:
 
 ```bash
-GET /api/ktc/health
-```
-
-### Refresh Rankings
-
-```bash
-POST /api/ktc/refresh?league_format={format}&is_redraft={boolean}&tep_level={tep}
-```
-
-**Parameters:**
-
-- `league_format`: `1qb` or `superflex`
-- `is_redraft`: `true` or `false`
-- `tep_level`: `tep`, `tepp`, `teppp` (dynasty only)
-
-### Get Rankings
-
-```bash
-GET /api/ktc/rankings?league_format={format}&is_redraft={boolean}&tep_level={tep}
-```
-
-### Database Cleanup
-
-```bash
-POST /api/ktc/cleanup?league_format={format}&is_redraft={boolean}&tep_level={tep}
-```
-
-## Configuration
-
-### Environment Variables
-
-Create a `.env` file in the root directory:
-
-```bash
-# Database Configuration
-DATABASE_URL=postgresql://postgres:password@localhost:5433/sleeper_db
-
-# AWS S3 Configuration (optional)
-AWS_ACCESS_KEY_ID=your_access_key
-AWS_SECRET_ACCESS_KEY=your_secret_key
-AWS_DEFAULT_REGION=us-east-1
-S3_BUCKET=your-bucket-name
-
-# Flask Configuration
-FLASK_ENV=development
-```
-
-### Database Configuration
-
-The application uses PostgreSQL with the following default settings:
-
-- Host: `localhost`
-- Port: `5433` (Docker), `5432` (local)
-- Database: `sleeper_db`
-- Test Database: `sleeper_test_db`
-- Username: `postgres`
-- Password: `password`
-
-## Development
-
-### Local Development Setup
-
-```bash
-# Clone repository
-git clone <repository-url>
-cd sleeper-backend
-
-# Set up Python environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
 # Install dependencies
 pip install -r requirements.txt
 
-# Start PostgreSQL (using Docker)
-docker-compose up postgres -d
-
-# Start the application
-python app.py
-```
-
-### Running Tests
-
-```bash
-# Run all tests
-python -m pytest
-
-# Run specific test file
-python -m pytest unit_tests.py -v
-
-# Run with coverage
-python -m pytest --cov=app tests/
-```
-
-### Database Management
-
-```bash
-# Initialize database tables
-flask init_db
-
 # Set up PostgreSQL databases
 python setup_postgres.py
+
+# Start the application
+./startup.sh
 ```
 
-## Docker Deployment
+## Using the API
 
-### Using Docker Compose
+### 1. Check Health
 
 ```bash
-# Build and start all services
-docker-compose up --build
-
-# Start in background
-docker-compose up -d
-
-# View logs
-docker-compose logs -f sleeper-backend
-
-# Stop services
-docker-compose down
-
-# Clean up volumes (removes database data)
-docker-compose down -v
+curl http://localhost:5000/api/ktc/health
 ```
 
-### Using Docker Only
+### 2. Load Rankings Data
 
 ```bash
-# Build the image
-docker build -t sleeper-backend .
+# Superflex redraft rankings
+curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex&is_redraft=true&tep_level=tep"
 
-# Run with external PostgreSQL
-docker run -d \
-  --name sleeper-backend \
-  -p 5000:5000 \
-  -e DATABASE_URL=postgresql://user:pass@host:port/db \
-  sleeper-backend
-```
-
-## API Usage Examples
-
-### Dynasty Rankings
-
-```bash
-# Get Superflex Dynasty TEP+ rankings
-curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=false&tep_level=tep"
-
-# Refresh 1QB Dynasty base rankings
+# 1QB dynasty rankings
 curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=1qb&is_redraft=false&tep_level=tep"
 ```
 
-### Redraft Rankings
+### 3. Get Rankings
 
 ```bash
-# Get Superflex redraft rankings
-curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=true"
-
-# Refresh 1QB redraft rankings
-curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=1qb&is_redraft=true"
+# Get the rankings you just loaded
+curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=true&tep_level=tep"
 ```
 
-## Data Storage
+## Available Scripts
 
-### Local Files
+| Script | Purpose |
+|--------|---------|
+| `docker-compose.sh` | Manage Docker containers (up, down, logs, status, clean) |
+| `startup.sh` | Initialize database and start Flask application |
+| `run_tests.sh` | Run the test suite |
+| `setup_postgres.py` | Set up PostgreSQL databases for local development |
 
-- JSON exports saved to `./data-files/` directory
-- **Standard naming**: `ktc_{league_format}_{format_type}_{tep_level}_{timestamp}.json`
-- **Descriptive naming**: `ktc_{operation}_{league_format}_{format_type}_{tep_level}_{timestamp}.json`
-- **Human-readable naming**: `KTC {Operation} - {League} {Format} {TEP} - {Timestamp}.json`
+## API Parameters
 
-**Examples:**
+**League Format:**
 
-- `ktc_superflex_dynasty_tep_20241201_143022.json`
-- `ktc_refresh_superflex_dynasty_tep_20241201_143022.json`
-- `KTC Refresh - Superflex Dynasty tep - 2024-12-01 14-30-22.json`
+- `1qb` - Standard 1 quarterback leagues (only 1 QB can be started)
+- `superflex` - Superflex/2QB leagues (can start 2 QBs or 1 QB + flex player)
 
-**TEP Level Usage:**
+*Note: Superflex leagues heavily favor QBs since you can start 2, making QB values much higher than in 1QB leagues.*
 
-- `tep` → `tep`
-- `tepp` → `tepp`
-- `teppp` → `teppp`
-- `None` → `no_tep`
+**Ranking Type:**
 
-### S3 Upload
+- `is_redraft=true` - Redraft/seasonal rankings (draft new team each year)
+- `is_redraft=false` - Dynasty/keeper rankings (keep players long-term)
 
-- Configurable via environment variables
-- Automatic upload after successful scraping
-- File naming matches local exports
+*Note: Dynasty values focus on long-term potential and age, while redraft focuses on current season performance.*
 
-### Filename Generation
+**TEP Level:**
 
-The application provides three different filename generation methods:
+- `tep` - Tight End Premium (about +0.5 points per reception)
+- `tepp` - Tight End Premium Plus (about +1.0 points per reception)  
+- `teppp` - Tight End Premium Plus Plus (about +1.5 points per reception)
+- Leave empty for standard scoring
 
-1. **`create_json_filename()`** - Standard naming with prefix support
-2. **`create_descriptive_filename()`** - Enhanced naming with operation type and optional timestamps
-3. **`create_human_readable_filename()`** - User-friendly naming with spaces and proper formatting
+*Note: TEP makes tight ends more valuable since they get bonus points. Only applies to dynasty rankings.*
 
-All methods support:
+## Example API Calls
 
-- League format detection (1QB/Superflex)
-- Format type (Dynasty/Redraft)
-- TEP level usage (tep/tepp/teppp/no_tep)
-- Timestamp inclusion for uniqueness
+**Load Different Rankings:**
 
-### Database
+```bash
+# Superflex dynasty with TEP
+curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex&is_redraft=false&tep_level=tep"
 
-- PostgreSQL with connection pooling
-- Automatic cleanup of incomplete data
-- Index optimization for query performance
+# 1QB redraft (standard scoring)
+curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=1qb&is_redraft=true"
+
+# Superflex dynasty with max TEP
+curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex&is_redraft=false&tep_level=teppp"
+```
+
+**Get Rankings:**
+
+```bash
+# Get superflex dynasty TEP rankings
+curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=false&tep_level=tep"
+
+# Get 1QB redraft rankings
+curl "http://localhost:5000/api/ktc/rankings?league_format=1qb&is_redraft=true"
+
+# Get superflex redraft rankings
+curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=true"
+```
+
+**Clean Up Data:**
+
+```bash
+# Clean up specific configuration
+curl -X POST "http://localhost:5000/api/ktc/cleanup?league_format=superflex&is_redraft=false&tep_level=tep"
+```
+
+## Environment Variables (Optional)
+
+Create a `.env` file for S3 uploads or custom database settings:
+
+```bash
+# Database (if not using default)
+DATABASE_URL=postgresql://user:pass@host:port/database
+
+# S3 Upload (optional)
+AWS_ACCESS_KEY_ID=your_key
+AWS_SECRET_ACCESS_KEY=your_secret
+S3_BUCKET=your-bucket
+```
+
+## Common Commands
+
+```bash
+# Quick start
+./docker-compose.sh up
+
+# Load superflex redraft data
+curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex&is_redraft=true&tep_level=tep"
+
+# Get rankings
+curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=true&tep_level=tep"
+
+# Check logs
+./docker-compose.sh logs
+
+# Stop everything
+./docker-compose.sh down
+```
 
 ## Troubleshooting
 
-### Common Issues
+- **Database issues**: Try `./docker-compose.sh clean` then `./docker-compose.sh up`
+- **Empty rankings**: Call the `/refresh` endpoint first to populate data
+- **Script permissions**: Run `chmod +x docker-compose.sh startup.sh run_tests.sh`
 
-1. **Port 5432 already in use**
-   - The docker-compose uses port 5433 to avoid conflicts
-   - Update `DATABASE_URL` if needed
+## Development
 
-2. **Database connection errors**
-   - Ensure PostgreSQL is running
-   - Check connection parameters
-   - Verify database exists
-
-3. **Scraping failures**
-   - Check internet connection
-   - Verify KTC website accessibility
-   - Review application logs
-
-### Database Issues
+Run tests with the test script:
 
 ```bash
-# Check database connection
-curl http://localhost:5000/api/ktc/health
-
-# Clean up incomplete data
-curl -X POST "http://localhost:5000/api/ktc/cleanup?league_format=superflex&is_redraft=false"
-
-# Recreate database tables
-flask init_db
+./run_tests.sh
 ```
 
-### Docker Issues
+For development without Docker:
 
 ```bash
-# Rebuild containers
-docker-compose up --build --force-recreate
-
-# Check container logs
-docker-compose logs sleeper-backend
-docker-compose logs postgres
-
-# Reset database volume
-docker-compose down -v
-docker-compose up -d
+python setup_postgres.py  # Set up databases
+./startup.sh              # Start application
 ```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Run the test suite
-6. Submit a pull request
-
-## Architecture
-
-```
-sleeper-backend/
-├── app.py               # Main Flask application
-├── requirements.txt     # Python dependencies
-├── Dockerfile          # Container configuration
-├── docker-compose.yml  # Multi-container setup
-├── startup.sh          # Container startup script
-├── setup_postgres.py   # Database setup utility
-├── data-files/         # JSON export directory
-├── tests/              # Test suite
-│   ├── unit_tests.py
-│   ├── test_ktc_api.py
-│   └── test_ktc_simple.py
-└── README.md           # This file
-```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
