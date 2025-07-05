@@ -94,8 +94,8 @@ curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=
 
 **Ranking Type:**
 
-- `is_redraft=true` - Redraft/seasonal rankings (draft new team each year)
-- `is_redraft=false` - Dynasty/keeper rankings (keep players long-term)
+- `is_redraft=true` - Redraft/fantasy rankings (draft new team each year)
+- `is_redraft=false` - Dynasty rankings (keep players long-term)
 
 *Note: Dynasty values focus on long-term potential and age, while redraft focuses on current season performance.*
 
