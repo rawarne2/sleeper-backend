@@ -184,11 +184,35 @@ curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=
 
 ## Development
 
-Run tests with the test script:
+### Running Tests
+
+**Option 1: Direct Testing (Recommended for development)**
+
+Run tests directly with pytest - fastest and doesn't require Docker:
 
 ```bash
-./run_tests.sh
+# Run all tests
+python -m pytest -v
+
+# Run specific test file
+python -m pytest unit_tests.py -v
+python -m pytest test_ktc_api.py -v
+python -m pytest test_ktc_simple.py -v
 ```
+
+**Option 2: Docker-based Testing**
+
+Run tests in a Docker container (uses SQLite for testing):
+
+```bash
+# Run all tests in Docker
+./run_tests.sh
+
+# Run specific test file in Docker
+./run_tests.sh unit_tests.py -v
+```
+
+**Setting up for Development**
 
 For development without Docker:
 

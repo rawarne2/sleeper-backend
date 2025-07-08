@@ -1,13 +1,14 @@
 import pytest
-from app import app, db, KTCPlayer
+from app import app
+from models import db, KTCPlayer
 import json
 
 
 @pytest.fixture
 def client():
     app.config['TESTING'] = True
-    # Use PostgreSQL test database - assumes you have a test database set up
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:password@localhost:5433/sleeper_test_db'
+    # Use SQLite in-memory database for testing
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
 
     with app.test_client() as client:
         with app.app_context():

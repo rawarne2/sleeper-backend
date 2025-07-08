@@ -15,6 +15,7 @@ BOOLEAN_STRINGS = ['true', 't', 'yes', 'y', '1', 'false', 'f', 'no', 'n', '0']
 # URLs
 DYNASTY_URL = "https://keeptradecut.com/dynasty-rankings"
 FANTASY_URL = "https://keeptradecut.com/fantasy-rankings"
+SLEEPER_API_URL = "https://api.sleeper.app/v1/players/nfl"
 
 # Player Data Keys
 PLAYER_NAME_KEY = "Player Name"
@@ -37,7 +38,10 @@ REDRAFT_POSITION_RANK_KEY = "RdrftPosition Rank"
 
 # Database Configuration
 DATABASE_URI = os.getenv(
-    'DATABASE_URL', 'postgresql://postgres:password@localhost:5433/sleeper_db')
+    'TEST_DATABASE_URI',
+    os.getenv('DATABASE_URL',
+              'postgresql://postgres:password@localhost:5433/sleeper_db')
+)
 
 
 def setup_logging():
@@ -127,10 +131,12 @@ def validate_refresh_parameters(request) -> tuple[bool, str, Optional[str], bool
 
 def scrape_and_process_data(ktc_scraper, league_format: str, is_redraft: bool, tep_level: Optional[str]) -> tuple[List[Dict[str, Any]], Optional[str]]:
     """
-    Scrape data from KTC and process it.
+    Scrape data from KTC, fetch Sleeper data, and merge them.
+
+    Updated to use new module structure with SleeperScraper and PlayerMerger.
 
     Args:
-        ktc_scraper: KTCScraper instance
+        ktc_scraper: KTCScraper class
         league_format: League format
         is_redraft: Whether this is redraft data
         tep_level: TEP level
@@ -141,19 +147,39 @@ def scrape_and_process_data(ktc_scraper, league_format: str, is_redraft: bool, t
     try:
         logger.info(
             "Starting KTC scrape for %s, redraft=%s, tep_level=%s", league_format, is_redraft, tep_level)
-        players = ktc_scraper.scrape_ktc(is_redraft, league_format, tep_level)
-        logger.info("Scraped %s players", len(players))
+        ktc_players = ktc_scraper.scrape_ktc(
+            is_redraft, league_format, tep_level)
+        logger.info("Scraped %s KTC players", len(ktc_players))
 
-        if not players:
+        if not ktc_players:
             return [], 'KTC scraping returned empty results - check network connectivity or site availability'
+
+        # Import here to avoid circular imports
+        from scrapers import SleeperScraper
+        from managers import PlayerMerger
+
+        # Fetch Sleeper data using SleeperScraper
+        logger.info("Fetching Sleeper player data...")
+        sleeper_players = SleeperScraper.scrape_sleeper_data()
+        logger.info("Fetched %s Sleeper players", len(sleeper_players))
+
+        # Merge KTC and Sleeper data
+        if sleeper_players:
+            logger.info("Merging KTC and Sleeper player data...")
+            merged_players = PlayerMerger.merge_player_data(
+                ktc_players, sleeper_players)
+            logger.info("Successfully merged player data")
+        else:
+            logger.warning("No Sleeper data available, using KTC data only")
+            merged_players = ktc_players
 
         # Sort players by rank for consistent ordering
         players_sorted = sorted(
-            players, key=lambda x: x.get(RANK_KEY) or float('inf'))
+            merged_players, key=lambda x: x.get(RANK_KEY) or float('inf'))
         return players_sorted, None
 
     except Exception as e:
-        logger.error("Error during scraping: %s", e)
+        logger.error("Error during scraping and processing: %s", e)
         return [], str(e)
 
 
@@ -163,7 +189,7 @@ def save_and_verify_database(database_manager, players_sorted: List[Dict[str, An
     Save data to database and verify the operation.
 
     Args:
-        database_manager: DatabaseManager instance
+        database_manager: DatabaseManager class
         players_sorted: Sorted list of player data
         league_format: League format
         is_redraft: Whether this is redraft data
@@ -203,7 +229,7 @@ def perform_file_operations(file_manager, players_sorted: List[Dict[str, Any]], 
     Perform file and S3 operations.
 
     Args:
-        file_manager: FileManager instance
+        file_manager: FileManager class
         players_sorted: Sorted list of player data
         added_count: Number of players added to database
         league_format: League format

@@ -42,7 +42,7 @@ case "$1" in
         ;;
     clean)
         echo "Cleaning up..."
-        docker-compose down
+        docker-compose down -v
         docker system prune -f
         echo "✅ Cleanup complete"
         ;;
