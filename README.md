@@ -1,3 +1,5 @@
+TODO: filter research data (and possibly other routes) by league ID
+
 # Sleeper Backend API
 
 A Flask-based API for scraping and serving fantasy football player rankings from KeepTradeCut (KTC).

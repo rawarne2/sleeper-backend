@@ -46,18 +46,22 @@ CORS(app, resources={
     r"/api/*": {
         "origins": [
             # Local development
-            "http://localhost:3000",  # React dev server default
-            "http://localhost:3001",  # Alternative React port
+            "http://localhost:3000",
+            "http://localhost:3001",
             "http://127.0.0.1:3000",
             "http://127.0.0.1:3001",
-            "http://localhost:5173",  # Vite dev server default
+            "http://localhost:5173",
             "http://127.0.0.1:5173",
-            # Production and preview deployments
-            "https://sleeper-dashboard-xi.vercel.app",  # Production frontend
-            r"https://sleeper-dashboard-xi-.*\.vercel\.app",  # Vercel preview deployments
+            # Production frontend
+            "https://sleeper-dashboard-xi.vercel.app",
+        ],
+        "origin_regex": [
+            r"https://sleeper-dashboard-xi.*\.vercel\.app",  # All Vercel deployments
+            # Backup: allow all Vercel apps (can remove later)
+            r"https://.*\.vercel\.app"
         ],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
+        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
         "supports_credentials": True
     }
 })
