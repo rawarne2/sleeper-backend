@@ -860,36 +860,19 @@ class DatabaseManager:
 
     @staticmethod
     def merge_sleeper_data_with_ktc(sleeper_players: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Merge Sleeper player data with existing KTC players using batch processing.
-
-        Implements efficient batch operations for large datasets.
-        Uses comprehensive player matching logic for accurate data merging.
-        Provides mechanism to prevent redundant imports.
-
-        Args:
-            sleeper_players: List of processed Sleeper player data
-
-        Returns:
-            Dictionary with merge results and statistics
-        """
+        """Merge Sleeper player data with existing KTC players using batch processing."""
         try:
-            logger.info("Starting Sleeper data merge with KTC players...")
+            logger.info(
+                "Starting Sleeper data merge with %s players...", len(sleeper_players))
 
-            # Check if Sleeper data already exists to prevent redundant imports (Criterion 7)
             existing_sleeper_count = KTCPlayer.query.filter(
-                KTCPlayer.sleeper_id.isnot(None)
-            ).count()
-
-            if existing_sleeper_count > 0:
-                logger.info(
-                    "Found %s existing Sleeper records. Checking for updates...", existing_sleeper_count)
+                KTCPlayer.sleeper_id.isnot(None)).count()
 
             updates_made = 0
             new_records_created = 0
             match_failures = 0
 
-            # Process in batches for efficiency (Criterion 8)
+            # Process in batches for better performance
             batch_size = 100
             for i in range(0, len(sleeper_players), batch_size):
                 batch = sleeper_players[i:i + batch_size]
@@ -899,13 +882,12 @@ class DatabaseManager:
                 new_records_created += batch_results['new_records']
                 match_failures += batch_results['match_failures']
 
-                # Commit batch to database
                 db.session.commit()
-                logger.info("Processed batch %s-%s: %s updates, %s new records, %s match failures",
-                            i+1, min(i+batch_size, len(sleeper_players)),
-                            batch_results['updates'], batch_results['new_records'], batch_results['match_failures'])
 
-            merge_result = {
+            logger.info("Merge completed: %s updates, %s new records, %s failures",
+                        updates_made, new_records_created, match_failures)
+
+            return {
                 'status': 'success',
                 'total_sleeper_players': len(sleeper_players),
                 'existing_sleeper_records': existing_sleeper_count,
@@ -915,17 +897,318 @@ class DatabaseManager:
                 'total_processed': updates_made + new_records_created
             }
 
-            logger.info(
-                "Sleeper data merge completed successfully: %s", merge_result)
-            return merge_result
-
         except Exception as e:
-            logger.error("Error merging Sleeper data with KTC: %s", e)
             db.session.rollback()
+            logger.error("Error merging Sleeper data: %s", e)
             return {
                 'status': 'error',
                 'error': str(e),
                 'total_sleeper_players': len(sleeper_players) if sleeper_players else 0
+            }
+
+    @staticmethod
+    def save_league_data(league_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Save comprehensive league data to database."""
+        if not league_data.get('success'):
+            return {'status': 'error', 'error': 'League data fetch failed'}
+
+        try:
+            league_info = league_data['league_info']
+            league_id = league_info['league_id']
+
+            logger.info("Saving league data for league_id: %s", league_id)
+
+            # Save all data in single transaction
+            league_result = DatabaseManager._save_league_info(league_info)
+            rosters_result = DatabaseManager._save_league_rosters(
+                league_id, league_data.get('rosters', []))
+            users_result = DatabaseManager._save_league_users(
+                league_id, league_data.get('users', []))
+
+            db.session.commit()
+
+            return {
+                'status': 'success',
+                'league_id': league_id,
+                'league_saved': league_result['saved'],
+                'league_updated': league_result['updated'],
+                'rosters_saved': rosters_result['saved'],
+                'rosters_updated': rosters_result['updated'],
+                'users_saved': users_result['saved'],
+                'users_updated': users_result['updated']
+            }
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error("Error saving league data: %s", e)
+            return {'status': 'error', 'error': str(e)}
+
+    @staticmethod
+    def _upsert_record(model_class, filter_criteria: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
+        """Generic upsert helper to reduce duplicate code."""
+        existing = model_class.query.filter_by(**filter_criteria).first()
+
+        if existing:
+            # Update existing record
+            for key, value in data.items():
+                setattr(existing, key, value)
+            setattr(existing, 'last_updated', datetime.now(UTC))
+            return {'saved': False, 'updated': True}
+        else:
+            # Create new record
+            new_record = model_class(**data)
+            db.session.add(new_record)
+            return {'saved': True, 'updated': False}
+
+    @staticmethod
+    def _save_league_info(league_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Save league information to database."""
+        from models import SleeperLeague
+
+        league_id = league_info['league_id']
+        data = {
+            'league_id': league_id,
+            'name': league_info.get('name'),
+            'season': league_info.get('season'),
+            'total_rosters': league_info.get('total_rosters'),
+            'roster_positions': json.dumps(league_info.get('roster_positions')),
+            'status': league_info.get('status'),
+            'draft_id': league_info.get('draft_id'),
+            'avatar': league_info.get('avatar'),
+            'last_refreshed': datetime.now(UTC)
+        }
+
+        return DatabaseManager._upsert_record(
+            SleeperLeague,
+            {'league_id': league_id},
+            data
+        )
+
+    @staticmethod
+    def _save_league_rosters(league_id: str, rosters_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Save league rosters to database using upsert."""
+        from models import SleeperRoster
+
+        saved_count = 0
+        updated_count = 0
+
+        for roster_data in rosters_data:
+            data = {
+                'league_id': league_id,
+                'roster_id': roster_data.get('roster_id'),
+                'owner_id': roster_data.get('owner_id'),
+                'players': json.dumps(roster_data.get('players', [])),
+                'starters': json.dumps(roster_data.get('starters', [])),
+                'reserve': json.dumps(roster_data.get('reserve', [])),
+                'taxi': json.dumps(roster_data.get('taxi', [])),
+            }
+
+            result = DatabaseManager._upsert_record(
+                SleeperRoster,
+                {'league_id': league_id,
+                    'roster_id': roster_data.get('roster_id')},
+                data
+            )
+
+            if result['saved']:
+                saved_count += 1
+            else:
+                updated_count += 1
+
+        return {'saved': saved_count, 'updated': updated_count}
+
+    @staticmethod
+    def _save_league_users(league_id: str, users_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Save league users to database using upsert."""
+        from models import SleeperUser
+
+        saved_count = 0
+        updated_count = 0
+
+        for user_data in users_data:
+            data = {
+                'league_id': league_id,
+                'user_id': user_data.get('user_id'),
+                'username': user_data.get('username'),
+                'display_name': user_data.get('display_name'),
+                'avatar': user_data.get('avatar'),
+                'team_name': user_data.get('metadata', {}).get('team_name'),
+                'user_metadata': json.dumps(user_data.get('metadata'))
+            }
+
+            result = DatabaseManager._upsert_record(
+                SleeperUser,
+                {'league_id': league_id, 'user_id': user_data.get('user_id')},
+                data
+            )
+
+            if result['saved']:
+                saved_count += 1
+            else:
+                updated_count += 1
+
+        return {'saved': saved_count, 'updated': updated_count}
+
+    @staticmethod
+    def get_league_data(league_id: str) -> Dict[str, Any]:
+        """
+        Retrieve comprehensive league data from database.
+
+        Args:
+            league_id: The Sleeper league ID
+
+        Returns:
+            Dictionary containing league data or error
+        """
+        try:
+            from models import SleeperLeague, SleeperRoster, SleeperUser
+
+            # Get league info
+            league = SleeperLeague.query.filter_by(league_id=league_id).first()
+            if not league:
+                return {
+                    'status': 'error',
+                    'error': 'League not found in database'
+                }
+
+            # Get rosters
+            rosters = SleeperRoster.query.filter_by(league_id=league_id).all()
+
+            # Get users
+            users = SleeperUser.query.filter_by(league_id=league_id).all()
+
+            return {
+                'status': 'success',
+                'league': league.to_dict(),
+                'rosters': [roster.to_dict() for roster in rosters],
+                'users': [user.to_dict() for user in users],
+                'last_updated': league.last_updated.isoformat() if league.last_updated else None
+            }
+
+        except Exception as e:
+            logger.error(
+                "Error retrieving league data for %s: %s", league_id, e)
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+
+    @staticmethod
+    def save_research_data(research_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Save player research data to database.
+
+        Args:
+            research_data: Dictionary containing research data
+
+        Returns:
+            Dictionary with operation results
+        """
+        try:
+            if not research_data.get('success'):
+                return {
+                    'status': 'error',
+                    'error': research_data.get('error', 'Research data fetch failed')
+                }
+
+            from models import SleeperResearch
+
+            season = research_data['season']
+            week = research_data.get('week', 1)
+            league_type = research_data.get('league_type', 2)
+            research_content = research_data.get('research_data', {})
+
+            logger.info(
+                "Saving research data for season: %s, week: %s", season, week)
+
+            # Delete existing research data for this season/week/league_type
+            SleeperResearch.query.filter_by(
+                season=season,
+                week=week,
+                league_type=league_type
+            ).delete()
+
+            saved_count = 0
+            # Save research data for each player
+            for player_id, player_research in research_content.items():
+                research_record = SleeperResearch(
+                    season=season,
+                    week=week,
+                    league_type=league_type,
+                    player_id=player_id,
+                    research_data=json.dumps(player_research)
+                )
+                db.session.add(research_record)
+                saved_count += 1
+
+            db.session.commit()
+
+            return {
+                'status': 'success',
+                'season': season,
+                'week': week,
+                'league_type': league_type,
+                'players_saved': saved_count,
+                'timestamp': datetime.now(UTC).isoformat()
+            }
+
+        except Exception as e:
+            logger.error("Error saving research data: %s", e)
+            db.session.rollback()
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
+
+    @staticmethod
+    def get_research_data(season: str, week: int = 1, league_type: int = 2) -> Dict[str, Any]:
+        """
+        Retrieve player research data from database.
+
+        Args:
+            season: The NFL season year
+            week: The week number
+            league_type: League type (2 for dynasty)
+
+        Returns:
+            Dictionary containing research data or error
+        """
+        try:
+            from models import SleeperResearch
+
+            research_records = SleeperResearch.query.filter_by(
+                season=season,
+                week=week,
+                league_type=league_type
+            ).all()
+
+            if not research_records:
+                return {
+                    'status': 'error',
+                    'error': 'No research data found for specified parameters'
+                }
+
+            # Convert to dictionary format
+            research_data = {}
+            for record in research_records:
+                research_data[record.player_id] = json.loads(
+                    record.research_data)
+
+            return {
+                'status': 'success',
+                'season': season,
+                'week': week,
+                'league_type': league_type,
+                'research_data': research_data,
+                'players_count': len(research_records),
+                'last_updated': max(record.last_updated for record in research_records).isoformat()
+            }
+
+        except Exception as e:
+            logger.error("Error retrieving research data: %s", e)
+            return {
+                'status': 'error',
+                'error': str(e)
             }
 
     @staticmethod

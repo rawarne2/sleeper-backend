@@ -1,5 +1,6 @@
 from datetime import datetime, UTC
 from flask import Blueprint, jsonify, request
+from functools import wraps
 
 from models import db
 from scrapers import SleeperScraper, KTCScraper
@@ -12,6 +13,23 @@ from utils import (validate_refresh_parameters, scrape_and_process_data,
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 logger = setup_logging()
+
+
+def with_error_handling(f):
+    """Decorator for consistent error handling."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        try:
+            return f(*args, **kwargs)
+        except Exception as e:
+            logger.error("Unexpected error in %s: %s", f.__name__, e)
+            return jsonify({
+                'status': 'error',
+                'error': 'Internal server error',
+                'details': str(e),
+                'timestamp': datetime.now(UTC).isoformat()
+            }), 500
+    return decorated_function
 
 
 @api_bp.route('/sleeper/refresh', methods=['POST'])
@@ -105,7 +123,7 @@ def refresh_rankings():
             request)
         if not valid:
             return jsonify({'error': error_msg}), 400
-
+        # breakpoint()
         # Verify database connection
         logger.info("Verifying database connection before refresh...")
         if not DatabaseManager.verify_database_connection():
@@ -275,7 +293,7 @@ def get_rankings():
         is_redraft_str = request.args.get('is_redraft', 'false')
         league_format_str = request.args.get('league_format', '1qb')
         tep_level_str = request.args.get('tep_level', '')
-
+        # breakpoint()
         valid, league_format, tep_level, error_msg = validate_parameters(
             is_redraft_str, league_format_str, tep_level_str
         )
@@ -318,3 +336,411 @@ def get_rankings():
             'error': 'Internal server error during rankings retrieval',
             'details': str(e)
         }), 500
+
+
+# ============================================================================
+# SLEEPER LEAGUE ENDPOINTS
+# ============================================================================
+
+@api_bp.route('/sleeper/league/<string:league_id>', methods=['GET'])
+@with_error_handling
+def get_league_data(league_id: str):
+    """
+    Get comprehensive league data (league info, rosters, users).
+
+    Args:
+        league_id: The Sleeper league ID
+
+    Returns:
+        JSON response with league data
+    """
+    # Try to get from database first
+    db_result = DatabaseManager.get_league_data(league_id)
+
+    if db_result.get('status') == 'success':
+        return jsonify({
+            'status': 'success',
+            'data': db_result,
+            'source': 'database',
+            'timestamp': datetime.now(UTC).isoformat()
+        })
+
+    # If not in database, fetch from API
+    logger.info(
+        "League not found in database, fetching from Sleeper API: %s", league_id)
+    league_data = SleeperScraper.scrape_league_data(league_id)
+
+    if not league_data.get('success'):
+        return jsonify({
+            'status': 'error',
+            'error': 'Invalid league ID or failed to fetch league data',
+            'details': league_data.get('error'),
+            'league_id': league_id
+        }), 404
+
+    # Save to database
+    save_result = DatabaseManager.save_league_data(league_data)
+
+    if save_result.get('status') != 'success':
+        logger.warning("Failed to save league data to database: %s",
+                       save_result.get('error'))
+
+    return jsonify({
+        'status': 'success',
+        'data': league_data,
+        'source': 'sleeper_api',
+        'database_saved': save_result.get('status') == 'success',
+        'timestamp': datetime.now(UTC).isoformat()
+    })
+
+
+@api_bp.route('/sleeper/league/<string:league_id>/rosters', methods=['GET'])
+@with_error_handling
+def get_league_rosters(league_id: str):
+    """
+    Get league rosters data.
+
+    Args:
+        league_id: The Sleeper league ID
+
+    Returns:
+        JSON response with rosters data
+    """
+    # First try to get full league data (uses caching)
+    league_result = DatabaseManager.get_league_data(league_id)
+
+    if league_result.get('status') == 'success':
+        return jsonify({
+            'status': 'success',
+            'league_id': league_id,
+            'rosters': league_result['rosters'],
+            'count': len(league_result['rosters']),
+            'last_updated': league_result.get('last_updated'),
+            'timestamp': datetime.now(UTC).isoformat()
+        })
+
+    # Fallback to direct API call if not in database
+    rosters_data = SleeperScraper.fetch_league_rosters(league_id)
+
+    if rosters_data is None:
+        return jsonify({
+            'status': 'error',
+            'error': 'Invalid league ID or failed to fetch roster data',
+            'league_id': league_id
+        }), 404
+
+    return jsonify({
+        'status': 'success',
+        'league_id': league_id,
+        'rosters': rosters_data,
+        'count': len(rosters_data),
+        'source': 'direct_api',
+        'timestamp': datetime.now(UTC).isoformat()
+    })
+
+
+@api_bp.route('/sleeper/league/<string:league_id>/users', methods=['GET'])
+@with_error_handling
+def get_league_users(league_id: str):
+    """
+    Get league users data.
+
+    Args:
+        league_id: The Sleeper league ID
+
+    Returns:
+        JSON response with users data
+    """
+    # First try to get full league data (uses caching)
+    league_result = DatabaseManager.get_league_data(league_id)
+
+    if league_result.get('status') == 'success':
+        return jsonify({
+            'status': 'success',
+            'league_id': league_id,
+            'users': league_result['users'],
+            'count': len(league_result['users']),
+            'last_updated': league_result.get('last_updated'),
+            'timestamp': datetime.now(UTC).isoformat()
+        })
+
+    # Fallback to direct API call if not in database
+    users_data = SleeperScraper.fetch_league_users(league_id)
+
+    if users_data is None:
+        return jsonify({
+            'status': 'error',
+            'error': 'Invalid league ID or failed to fetch users data',
+            'league_id': league_id
+        }), 404
+
+    return jsonify({
+        'status': 'success',
+        'league_id': league_id,
+        'users': users_data,
+        'count': len(users_data),
+        'source': 'direct_api',
+        'timestamp': datetime.now(UTC).isoformat()
+    })
+
+
+@api_bp.route('/sleeper/league/<string:league_id>/refresh', methods=['POST'])
+@with_error_handling
+def refresh_league_data(league_id: str):
+    """
+    Manually refresh league data from Sleeper API.
+
+    Args:  
+        league_id: The Sleeper league ID
+
+    Returns:
+        JSON response with refresh results
+    """
+    logger.info("Manual refresh requested for league_id: %s", league_id)
+
+    # Fetch fresh data from Sleeper API
+    league_data = SleeperScraper.scrape_league_data(league_id)
+
+    if not league_data.get('success'):
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to refresh league data',
+            'details': league_data.get('error'),
+            'league_id': league_id
+        }), 400
+
+    # Save to database
+    save_result = DatabaseManager.save_league_data(league_data)
+
+    if save_result.get('status') != 'success':
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to save refreshed league data',
+            'details': save_result.get('error'),
+            'league_id': league_id
+        }), 500
+
+    return jsonify({
+        'status': 'success',
+        'message': 'League data refreshed successfully',
+        'league_id': league_id,
+        'refresh_results': save_result,
+        'timestamp': datetime.now(UTC).isoformat()
+    })
+
+
+# ============================================================================
+# SLEEPER RESEARCH ENDPOINTS
+# ============================================================================
+
+@api_bp.route('/sleeper/players/research/<string:season>', methods=['GET'])
+@with_error_handling
+def get_research_data(season: str):
+    """
+    Get player research data for a specific season.
+
+    Query parameters:
+        week (int): Week number (default: 1)
+        league_type (int): League type (default: 2 for dynasty)
+
+    Args:
+        season: The NFL season year (e.g., "2024")
+
+    Returns:
+        JSON response with research data
+    """
+    # Get query parameters
+    week = int(request.args.get('week', 1))
+    league_type = int(request.args.get('league_type', 2))
+
+    # Try to get from database first
+    db_result = DatabaseManager.get_research_data(season, week, league_type)
+
+    if db_result.get('status') == 'success':
+        return jsonify({
+            'status': 'success',
+            'data': db_result,
+            'source': 'database',
+            'timestamp': datetime.now(UTC).isoformat()
+        })
+
+    # If not in database, fetch from API
+    logger.info(
+        "Research data not found in database, fetching from Sleeper API: %s", season)
+    research_data = SleeperScraper.scrape_research_data(
+        season, week, league_type)
+
+    if not research_data.get('success'):
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to fetch research data',
+            'details': research_data.get('error'),
+            'season': season
+        }), 404
+
+    # Save to database
+    save_result = DatabaseManager.save_research_data(research_data)
+
+    if save_result.get('status') != 'success':
+        logger.warning(
+            "Failed to save research data to database: %s", save_result.get('error'))
+
+    return jsonify({
+        'status': 'success',
+        'data': research_data,
+        'source': 'sleeper_api',
+        'database_saved': save_result.get('status') == 'success',
+        'timestamp': datetime.now(UTC).isoformat()
+    })
+
+
+@api_bp.route('/sleeper/players/research/<string:season>/refresh', methods=['POST'])
+@with_error_handling
+def refresh_research_data(season: str):
+    """
+    Manually refresh research data from Sleeper API.
+
+    Query parameters:
+        week (int): Week number (default: 1)
+        league_type (int): League type (default: 2 for dynasty)
+
+    Args:
+        season: The NFL season year (e.g., "2024")
+
+    Returns:
+        JSON response with refresh results
+    """
+    # Get query parameters
+    week = int(request.args.get('week', 1))
+    league_type = int(request.args.get('league_type', 2))
+
+    logger.info(
+        "Manual refresh requested for research data: season=%s, week=%s", season, week)
+
+    # Fetch fresh data from Sleeper API
+    research_data = SleeperScraper.scrape_research_data(
+        season, week, league_type)
+
+    if not research_data.get('success'):
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to refresh research data',
+            'details': research_data.get('error'),
+            'season': season
+        }), 400
+
+    # Save to database
+    save_result = DatabaseManager.save_research_data(research_data)
+
+    if save_result.get('status') != 'success':
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to save refreshed research data',
+            'details': save_result.get('error'),
+            'season': season
+        }), 500
+
+    return jsonify({
+        'status': 'success',
+        'message': 'Research data refreshed successfully',
+        'season': season,
+        'week': week,
+        'league_type': league_type,
+        'refresh_results': save_result,
+        'timestamp': datetime.now(UTC).isoformat()
+    })
+
+
+# ============================================================================
+# BULK REFRESH ENDPOINTS (for scheduled tasks)
+# ============================================================================
+
+@api_bp.route('/sleeper/refresh/all', methods=['POST'])
+@with_error_handling
+def refresh_all_data():
+    """
+    Refresh all stored data (useful for daily scheduled tasks).
+
+    Query parameters:
+        leagues (str): Comma-separated list of league IDs to refresh
+        season (str): Season for research data refresh (default: current year)
+
+    Returns:
+        JSON response with comprehensive refresh results
+    """
+    # Get query parameters
+    leagues_param = request.args.get('leagues', '')
+    season = request.args.get('season', str(datetime.now().year))
+
+    league_ids = [lid.strip() for lid in leagues_param.split(',')
+                  if lid.strip()] if leagues_param else []
+
+    logger.info("Bulk refresh requested - leagues: %s, season: %s",
+                league_ids, season)
+
+    results = {
+        'status': 'success',
+        'timestamp': datetime.now(UTC).isoformat(),
+        'league_refreshes': [],
+        'research_refresh': None,
+        'errors': []
+    }
+
+    # Refresh league data
+    for league_id in league_ids:
+        try:
+            league_data = SleeperScraper.scrape_league_data(league_id)
+            if league_data.get('success'):
+                save_result = DatabaseManager.save_league_data(league_data)
+
+                results['league_refreshes'].append({
+                    'league_id': league_id,
+                    'status': 'success',
+                    'save_result': save_result
+                })
+            else:
+                results['errors'].append({
+                    'type': 'league_refresh',
+                    'league_id': league_id,
+                    'error': league_data.get('error')
+                })
+        except Exception as e:
+            logger.error("Error refreshing league %s: %s", league_id, e)
+            results['errors'].append({
+                'type': 'league_refresh',
+                'league_id': league_id,
+                'error': str(e)
+            })
+
+    # Refresh research data
+    try:
+        research_data = SleeperScraper.scrape_research_data(season)
+        if research_data.get('success'):
+            save_result = DatabaseManager.save_research_data(research_data)
+
+            results['research_refresh'] = {
+                'season': season,
+                'status': 'success',
+                'save_result': save_result
+            }
+        else:
+            results['errors'].append({
+                'type': 'research_refresh',
+                'season': season,
+                'error': research_data.get('error')
+            })
+    except Exception as e:
+        logger.error(
+            "Error refreshing research data for season %s: %s", season, e)
+        results['errors'].append({
+            'type': 'research_refresh',
+            'season': season,
+            'error': str(e)
+        })
+
+    # Set overall status based on errors
+    if results['errors']:
+        results['status'] = 'partial_success' if (
+            results['league_refreshes'] or results['research_refresh']) else 'error'
+
+    return jsonify(results)

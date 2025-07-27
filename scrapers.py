@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, List, Optional, Any
 
 import requests
@@ -278,6 +278,220 @@ class SleeperScraper:
             logger.error("Error in scrape_sleeper_data: %s", e)
             return []
 
+    @staticmethod
+    def fetch_league_info(league_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch league information from Sleeper API.
+
+        Args:
+            league_id: The Sleeper league ID
+
+        Returns:
+            League data dictionary or None if failed
+        """
+        try:
+            logger.info("Fetching league info for league_id: %s", league_id)
+            url = f"https://api.sleeper.app/v1/league/{league_id}"
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+
+            league_data = response.json()
+            logger.info(
+                "Successfully fetched league info for league_id: %s", league_id)
+            return league_data
+
+        except requests.RequestException as e:
+            logger.error(
+                "Failed to fetch league info for %s: %s", league_id, e)
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(
+                "Failed to parse league info response for %s: %s", league_id, e)
+            return None
+
+    @staticmethod
+    def fetch_league_rosters(league_id: str) -> Optional[List[Dict[str, Any]]]:
+        """
+        Fetch league rosters from Sleeper API.
+
+        Args:
+            league_id: The Sleeper league ID
+
+        Returns:
+            List of roster dictionaries or None if failed
+        """
+        try:
+            logger.info("Fetching rosters for league_id: %s", league_id)
+            url = f"https://api.sleeper.app/v1/league/{league_id}/rosters"
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+
+            rosters_data = response.json()
+            logger.info("Successfully fetched %s rosters for league_id: %s",
+                        len(rosters_data) if rosters_data else 0, league_id)
+            return rosters_data
+
+        except requests.RequestException as e:
+            logger.error("Failed to fetch rosters for %s: %s", league_id, e)
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(
+                "Failed to parse rosters response for %s: %s", league_id, e)
+            return None
+
+    @staticmethod
+    def fetch_league_users(league_id: str) -> Optional[List[Dict[str, Any]]]:
+        """
+        Fetch league users from Sleeper API.
+
+        Args:
+            league_id: The Sleeper league ID
+
+        Returns:
+            List of user dictionaries or None if failed
+        """
+        try:
+            logger.info("Fetching users for league_id: %s", league_id)
+            url = f"https://api.sleeper.app/v1/league/{league_id}/users"
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+
+            users_data = response.json()
+            logger.info("Successfully fetched %s users for league_id: %s",
+                        len(users_data) if users_data else 0, league_id)
+            return users_data
+
+        except requests.RequestException as e:
+            logger.error("Failed to fetch users for %s: %s", league_id, e)
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(
+                "Failed to parse users response for %s: %s", league_id, e)
+            return None
+
+    @staticmethod
+    def fetch_players_research(season: str, week: int = 1, league_type: int = 2) -> Optional[Dict[str, Any]]:
+        """
+        Fetch player research data from Sleeper API.
+
+        Args:
+            season: The NFL season year (e.g., "2024")
+            week: The week number (default: 1)
+            league_type: League type (default: 2 for dynasty)
+
+        Returns:
+            Research data dictionary or None if failed
+        """
+        try:
+            logger.info("Fetching research data for season: %s, week: %s, league_type: %s",
+                        season, week, league_type)
+            url = f"https://api.sleeper.app/players/nfl/research/regular/{season}/{week}?league_type={league_type}"
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+
+            research_data = response.json()
+            logger.info(
+                "Successfully fetched research data for season: %s", season)
+            return research_data
+
+        except requests.RequestException as e:
+            logger.error(
+                "Failed to fetch research data for season %s: %s", season, e)
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(
+                "Failed to parse research response for season %s: %s", season, e)
+            return None
+
+    @staticmethod
+    def scrape_league_data(league_id: str) -> Dict[str, Any]:
+        """
+        Comprehensive scraping of all league-related data.
+
+        Args:
+            league_id: The Sleeper league ID
+
+        Returns:
+            Dictionary containing league info, rosters, and users data
+        """
+        try:
+            logger.info(
+                "Starting comprehensive league data scraping for league_id: %s", league_id)
+
+            # Fetch all league data concurrently would be better, but keeping simple for now
+            league_info = SleeperScraper.fetch_league_info(league_id)
+            if not league_info:
+                return {
+                    'success': False,
+                    'error': 'Failed to fetch league info - invalid league ID or API error',
+                    'league_id': league_id
+                }
+
+            rosters_data = SleeperScraper.fetch_league_rosters(league_id)
+            users_data = SleeperScraper.fetch_league_users(league_id)
+
+            return {
+                'success': True,
+                'league_id': league_id,
+                'league_info': league_info,
+                'rosters': rosters_data or [],
+                'users': users_data or [],
+                'timestamp': datetime.now(UTC).isoformat()
+            }
+
+        except Exception as e:
+            logger.error(
+                "Error in scrape_league_data for %s: %s", league_id, e)
+            return {
+                'success': False,
+                'error': str(e),
+                'league_id': league_id
+            }
+
+    @staticmethod
+    def scrape_research_data(season: str, week: int = 1, league_type: int = 2) -> Dict[str, Any]:
+        """
+        Scrape player research data for a given season.
+
+        Args:
+            season: The NFL season year
+            week: The week number
+            league_type: League type (2 for dynasty)
+
+        Returns:
+            Dictionary containing research data and metadata
+        """
+        try:
+            logger.info(
+                "Starting research data scraping for season: %s", season)
+
+            research_data = SleeperScraper.fetch_players_research(
+                season, week, league_type)
+            if not research_data:
+                return {
+                    'success': False,
+                    'error': 'Failed to fetch research data - invalid season or API error',
+                    'season': season
+                }
+
+            return {
+                'success': True,
+                'season': season,
+                'week': week,
+                'league_type': league_type,
+                'research_data': research_data,
+                'timestamp': datetime.now(UTC).isoformat()
+            }
+
+        except Exception as e:
+            logger.error(
+                "Error in scrape_research_data for season %s: %s", season, e)
+            return {
+                'success': False,
+                'error': str(e),
+                'season': season
+            }
+
 
 class KTCScraper:
     """
@@ -489,8 +703,7 @@ class KTCScraper:
         """
         try:
             # Create lookup dictionary for fantasy players
-            fantasy_dict = {player[PLAYER_NAME_KEY]
-                : player for player in fantasy_players}
+            fantasy_dict = {player[PLAYER_NAME_KEY]                            : player for player in fantasy_players}
 
             merged_players = []
             for dynasty_player in dynasty_players:

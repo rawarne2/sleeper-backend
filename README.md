@@ -7,16 +7,16 @@ A Flask-based API for scraping and serving fantasy football player rankings from
 - **Player Rankings**: Scrape dynasty and redraft player rankings from KTC
 - **Multiple Formats**: Support for 1QB and Superflex league formats  
 - **TEP Support**: Tight End Premium scoring (tep, tepp, teppp)
-- **Database Storage**: PostgreSQL database with Docker support
+- **Database Storage**: PostgreSQL for production/Docker, SQLite for development/testing
 
 ## Quick Start
 
-### Using Docker (Recommended)
+### Option 1: Docker (Production-Ready)
 
-Use the provided `docker-compose.sh` script to manage the application:
+Use the provided `docker-compose.sh` script to run everything in containers with PostgreSQL:
 
 ```bash
-# Start the application
+# Start the application (PostgreSQL + Flask)
 ./docker-compose.sh up
 
 # Check application status
@@ -34,20 +34,40 @@ Use the provided `docker-compose.sh` script to manage the application:
 
 The application will be available at `http://localhost:5000`
 
-### Manual Setup
+### Option 2: Local Development (Simple)
 
-If you prefer to run without Docker:
+For local development with SQLite (no database server needed):
 
 ```bash
 # Install dependencies
 pip install -r requirements.txt
 
-# Set up PostgreSQL databases
-python setup_postgres.py
-
-# Start the application
+# Start the application (uses SQLite)
 ./startup.sh
 ```
+
+**What happens:**
+
+- ✅ Creates a local `sleeper_local.db` SQLite file
+- ✅ No database installation required
+- ✅ Perfect for development and testing
+- ✅ Uses Gunicorn for production-ready performance
+
+## Database Strategy
+
+This application uses a **dual-database approach** for optimal development and deployment:
+
+| Database | Used For | Benefits |
+|----------|----------|----------|
+| **SQLite** | • Local development<br>• Unit tests<br>• CI/CD testing | • Zero setup required<br>• Fast test execution<br>• File-based (easy backup/sharing) |
+| **PostgreSQL** | • Production (Vercel)<br>• Docker containers<br>• Team development | • Better concurrency<br>• Production scalability<br>• Advanced features for future AI |
+
+**Key Points:**
+
+- Code is **database-agnostic** using SQLAlchemy ORM
+- Tests automatically use SQLite in-memory for speed
+- Production deployments (Vercel) require PostgreSQL
+- Local development can use either database
 
 ## Using the API
 
@@ -78,10 +98,40 @@ curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=
 
 | Script | Purpose |
 |--------|---------|
-| `docker-compose.sh` | Manage Docker containers (up, down, logs, status, clean) |
-| `startup.sh` | Initialize database and start Flask application |
+| `docker-compose.sh` | Manage Docker containers with PostgreSQL (up, down, logs, status, clean) |
+| `startup.sh` | Start Flask application locally with SQLite |
 | `run_tests.sh` | Run the test suite |
-| `setup_postgres.py` | Set up PostgreSQL databases for local development |
+| `setup_postgres.py` | Set up PostgreSQL databases (for advanced local PostgreSQL setup) |
+
+## Setup Comparison
+
+| Feature | Local (`./startup.sh`) | Docker (`./docker-compose.sh`) |
+|---------|----------------------|-------------------------------|
+| Database | **SQLite** (file-based) | **PostgreSQL** (containerized) |
+| Setup | Zero setup required | Docker required |
+| Performance | Fast startup | Production-ready |
+| Use Case | Development/Testing | Production/Team development |
+| Data Persistence | Local file | Container volume |
+
+## API Endpoints
+
+### KTC (KeepTradeCut) Rankings
+
+- `POST /api/ktc/refresh` - Load fresh rankings data
+- `GET /api/ktc/rankings` - Get stored rankings
+- `POST /api/ktc/cleanup` - Clean up database
+- `GET /api/ktc/health` - Check database health
+
+### Sleeper API Integration
+
+- `POST /api/sleeper/refresh` - Refresh Sleeper player data
+- `GET /api/sleeper/league/{league_id}` - Get league data (info, rosters, users)
+- `GET /api/sleeper/league/{league_id}/rosters` - Get league rosters only
+- `GET /api/sleeper/league/{league_id}/users` - Get league users only
+- `POST /api/sleeper/league/{league_id}/refresh` - Refresh specific league data
+- `GET /api/sleeper/players/research/{season}` - Get player research data
+- `POST /api/sleeper/players/research/{season}/refresh` - Refresh research data
+- `POST /api/sleeper/refresh/all` - Refresh all data (for scheduled tasks)
 
 ## API Parameters
 
@@ -97,7 +147,7 @@ curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=
 - `is_redraft=true` - Redraft/fantasy rankings (draft new team each year)
 - `is_redraft=false` - Dynasty rankings (keep players long-term)
 
-*Note: Dynasty values focus on long-term potential and age, while redraft focuses on current season performance.*
+*Note: Dynasty values focus on long-term potential and age, while redraft focuses only on the current season's performance.*
 
 **TEP Level:**
 
@@ -106,7 +156,7 @@ curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=
 - `teppp` - Tight End Premium Plus Plus (about +1.5 points per reception)
 - Leave empty for standard scoring
 
-*Note: TEP makes tight ends more valuable since they get bonus points. Only applies to dynasty rankings.*
+*Note: TEP makes tight ends more valuable since they get bonus points. Only applies to dynasty rankings. TEP values are managed by the KTC API.*
 
 ## Example API Calls
 
@@ -160,7 +210,10 @@ S3_BUCKET=your-bucket
 ## Common Commands
 
 ```bash
-# Quick start
+# Quick start (local development)
+./startup.sh
+
+# Quick start (Docker)
 ./docker-compose.sh up
 
 # Load superflex redraft data
@@ -169,7 +222,7 @@ curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex&is_r
 # Get rankings
 curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=true&tep_level=tep"
 
-# Check logs
+# Check logs (Docker)
 ./docker-compose.sh logs
 
 # Stop everything
@@ -181,6 +234,7 @@ curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=
 - **Database issues**: Try `./docker-compose.sh clean` then `./docker-compose.sh up`
 - **Empty rankings**: Call the `/refresh` endpoint first to populate data
 - **Script permissions**: Run `chmod +x docker-compose.sh startup.sh run_tests.sh`
+- **Local development**: Use `./startup.sh` for SQLite-based development
 
 ## Development
 
@@ -214,9 +268,14 @@ Run tests in a Docker container (uses SQLite for testing):
 
 **Setting up for Development**
 
-For development without Docker:
+For local development:
 
 ```bash
-python setup_postgres.py  # Set up databases
-./startup.sh              # Start application
+# Simple setup (SQLite)
+./startup.sh
+
+# OR advanced setup (PostgreSQL)
+python setup_postgres.py
+export DATABASE_URL="postgresql://user:pass@localhost:5432/sleeper_db"
+./startup.sh
 ```

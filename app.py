@@ -51,5 +51,19 @@ def init_db():
     logger.info("Initialized the database.")
 
 
+@app.cli.command("create_tables")
+def create_tables():
+    """Create all database tables including new Sleeper models."""
+    with app.app_context():
+        db.create_all()
+        logger.info("Created all database tables successfully.")
+
+        # Print table info
+        from sqlalchemy import inspect
+        inspector = inspect(db.engine)
+        tables = inspector.get_table_names()
+        logger.info("Available tables: %s", tables)
+
+
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)

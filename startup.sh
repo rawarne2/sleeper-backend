@@ -1,9 +1,17 @@
 #!/bin/sh
 
-# Wait for database to be available (optional health check)
-echo "Initializing database..."
-flask init_db
+# Set environment for local SQLite (no database server needed)
+export DATABASE_URL="sqlite:///sleeper_local.db"
 
-echo "Starting Flask application..."
+# Initialize database
+echo "Initializing database..."
+if ! flask init_db; then
+    echo "❌ Database initialization failed!"
+    echo "Check the Flask application logs for details."
+    exit 1
+fi
+
+echo "✅ Database initialized successfully (SQLite)"
+echo "Starting Flask application with Gunicorn..."
 echo "Database is ready - you can now call /api/ktc/refresh endpoints to populate data"
-exec python app.py 
+exec gunicorn --config gunicorn.conf.py wsgi:app
