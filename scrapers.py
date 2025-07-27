@@ -36,7 +36,7 @@ class SleeperScraper:
         """
         try:
             logger.info("Fetching players from Sleeper API...")
-            response = requests.get(SLEEPER_API_URL, timeout=30)
+            response = requests.get(SLEEPER_API_URL, timeout=60)
             response.raise_for_status()
 
             players_data = response.json()

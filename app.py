@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from flask import Flask
+from flask_cors import CORS
 
 # Import our modules
 from models import db
@@ -39,6 +40,27 @@ app.config.update({
 
 # Initialize database with app
 db.init_app(app)
+
+# Configure CORS to allow requests from frontend
+CORS(app, resources={
+    r"/api/*": {
+        "origins": [
+            # Local development
+            "http://localhost:3000",  # React dev server default
+            "http://localhost:3001",  # Alternative React port
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001",
+            "http://localhost:5173",  # Vite dev server default
+            "http://127.0.0.1:5173",
+            # Production and preview deployments
+            "https://sleeper-dashboard-xi.vercel.app",  # Production frontend
+            r"https://sleeper-dashboard-xi-.*\.vercel\.app",  # Vercel preview deployments
+        ],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
+        "supports_credentials": True
+    }
+})
 
 # Register blueprints
 app.register_blueprint(api_bp)
