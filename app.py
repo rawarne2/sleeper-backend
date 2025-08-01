@@ -52,12 +52,10 @@ CORS(app, resources={
             "http://127.0.0.1:3001",
             "http://localhost:5173",
             "http://127.0.0.1:5173",
-            # Production frontend
+            # Production frontend - specific domain
             "https://sleeper-dashboard-xi.vercel.app",
-        ],
-        "origin_regex": [
-            r"https://sleeper-dashboard-xi.*\.vercel\.app",  # All Vercel deployments
-            # Backup: allow all Vercel apps (can remove later)
+            # All Vercel deployments (regex patterns)
+            r"https://sleeper-dashboard-xi.*\.vercel\.app",
             r"https://.*\.vercel\.app"
         ],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
