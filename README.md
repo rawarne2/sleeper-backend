@@ -1,5 +1,3 @@
-TODO: filter research data (and possibly other routes) by league ID
-
 # Sleeper Backend API
 
 A Flask-based API for scraping and serving fantasy football player rankings from KeepTradeCut (KTC).
@@ -281,3 +279,8 @@ python setup_postgres.py
 export DATABASE_URL="postgresql://user:pass@localhost:5432/sleeper_db"
 ./startup.sh
 ```
+
+
+**Note**
+
+This project does not currently handle leagues that allow kickers or defenses. This will be a feature in future iterations.

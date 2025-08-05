@@ -1,15 +1,11 @@
 import json
-import logging
 import re
 from datetime import datetime, UTC
 from typing import Dict, List, Optional, Any
 
 import requests
 
-from utils import (normalize_tep_level, PLAYER_NAME_KEY, POSITION_KEY, TEAM_KEY,
-                   VALUE_KEY, AGE_KEY, ROOKIE_KEY, RANK_KEY, TREND_KEY, TIER_KEY,
-                   POSITION_RANK_KEY, REDRAFT_VALUE_KEY, REDRAFT_RANK_KEY,
-                   REDRAFT_TREND_KEY, REDRAFT_TIER_KEY, REDRAFT_POSITION_RANK_KEY,
+from utils import (PLAYER_NAME_KEY, POSITION_KEY, TEAM_KEY, AGE_KEY, ROOKIE_KEY,
                    DYNASTY_URL, FANTASY_URL, SLEEPER_API_URL, setup_logging)
 
 logger = setup_logging()
@@ -74,7 +70,7 @@ class SleeperScraper:
                 if not player_data.get('active', False):
                     continue
 
-                position = player_data.get('position', '').upper()
+                position = (player_data.get('position') or '').upper()
                 if position not in SleeperScraper.VALID_POSITIONS:
                     continue
 
@@ -141,7 +137,7 @@ class SleeperScraper:
                                    player_data.get('full_name'), player_data.get('injury_start_date'))
 
             # Parse numeric fields with validation
-            jersey_number = SleeperScraper._safe_int_parse(
+            number = SleeperScraper._safe_int_parse(
                 player_data.get('number'))
             years_exp = SleeperScraper._safe_int_parse(
                 player_data.get('years_exp'))
@@ -150,32 +146,36 @@ class SleeperScraper:
             search_rank = SleeperScraper._safe_int_parse(
                 player_data.get('search_rank'))
 
-            # Parse rookie year from metadata
+            # Parse rookie year from player_metadata
             rookie_year = None
-            metadata = player_data.get('metadata', {})
-            if isinstance(metadata, dict) and metadata.get('rookie_year'):
+            player_metadata = player_data.get('player_metadata', {})
+            if isinstance(player_metadata, dict) and player_metadata.get('rookie_year'):
                 rookie_year = SleeperScraper._safe_int_parse(
-                    metadata['rookie_year'])
+                    player_metadata['rookie_year'])
 
             # Parse fantasy positions array
             fantasy_positions = player_data.get('fantasy_positions', [])
             fantasy_positions_json = json.dumps(
                 fantasy_positions) if fantasy_positions else None
 
+            # Store complete player_metadata as JSON
+            player_metadata_json = json.dumps(
+                player_metadata) if player_metadata else None
+
             # Validate string lengths to prevent database column overflow
             return {
-                'sleeper_id': sleeper_id,
+                'sleeper_player_id': sleeper_id,
                 'full_name': SleeperScraper._truncate_string(player_data.get('full_name', ''), 100),
-                'first_name': SleeperScraper._truncate_string(player_data.get('first_name', ''), 50),
-                'last_name': SleeperScraper._truncate_string(player_data.get('last_name', ''), 50),
-                'position': player_data.get('position', '').upper(),
+                # 'first_name': SleeperScraper._truncate_string(player_data.get('first_name', ''), 50),
+                # 'last_name': SleeperScraper._truncate_string(player_data.get('last_name', ''), 50),
+                'position': (player_data.get('position') or '').upper(),
                 'team': SleeperScraper._truncate_string(player_data.get('team', ''), 10),
                 'birth_date': birth_date,
                 'height': SleeperScraper._truncate_string(player_data.get('height', ''), 10),
                 'weight': SleeperScraper._truncate_string(player_data.get('weight', ''), 10),
                 'college': SleeperScraper._truncate_string(player_data.get('college', ''), 100),
                 'years_exp': years_exp,
-                'jersey_number': jersey_number,
+                'number': number,
                 'depth_chart_order': depth_chart_order,
                 'depth_chart_position': SleeperScraper._truncate_string(player_data.get('depth_chart_position', ''), 10),
                 'fantasy_positions': fantasy_positions_json,
@@ -184,7 +184,10 @@ class SleeperScraper:
                 'high_school': SleeperScraper._truncate_string(player_data.get('high_school', ''), 200),
                 'rookie_year': rookie_year,
                 'injury_status': SleeperScraper._truncate_string(player_data.get('injury_status', ''), 50),
-                'injury_start_date': injury_start_date
+                'injury_start_date': injury_start_date,
+                # 'active': player_data.get('active', False),
+                # 'sport': SleeperScraper._truncate_string(player_data.get('sport', ''), 10),
+                'player_metadata': player_metadata_json
             }
 
         except Exception as e:
@@ -217,7 +220,7 @@ class SleeperScraper:
                 return False
 
             # Validate position is a valid enum value
-            position = player_data.get('position', '').upper()
+            position = (player_data.get('position') or '').upper()
             if position not in SleeperScraper.VALID_POSITIONS:
                 return False
 
@@ -292,7 +295,7 @@ class SleeperScraper:
         try:
             logger.info("Fetching league info for league_id: %s", league_id)
             url = f"https://api.sleeper.app/v1/league/{league_id}"
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, timeout=60)
             response.raise_for_status()
 
             league_data = response.json()
@@ -323,7 +326,7 @@ class SleeperScraper:
         try:
             logger.info("Fetching rosters for league_id: %s", league_id)
             url = f"https://api.sleeper.app/v1/league/{league_id}/rosters"
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, timeout=60)
             response.raise_for_status()
 
             rosters_data = response.json()
@@ -353,7 +356,7 @@ class SleeperScraper:
         try:
             logger.info("Fetching users for league_id: %s", league_id)
             url = f"https://api.sleeper.app/v1/league/{league_id}/users"
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, timeout=60)
             response.raise_for_status()
 
             users_data = response.json()
@@ -386,7 +389,7 @@ class SleeperScraper:
             logger.info("Fetching research data for season: %s, week: %s, league_type: %s",
                         season, week, league_type)
             url = f"https://api.sleeper.app/players/nfl/research/regular/{season}/{week}?league_type={league_type}"
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, timeout=60)
             response.raise_for_status()
 
             research_data = response.json()
@@ -505,7 +508,7 @@ class KTCScraper:
     def fetch_ktc_page(url: str) -> Optional[requests.Response]:
         """Fetch a page from KTC website with error handling."""
         try:
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, timeout=60)
             response.raise_for_status()
             return response
         except requests.RequestException as e:
@@ -563,52 +566,26 @@ class KTCScraper:
             )
 
     @staticmethod
-    def parse_player_data(player_obj: Dict[str, Any], league_format: str, is_redraft: bool = False, tep_level: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def parse_player_data(player_obj: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Parse a player object from the playersArray.
+        Parse a player object from the playersArray, extracting comprehensive KTC data.
+        TODO:
+        Extracts ALL available data including both oneQB and superflex values plus 
+        all TEP levels (base, TEP, TEPP, TEPPP) regardless of specific filtering needs.
+        The database and API layers handle any filtering requirements.
 
         Args:
             player_obj: Raw player data from KTC
-            league_format: '1qb' or 'superflex'
-            is_redraft: Whether this is redraft data
-            tep_level: TEP configuration level
 
         Returns:
-            Parsed player dictionary or None if parsing fails
+            Parsed player dictionary with comprehensive KTC data or None if parsing fails
         """
         try:
-            # Normalize tep_level and get base values
-            normalized_tep = normalize_tep_level(tep_level)
-            is_1qb = league_format == '1qb'
-            base_values = player_obj.get(
-                'oneQBValues' if is_1qb else 'superflexValues', {}
-            )
-
-            # Get values based on TEP level
-            value, rank, tier = KTCScraper._get_tep_values(
-                base_values, normalized_tep)
-
             # Extract basic player information
-            player_info = {
-                'name': player_obj.get('playerName', ''),
-                'position': player_obj.get('position', ''),
-                'team': player_obj.get('team', ''),
-                'age': player_obj.get('age'),
-                'rookie': "Yes" if player_obj.get('rookie', False) else "No"
-            }
+            player_info = KTCScraper._extract_basic_player_info(player_obj)
 
-            # Format additional metrics
-            trend = KTCScraper._format_trend(
-                base_values.get('overallTrend', 0))
-            tier_str = f"Tier {tier}" if tier else ""
-
-            pos_rank = base_values.get('positionalRank')
-            position_rank = f"{player_info['position']}{pos_rank}" if pos_rank else None
-
-            # Build result dictionary
-            return KTCScraper._build_player_result(
-                player_info, value, rank, trend, tier_str, position_rank, is_redraft
-            )
+            # Build comprehensive result
+            return KTCScraper._build_comprehensive_player_result(player_info, player_obj)
 
         except Exception as e:
             logger.error(
@@ -616,50 +593,144 @@ class KTCScraper:
             return None
 
     @staticmethod
-    def _build_player_result(player_info: Dict[str, Any], value: int, rank: Optional[int],
-                             trend: str, tier_str: str, position_rank: Optional[str],
-                             is_redraft: bool) -> Dict[str, Any]:
-        """Build the final player result dictionary based on format type."""
-        base_data = {
+    def _extract_basic_player_info(player_obj: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract basic player information from KTC data."""
+        return {
+            'name': player_obj.get('playerName', ''),
+            'position': player_obj.get('position', ''),
+            'team': player_obj.get('team', ''),
+            'age': player_obj.get('age'),
+            'rookie': "Yes" if player_obj.get('rookie', False) else "No",
+            # Additional KTC fields
+            'ktc_player_id': player_obj.get('playerID'),
+            'slug': player_obj.get('slug'),
+            'positionID': player_obj.get('positionID'),
+            'heightFeet': player_obj.get('heightFeet'),
+            'heightInches': player_obj.get('heightInches'),
+            'weight': player_obj.get('weight'),
+            'seasonsExperience': player_obj.get('seasonsExperience'),
+            'pickRound': player_obj.get('pickRound'),
+            'pickNum': player_obj.get('pickNum'),
+            'isFeatured': player_obj.get('isFeatured'),
+            'isStartSitFeatured': player_obj.get('isStartSitFeatured'),
+            'isTrending': player_obj.get('isTrending'),
+            'isDevyReturningToSchool': player_obj.get('isDevyReturningToSchool'),
+            'isDevyYearDecrement': player_obj.get('isDevyYearDecrement'),
+            'ktc_number': player_obj.get('number'),
+            'teamLongName': player_obj.get('teamLongName'),
+            'birthday': player_obj.get('birthday'),
+            'draftYear': player_obj.get('draftYear'),
+            'byeWeek': player_obj.get('byeWeek'),
+            'injury': json.dumps(player_obj.get('injury', {})) if player_obj.get('injury') else None
+        }
+
+    @staticmethod
+    def _build_comprehensive_player_result(player_info: Dict[str, Any], player_obj: Dict[str, Any]) -> Dict[str, Any]:
+        """Build comprehensive player result with all KTC data."""
+        # Extract oneQBValues and superflexValues
+        oneqb_values = player_obj.get('oneQBValues', {})
+        superflex_values = player_obj.get('superflexValues', {})
+
+        # Base player data
+        result = {
             PLAYER_NAME_KEY: player_info['name'],
             POSITION_KEY: player_info['position'],
             TEAM_KEY: player_info['team'],
             AGE_KEY: player_info['age'],
             ROOKIE_KEY: player_info['rookie'],
+            # All additional KTC fields
+            'ktc_player_id': player_info['ktc_player_id'],
+            'slug': player_info['slug'],
+            'positionID': player_info['positionID'],
+            'heightFeet': player_info['heightFeet'],
+            'heightInches': player_info['heightInches'],
+            'seasonsExperience': player_info['seasonsExperience'],
+            'pickRound': player_info['pickRound'],
+            'pickNum': player_info['pickNum'],
+            'isFeatured': player_info['isFeatured'],
+            'isStartSitFeatured': player_info['isStartSitFeatured'],
+            'isTrending': player_info['isTrending'],
+            'isDevyReturningToSchool': player_info['isDevyReturningToSchool'],
+            'isDevyYearDecrement': player_info['isDevyYearDecrement'],
+            'ktc_number': player_info['ktc_number'],
+            'teamLongName': player_info['teamLongName'],
+            'birthday': player_info['birthday'],
+            'draftYear': player_info['draftYear'],
+            'byeWeek': player_info['byeWeek'],
+            'injury': player_info['injury']
         }
 
-        if is_redraft:
-            base_data.update({
-                REDRAFT_VALUE_KEY: value,
-                REDRAFT_RANK_KEY: rank,
-                REDRAFT_TREND_KEY: trend,
-                REDRAFT_TIER_KEY: tier_str,
-                REDRAFT_POSITION_RANK_KEY: position_rank
-            })
-        else:
-            base_data.update({
-                VALUE_KEY: value,
-                RANK_KEY: rank,
-                TREND_KEY: trend,
-                TIER_KEY: tier_str,
-                POSITION_RANK_KEY: position_rank
-            })
+        # Extract oneQB and superflex values as separate objects
+        result['oneqb_values'] = KTCScraper._extract_format_values(
+            oneqb_values)
+        result['superflex_values'] = KTCScraper._extract_format_values(
+            superflex_values)
 
-        return base_data
+        return result
 
     @staticmethod
-    def scrape_players_from_array(url: str, league_format: str, is_redraft: bool = False, tep_level: Optional[str] = None) -> List[Dict[str, Any]]:
+    def _extract_format_values(values: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract specific fields from oneQBValues or superflexValues subtree."""
+        result = {}
+
+        # Base values
+        result['value'] = values.get('value')
+        result['rank'] = values.get('rank')
+        result['positional_rank'] = values.get('positionalRank')
+        result['overall_tier'] = values.get('overallTier')
+        result['positional_tier'] = values.get('positionalTier')
+        result['overall_trend'] = values.get('overallTrend')
+        result['positional_trend'] = values.get('positionalTrend')
+        result['overall_7day_trend'] = values.get('overall7DayTrend')
+        result['positional_7day_trend'] = values.get('positional7DayTrend')
+        result['start_sit_value'] = values.get('startSitValue')
+        result['kept'] = values.get('kept')
+        result['traded'] = values.get('traded')
+        result['cut'] = values.get('cut')
+        result['diff'] = values.get('diff')
+        result['is_out_this_week'] = values.get('isOutThisWeek')
+        result['raw_liquidity'] = values.get('rawLiquidity')
+        result['std_liquidity'] = values.get('stdLiquidity')
+        result['trade_count'] = values.get('tradeCount')
+
+        # TEP values
+        tep_values = values.get('tep', {})
+        result['tep_value'] = tep_values.get('value')
+        result['tep_rank'] = tep_values.get('rank')
+        result['tep_positional_rank'] = tep_values.get('positionalRank')
+        result['tep_overall_tier'] = tep_values.get('overallTier')
+        result['tep_positional_tier'] = tep_values.get('positionalTier')
+
+        # TEPP values
+        tepp_values = values.get('tepp', {})
+        result['tepp_value'] = tepp_values.get('value')
+        result['tepp_rank'] = tepp_values.get('rank')
+        result['tepp_positional_rank'] = tepp_values.get('positionalRank')
+        result['tepp_overall_tier'] = tepp_values.get('overallTier')
+        result['tepp_positional_tier'] = tepp_values.get('positionalTier')
+
+        # TEPPP values
+        teppp_values = values.get('teppp', {})
+        result['teppp_value'] = teppp_values.get('value')
+        result['teppp_rank'] = teppp_values.get('rank')
+        result['teppp_positional_rank'] = teppp_values.get('positionalRank')
+        result['teppp_overall_tier'] = teppp_values.get('overallTier')
+        result['teppp_positional_tier'] = teppp_values.get('positionalTier')
+
+        return result
+
+    @staticmethod
+    def scrape_players_from_array(url: str) -> List[Dict[str, Any]]:
         """
         Scrape players using the playersArray from JavaScript source.
 
+        Extracts comprehensive player data including all league formats and TEP levels.
+
         Args:
-            url: KTC URL to scrape
-            league_format: '1qb' or 'superflex'
-            is_redraft: Whether this is redraft data
-            tep_level: TEP configuration level
+            url: KTC URL to scrape (dynasty or redraft rankings page)
 
         Returns:
-            List of parsed player dictionaries
+            List of parsed player dictionaries with comprehensive KTC data
         """
         try:
             logger.info("Fetching data from: %s", url)
@@ -677,8 +748,7 @@ class KTCScraper:
 
             players = []
             for player_obj in players_array:
-                parsed_player = KTCScraper.parse_player_data(
-                    player_obj, league_format, is_redraft, tep_level)
+                parsed_player = KTCScraper.parse_player_data(player_obj)
                 if parsed_player:
                     players.append(parsed_player)
 
@@ -689,81 +759,26 @@ class KTCScraper:
             logger.error("Error in scrape_players_from_array: %s", e)
             return []
 
-    @staticmethod
-    def merge_dynasty_fantasy_data(dynasty_players: List[Dict[str, Any]], fantasy_players: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Merge dynasty and fantasy player data into unified dataset.
-
-        Args:
-            dynasty_players: List of dynasty player data
-            fantasy_players: List of redraft/fantasy player data
-
-        Returns:
-            List of merged player dictionaries with both dynasty and redraft data
-        """
-        try:
-            # Create lookup dictionary for fantasy players
-            fantasy_dict = {player[PLAYER_NAME_KEY]                            : player for player in fantasy_players}
-
-            merged_players = []
-            for dynasty_player in dynasty_players:
-                player_name = dynasty_player[PLAYER_NAME_KEY]
-                fantasy_player = fantasy_dict.get(player_name)
-
-                # Start with dynasty data
-                merged_player = dynasty_player.copy()
-
-                # Add redraft data if available
-                if fantasy_player:
-                    redraft_keys = [
-                        REDRAFT_VALUE_KEY, REDRAFT_POSITION_RANK_KEY,
-                        REDRAFT_RANK_KEY, REDRAFT_TREND_KEY, REDRAFT_TIER_KEY
-                    ]
-                    for key in redraft_keys:
-                        merged_player[key] = fantasy_player.get(key)
-
-                merged_players.append(merged_player)
-
-            logger.info(
-                "Merged %s players from dynasty and fantasy data", len(merged_players))
-            return merged_players
-
-        except Exception as e:
-            logger.error("Error merging dynasty and fantasy data: %s", e)
-            return dynasty_players
 
     @staticmethod
-    def scrape_ktc(is_redraft: bool, league_format: str, tep_level: Optional[str] = None) -> List[Dict[str, Any]]:
+    def scrape_ktc(is_redraft: bool) -> List[Dict[str, Any]]:
         """
         Main scraping function using the playersArray approach.
+        The core parsing extracts comprehensive data for all formats and TEP levels.
 
         Args:
-            is_redraft: If True, scrapes both dynasty and fantasy data for merged results
-            league_format: '1qb' or 'superflex'
-            tep_level: TEP configuration level
+            is_redraft: If True, scrapes both dynasty and fantasy data
 
         Returns:
-            List of scraped and processed player data
+            List of scraped and processed player data with comprehensive KTC values
         """
         try:
             if is_redraft:
-                logger.info(
-                    "Scraping dynasty data for %s format with TEP level=%s...", league_format, tep_level)
-                dynasty_players = KTCScraper.scrape_players_from_array(
-                    DYNASTY_URL, league_format, is_redraft=False, tep_level=tep_level)
-
-                logger.info(
-                    "Scraping fantasy data for %s format with TEP level=%s...", league_format, tep_level)
-                fantasy_players = KTCScraper.scrape_players_from_array(
-                    FANTASY_URL, league_format, is_redraft=True, tep_level=tep_level)
-
-                players = KTCScraper.merge_dynasty_fantasy_data(
-                    dynasty_players, fantasy_players)
+                logger.info("Scraping redraft data...")
+                players = KTCScraper.scrape_players_from_array(FANTASY_URL)
             else:
-                logger.info(
-                    "Scraping dynasty data for %s format with TEP level=%s...", league_format, tep_level)
-                players = KTCScraper.scrape_players_from_array(
-                    DYNASTY_URL, league_format, is_redraft=False, tep_level=tep_level)
+                logger.info("Scraping dynasty data...")
+                players = KTCScraper.scrape_players_from_array(DYNASTY_URL)
 
             logger.info("Total players after scraping: %s", len(players))
             return players
@@ -771,3 +786,165 @@ class KTCScraper:
         except Exception as e:
             logger.error("Error in scrape_ktc: %s", e)
             return []
+
+
+def scrape_and_process_data(ktc_scraper, league_format: str, is_redraft: bool, tep_level: Optional[str]) -> tuple[List[Dict[str, Any]], Optional[str]]:
+    """
+    Scrape data from KTC and merge with existing Sleeper data from database.
+
+    When refreshing KTC data, we should use existing Sleeper data from the database
+    rather than scraping Sleeper again, as requested in the task requirements.
+
+    Args:
+        ktc_scraper: KTCScraper class
+        league_format: League format
+        is_redraft: Whether this is redraft data
+        tep_level: TEP level
+
+    Returns:
+        Tuple of (sorted_players, error_message)
+    """
+    try:
+        logger.info(
+            "Starting KTC scrape for %s, redraft=%s, tep_level=%s", league_format, is_redraft, tep_level)
+        ktc_players = ktc_scraper.scrape_ktc(is_redraft)
+        logger.info("Scraped %s KTC players", len(ktc_players))
+
+        if not ktc_players:
+            return [], 'KTC scraping returned empty results - check network connectivity or site availability'
+
+        # Import here to avoid circular imports
+        from managers import PlayerMerger, DatabaseManager
+
+        # Get existing Sleeper data from database instead of scraping fresh data
+        logger.info("Fetching existing Sleeper player data from database...")
+        try:
+            # Get all Sleeper players from database (regardless of league format/redraft status)
+            from models import Player
+            sleeper_players_db = Player.query.filter(
+                Player.sleeper_player_id.isnot(None)
+            ).all()
+            
+            # Convert to the format expected by PlayerMerger using to_dict() method
+            sleeper_players = []
+            for player in sleeper_players_db:
+                # Use to_dict() method for consistent structure
+                sleeper_data = player.to_dict()
+                # PlayerMerger expects 'player_id' key instead of 'sleeper_player_id'
+                sleeper_data['player_id'] = sleeper_data['sleeper_player_id']
+                sleeper_players.append(sleeper_data)
+            
+            logger.info("Retrieved %s Sleeper players from database", len(sleeper_players))
+            
+        except Exception as db_error:
+            logger.warning("Failed to get Sleeper data from database: %s. Will use KTC data only.", db_error)
+            sleeper_players = []
+
+        # Merge KTC and Sleeper data
+        if sleeper_players:
+            logger.info("Merging KTC and existing Sleeper player data...")
+            merged_players = PlayerMerger.merge_player_data(
+                ktc_players, sleeper_players)
+            logger.info("Successfully merged player data: %s KTC players with %s existing Sleeper players", 
+                       len(ktc_players), len(sleeper_players))
+        else:
+            logger.warning("No Sleeper data available from database, using KTC data only")
+            merged_players = ktc_players
+
+        # Sort players by appropriate rank based on league format
+        # Use the correct rank key for sorting
+        def get_sort_key(player):
+            if league_format == '1qb':
+                oneqb_values = player.get('oneqb_values', {})
+                return oneqb_values.get('rank') if oneqb_values else float('inf')
+            else:  # superflex
+                superflex_values = player.get('superflex_values', {})
+                return superflex_values.get('rank') if superflex_values else float('inf')
+        
+        players_sorted = sorted(merged_players, key=get_sort_key)
+        logger.info("Sorted %s players by %s rankings", len(players_sorted), league_format)
+        return players_sorted, None
+
+    except Exception as e:
+        logger.error("Error during scraping and processing: %s", e)
+        return [], str(e)
+
+
+def scrape_and_save_all_ktc_data(ktc_scraper, database_manager) -> Dict[str, Any]:
+    """
+    Scrape and save comprehensive KTC data (dynasty + redraft) for all formats and TEP levels.
+
+    Since the core KTC parsing already extracts all league formats (1QB + Superflex) and 
+    all TEP levels (base, TEP, TEPP, TEPPP) from each player, we don't need to make 
+    separate calls with different parameters.
+
+    Args:
+        ktc_scraper: KTCScraper class
+        database_manager: DatabaseManager class
+
+    Returns:
+        Dictionary with results for both dynasty and redraft operations
+    """
+    results = {
+        'dynasty': {'status': 'pending', 'players_count': 0, 'db_count': 0, 'error': None},
+        'redraft': {'status': 'pending', 'players_count': 0, 'db_count': 0, 'error': None},
+        'overall_status': 'success'
+    }
+
+    try:
+        # Import here to avoid circular imports
+        from utils import save_and_verify_database
+        
+        # Scrape and save dynasty data (contains all formats and TEP levels)
+        logger.info("Scraping comprehensive dynasty data from KTC...")
+        dynasty_players, dynasty_error = scrape_and_process_data(
+            ktc_scraper, '1qb', False, None)  # Parameters are ignored by core parsing
+
+        if dynasty_error:
+            results['dynasty']['status'] = 'error'
+            results['dynasty']['error'] = dynasty_error
+        else:
+            dynasty_count, dynasty_db_error = save_and_verify_database(
+                database_manager, dynasty_players, '1qb', False)
+
+            if dynasty_db_error:
+                results['dynasty']['status'] = 'error'
+                results['dynasty']['error'] = dynasty_db_error
+            else:
+                results['dynasty']['status'] = 'success'
+                results['dynasty']['players_count'] = len(dynasty_players)
+                results['dynasty']['db_count'] = dynasty_count
+
+        # Scrape and save redraft data (contains all formats and TEP levels)
+        logger.info("Scraping comprehensive redraft data from KTC...")
+        redraft_players, redraft_error = scrape_and_process_data(
+            ktc_scraper, '1qb', True, None)  # Parameters are ignored by core parsing
+
+        if redraft_error:
+            results['redraft']['status'] = 'error'
+            results['redraft']['error'] = redraft_error
+        else:
+            redraft_count, redraft_db_error = save_and_verify_database(
+                database_manager, redraft_players, '1qb', True)
+
+            if redraft_db_error:
+                results['redraft']['status'] = 'error'
+                results['redraft']['error'] = redraft_db_error
+            else:
+                results['redraft']['status'] = 'success'
+                results['redraft']['players_count'] = len(redraft_players)
+                results['redraft']['db_count'] = redraft_count
+
+        # Set overall status
+        if results['dynasty']['status'] == 'error' and results['redraft']['status'] == 'error':
+            results['overall_status'] = 'error'
+        elif results['dynasty']['status'] == 'error' or results['redraft']['status'] == 'error':
+            results['overall_status'] = 'partial_success'
+
+        return results
+
+    except Exception as e:
+        logger.error("Error in scrape_and_save_all_ktc_data: %s", e)
+        results['overall_status'] = 'error'
+        results['error'] = str(e)
+        return results

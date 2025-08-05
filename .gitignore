@@ -31,5 +31,8 @@ data-files/*.json
 
 # Docker
 .dockerignore
+
+# Other
 .vercel
 .cursor*
+notes*

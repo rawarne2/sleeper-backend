@@ -1,0 +1,102 @@
+# Sleeper Backend API Endpoints
+# Call /api/ktc/refresh/all first when running the project for the first time. Then other refresh routes to populate data
+
+### Health Check
+GET http://localhost:5000/api/ktc/health
+
+### ============================================================================
+### SLEEPER PLAYER ENDPOINTS
+### ============================================================================
+
+### Refresh Sleeper player data
+POST http://localhost:5000/api/sleeper/refresh
+
+### ============================================================================
+### SLEEPER LEAGUE ENDPOINTS
+### ============================================================================
+
+### Refresh league data (2025 league)
+POST http://localhost:5000/api/sleeper/league/1210364682523656192/refresh
+
+### Get comprehensive league data (2025 league)
+GET http://localhost:5000/api/sleeper/league/1210364682523656192
+
+### Get league rosters (2025 league)
+GET http://localhost:5000/api/sleeper/league/1210364682523656192/rosters
+
+### Get league users (2025 league)
+GET http://localhost:5000/api/sleeper/league/1210364682523656192/users
+
+### ============================================================================
+### SLEEPER RESEARCH ENDPOINTS
+### ============================================================================
+
+### Refresh player research data (2025 season)
+POST http://localhost:5000/api/sleeper/players/research/2025/refresh
+
+### Get player research data (2025 season)
+GET http://localhost:5000/api/sleeper/players/research/2025
+
+### Get player research data (2024 season)
+GET http://localhost:5000/api/sleeper/players/research/2024
+
+### Get player research data (2024 season, week 10)
+GET http://localhost:5000/api/sleeper/players/research/2024?week=10
+
+### Get player research data (2024 season, redraft)
+GET http://localhost:5000/api/sleeper/players/research/2024?league_type=1
+
+### Refresh player research data (2024 season)
+POST http://localhost:5000/api/sleeper/players/research/2024/refresh
+
+### Refresh player research data (2024 season, week 10)
+POST http://localhost:5000/api/sleeper/players/research/2024/refresh?week=10
+
+### ============================================================================
+### KTC ENDPOINTS
+### ============================================================================
+
+### Refresh all KTC data (dynasty + redraft, all formats and TEP levels)
+POST http://localhost:5000/api/ktc/refresh/all 
+
+### Refresh KTC rankings (specific configuration - dynasty superflex TEP)
+POST http://localhost:5000/api/ktc/refresh?tep_level=tep&is_redraft=false&league_format=superflex
+
+### Refresh KTC rankings (dynasty 1QB with TEP)
+POST http://localhost:5000/api/ktc/refresh?tep_level=tep&is_redraft=false&league_format=1qb
+
+### Refresh KTC rankings (redraft superflex)
+POST http://localhost:5000/api/ktc/refresh?tep_level=&is_redraft=true&league_format=superflex
+
+
+
+### *** Get KTC rankings (dynasty superflex with TEP) ***
+GET http://localhost:5000/api/ktc/rankings?tep_level=tep&is_redraft=false&league_format=superflex
+
+### Get KTC rankings (dynasty 1QB with TEP)
+GET http://localhost:5000/api/ktc/rankings?tep_level=tep&is_redraft=false&league_format=1qb
+
+### Get KTC rankings (redraft superflex)
+GET http://localhost:5000/api/ktc/rankings?tep_level=&is_redraft=true&league_format=superflex
+
+### Get KTC rankings (dynasty 1QB base)
+GET http://localhost:5000/api/ktc/rankings?tep_level=&is_redraft=false&league_format=1qb
+
+### ============================================================================
+### Cleanup KTC database
+POST http://localhost:5000/api/ktc/cleanup?tep_level=tep&is_redraft=false&league_format=superflex
+
+### ============================================================================
+### REFERENCE DATA
+### ============================================================================
+
+# League IDs:
+# 2024 league_id: 1050831680350568448
+# 2025 league_id: 1210364682523656192
+# User ID: 736083244801474560
+
+# Parameter Options:
+# league_format: "1qb" | "superflex"
+# tep_level: "" | "tep" | "tepp" | "teppp"
+# is_redraft: "true" | "false"
+# league_type: 1 (redraft) | 2 (dynasty)
