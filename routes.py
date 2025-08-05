@@ -34,10 +34,59 @@ def with_error_handling(f):
 @api_bp.route('/sleeper/refresh', methods=['POST'])
 def refresh_sleeper_data():
     """
-    Refresh Sleeper player data and merge with existing KTC data.
-
-    Returns comprehensive player data including physical attributes, career info, 
-    fantasy data, injury status, and metadata. Merges with KTC players by name/position.
+    Refresh Sleeper player data and merge with existing KTC data
+    ---
+    tags:
+      - Sleeper Players
+    summary: Refresh Sleeper player data
+    description: |
+      Refresh Sleeper player data and merge with existing KTC data. Returns comprehensive player data including physical attributes, career info, fantasy data, injury status, and metadata. Merges with KTC players by name/position.
+      
+      **Performance Note**: This operation takes 30-60 seconds as it fetches from external APIs.
+    responses:
+      200:
+        description: Sleeper data refreshed successfully
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: 'Sleeper data refreshed and merged successfully'
+            timestamp:
+              type: string
+              format: date-time
+            sleeper_data_results:
+              type: object
+              properties:
+                total_sleeper_players:
+                  type: integer
+                existing_records_before:
+                  type: integer
+                ktc_players_updated:
+                  type: integer
+                new_records_created:
+                  type: integer
+                match_failures:
+                  type: integer
+                total_processed:
+                  type: integer
+            database_success:
+              type: boolean
+            merge_effective:
+              type: boolean
+      500:
+        description: Server error during Sleeper refresh
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              example: 'Internal server error during Sleeper refresh'
+            details:
+              type: string
+            database_success:
+              type: boolean
+              example: false
     """
     try:
         logger.info("Starting comprehensive Sleeper data refresh and merge...")
@@ -99,14 +148,106 @@ def refresh_sleeper_data():
 @api_bp.route('/ktc/refresh', methods=['POST'])
 def refresh_rankings():
     """
-    Fetch fresh KTC rankings and store in database.
-
-    Query Parameters:
-        is_redraft (str): 'true'/'false' - redraft vs dynasty rankings (default: 'false')
-        league_format (str): '1qb'/'superflex' - league format (default: '1qb')  
-        tep_level (str): ''/'tep'/'tepp'/'teppp' - TEP level (default: '')
-
-    Returns all player data including dynasty/redraft values, rankings, trends, and tiers.
+    Refresh KTC player rankings
+    ---
+    tags:
+      - KTC Player Rankings
+    summary: Refresh KTC player rankings
+    description: |
+      Fetch fresh KTC rankings and store in database. Returns all player data including dynasty/redraft values, rankings, trends, and tiers.
+      
+      **Performance Note**: This operation takes 30-60 seconds as it fetches from external APIs.
+    parameters:
+      - name: is_redraft
+        in: query
+        description: Ranking type - 'true' for redraft (current season only), 'false' for dynasty (long-term player value)
+        required: false
+        type: string
+        enum: ['true', 'false']
+        default: 'false'
+      - name: league_format
+        in: query
+        description: League format - '1qb' for standard leagues, 'superflex' for superflex leagues (can start 2 QBs)
+        required: false
+        type: string
+        enum: ['1qb', 'superflex']
+        default: '1qb'
+      - name: tep_level
+        in: query
+        description: |
+          TEP (Tight End Premium) scoring level:
+          - '' (empty): Standard scoring
+          - 'tep': +0.5 points per TE reception
+          - 'tepp': +1.0 points per TE reception
+          - 'teppp': +1.5 points per TE reception
+        required: false
+        type: string
+        enum: ['', 'tep', 'tepp', 'teppp']
+        default: ''
+    responses:
+      200:
+        description: Rankings refreshed successfully
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: 'Rankings refreshed successfully'
+            timestamp:
+              type: string
+              format: date-time
+            database_success:
+              type: boolean
+            file_saved:
+              type: boolean
+            s3_uploaded:
+              type: boolean
+            players:
+              type: array
+              items:
+                type: object
+                properties:
+                  playerName:
+                    type: string
+                  position:
+                    type: string
+                    enum: ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']
+                  team:
+                    type: string
+                  ktc:
+                    type: object
+            operations_summary:
+              type: object
+              properties:
+                players_count:
+                  type: integer
+                database_saved_count:
+                  type: integer
+                file_saved:
+                  type: boolean
+                s3_uploaded:
+                  type: boolean
+      400:
+        description: Invalid parameters
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              example: 'Invalid parameter value'
+      500:
+        description: Server error during refresh
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              example: 'Internal server error during refresh'
+            details:
+              type: string
+            database_success:
+              type: boolean
+              example: false
     """
     try:
         # Extract and validate parameters
@@ -204,10 +345,50 @@ def refresh_rankings():
 @api_bp.route('/ktc/health', methods=['GET'])
 def health_check():
     """
-    Database health check endpoint.
-
-    Returns:
-        JSON response with health status and timestamp
+    Database health check endpoint
+    ---
+    tags:
+      - Health
+    summary: Check API and database health status
+    description: Check API and database health status. Returns service status and database connection info.
+    responses:
+      200:
+        description: Service is healthy
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['healthy']
+              example: 'healthy'
+            database:
+              type: string
+              enum: ['connected']
+              example: 'connected'
+            timestamp:
+              type: string
+              format: date-time
+              example: '2025-01-05T17:58:12.123456+00:00'
+      500:
+        description: Service is unhealthy
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['unhealthy']
+              example: 'unhealthy'
+            database:
+              type: string
+              enum: ['connection_failed', 'error']
+              example: 'connection_failed'
+            error:
+              type: string
+              example: 'Database connection timeout'
+            timestamp:
+              type: string
+              format: date-time
+              example: '2025-01-05T17:58:12.123456+00:00'
     """
     try:
         logger.info('Performing health check...')
@@ -242,15 +423,73 @@ def health_check():
 @api_bp.route('/ktc/cleanup', methods=['POST'])
 def cleanup_database():
     """
-    Endpoint to clean up incomplete or corrupted data.
-
-    Query Parameters:
-        is_redraft (str): 'true' or 'false', default 'false'
-        league_format (str): '1qb' or 'superflex', default '1qb'  
-        tep_level (str): '', 'tep', 'tepp', or 'teppp', default ''
-
-    Returns:
-        JSON response with cleanup results
+    Clean up incomplete or corrupted data
+    ---
+    tags:
+      - KTC Player Rankings
+    summary: Clean up incomplete data
+    description: Endpoint to clean up incomplete or corrupted data from the database
+    parameters:
+      - name: is_redraft
+        in: query
+        description: Ranking type - 'true' for redraft, 'false' for dynasty
+        required: false
+        type: string
+        enum: ['true', 'false']
+        default: 'false'
+      - name: league_format
+        in: query
+        description: League format - '1qb' or 'superflex'
+        required: false
+        type: string
+        enum: ['1qb', 'superflex']
+        default: '1qb'
+      - name: tep_level
+        in: query
+        description: TEP scoring level - '', 'tep', 'tepp', or 'teppp'
+        required: false
+        type: string
+        enum: ['', 'tep', 'tepp', 'teppp']
+        default: ''
+    responses:
+      200:
+        description: Cleanup completed successfully
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: 'Database cleanup completed'
+            timestamp:
+              type: string
+              format: date-time
+            cleanup_result:
+              type: object
+              properties:
+                status:
+                  type: string
+                records_removed:
+                  type: integer
+                configuration:
+                  type: object
+      400:
+        description: Invalid parameters
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              example: 'Invalid parameter value'
+      500:
+        description: Server error during cleanup
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              example: 'Internal server error during cleanup'
+            details:
+              type: string
     """
     try:
         # Get and validate parameters
@@ -295,15 +534,121 @@ def cleanup_database():
 @api_bp.route('/ktc/rankings', methods=['GET'])
 def get_rankings():
     """
-    Retrieve stored player rankings with filtering options.
-
-    Query Parameters:
-        is_redraft (str): 'true'/'false' - ranking type (default: 'false')
-        league_format (str): '1qb'/'superflex' - league format (default: '1qb')
-        tep_level (str): ''/'tep'/'tepp'/'teppp' - TEP level (default: '')
-
-    Returns comprehensive player data including KTC rankings, Sleeper data, 
-    physical attributes, career info, and injury status.
+    Get stored player rankings
+    ---
+    tags:
+      - KTC Player Rankings
+    summary: Get stored player rankings
+    description: |
+      Retrieve stored player rankings with filtering options. Returns comprehensive player data including KTC rankings, Sleeper data, physical attributes, career info, and injury status.
+      
+      **Performance Note**: Served from database cache, typically < 1 second response time.
+    parameters:
+      - name: is_redraft
+        in: query
+        description: Ranking type - 'true' for redraft (current season only), 'false' for dynasty (long-term player value)
+        required: false
+        type: string
+        enum: ['true', 'false']
+        default: 'false'
+      - name: league_format
+        in: query
+        description: League format - '1qb' for standard leagues, 'superflex' for superflex leagues (can start 2 QBs)
+        required: false
+        type: string
+        enum: ['1qb', 'superflex']
+        default: '1qb'
+      - name: tep_level
+        in: query
+        description: |
+          TEP (Tight End Premium) scoring level:
+          - '' (empty): Standard scoring
+          - 'tep': +0.5 points per TE reception
+          - 'tepp': +1.0 points per TE reception
+          - 'teppp': +1.5 points per TE reception
+        required: false
+        type: string
+        enum: ['', 'tep', 'tepp', 'teppp']
+        default: ''
+    responses:
+      200:
+        description: Rankings retrieved successfully
+        schema:
+          type: object
+          properties:
+            timestamp:
+              type: string
+              format: date-time
+            is_redraft:
+              type: boolean
+            league_format:
+              type: string
+              enum: ['1qb', 'superflex']
+            tep_level:
+              type: string
+              enum: ['', 'tep', 'tepp', 'teppp']
+            count:
+              type: integer
+            players:
+              type: array
+              items:
+                type: object
+                properties:
+                  playerName:
+                    type: string
+                  position:
+                    type: string
+                    enum: ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']
+                  team:
+                    type: string
+                  sleeper_player_id:
+                    type: string
+                  birth_date:
+                    type: string
+                    format: date
+                  height:
+                    type: string
+                  weight:
+                    type: string
+                  college:
+                    type: string
+                  years_exp:
+                    type: integer
+                  injury_status:
+                    type: string
+                  ktc:
+                    type: object
+      400:
+        description: Invalid parameters
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              example: 'Invalid parameter value'
+      404:
+        description: No rankings found for specified parameters
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              example: 'No rankings found for the specified parameters'
+            suggestion:
+              type: string
+              example: 'Try calling the /api/ktc/refresh/all endpoint first to populate data'
+            parameters:
+              type: object
+      500:
+        description: Server error during retrieval
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              example: 'Internal server error during rankings retrieval'
+            details:
+              type: string
     """
     try:
         # Get and validate parameters
@@ -421,17 +766,80 @@ def get_rankings():
 @with_error_handling
 def refresh_ktc_all():
     """
-    All KTC refresh - scrapes and saves ALL KTC data.
-
-    Gets dynasty + redraft data with all league formats (1QB + Superflex) and 
-    all TEP levels (base, TEP, TEPP, TEPPP) in a single operation.
-
-    Ideal for cron jobs since it ensures complete data coverage without 
-    needing multiple calls with different parameters.
-
-    No query parameters needed - this is truly comprehensive!
-
-    Returns comprehensive results for both dynasty and redraft operations.
+    Comprehensive KTC refresh
+    ---
+    tags:
+      - Bulk Operations
+    summary: Comprehensive KTC refresh
+    description: |
+      All KTC refresh - scrapes and saves ALL KTC data. Gets dynasty + redraft data with all league formats (1QB + Superflex) and all TEP levels (base, TEP, TEPP, TEPPP) in a single operation.
+      
+      **Ideal for cron jobs** since it ensures complete data coverage without needing multiple calls with different parameters.
+      
+      **Performance Note**: This is a comprehensive operation that may take several minutes to complete.
+      
+      No query parameters needed - this is truly comprehensive!
+    responses:
+      200:
+        description: Comprehensive refresh completed successfully
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+              example: 'Comprehensive refresh completed successfully'
+            timestamp:
+              type: string
+              format: date-time
+            results:
+              type: object
+              properties:
+                overall_status:
+                  type: string
+                  enum: ['success', 'partial_success', 'error']
+                dynasty:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                    players_count:
+                      type: integer
+                    db_count:
+                      type: integer
+                redraft:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                    players_count:
+                      type: integer
+                    db_count:
+                      type: integer
+            summary:
+              type: object
+              properties:
+                dynasty_players:
+                  type: integer
+                dynasty_saved:
+                  type: integer
+                redraft_players:
+                  type: integer
+                redraft_saved:
+                  type: integer
+                total_players:
+                  type: integer
+                total_saved:
+                  type: integer
+      500:
+        description: Server error during comprehensive refresh
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+              example: 'Internal server error during comprehensive refresh'
+            details:
+              type: string
     """
     try:
         # Verify database connection
@@ -494,13 +902,104 @@ def refresh_ktc_all():
 @with_error_handling
 def get_league_data(league_id: str):
     """
-    Get comprehensive league data (league info, rosters, users).
-
-    Args:
-        league_id: The Sleeper league ID
-
-    Returns complete league configuration, all rosters with player IDs, 
-    and user information. Checks database first, falls back to Sleeper API.
+    Get comprehensive league data
+    ---
+    tags:
+      - Sleeper Leagues
+    summary: Get comprehensive league data
+    description: |
+      Get comprehensive league data (league info, rosters, users). Returns complete league configuration, all rosters with player IDs, and user information. Checks database first, falls back to Sleeper API.
+    parameters:
+      - name: league_id
+        in: path
+        description: The Sleeper league ID
+        required: true
+        type: string
+        pattern: '^[0-9]+$'
+    responses:
+      200:
+        description: League data retrieved successfully
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['success']
+            data:
+              type: object
+              properties:
+                league:
+                  type: object
+                  properties:
+                    league_id:
+                      type: string
+                    name:
+                      type: string
+                    season:
+                      type: string
+                    total_rosters:
+                      type: integer
+                    status:
+                      type: string
+                rosters:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      roster_id:
+                        type: integer
+                      owner_id:
+                        type: string
+                      players:
+                        type: array
+                        items:
+                          type: string
+                users:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      user_id:
+                        type: string
+                      username:
+                        type: string
+                      display_name:
+                        type: string
+            source:
+              type: string
+              enum: ['database', 'sleeper_api']
+            database_saved:
+              type: boolean
+            timestamp:
+              type: string
+              format: date-time
+      404:
+        description: League not found
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+              example: 'Invalid league ID or failed to fetch league data'
+            details:
+              type: string
+            league_id:
+              type: string
+      500:
+        description: Server error
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+            details:
+              type: string
     """
     # Try to get from database first
     db_result = DatabaseManager.get_league_data(league_id)
@@ -546,13 +1045,72 @@ def get_league_data(league_id: str):
 @with_error_handling
 def get_league_rosters(league_id: str):
     """
-    Get league rosters data.
-
-    Args:
-        league_id: The Sleeper league ID
-
-    Returns:
-        JSON response with rosters data
+    Get league rosters
+    ---
+    tags:
+      - Sleeper Leagues
+    summary: Get league rosters
+    description: Get league rosters data for all teams in the league
+    parameters:
+      - name: league_id
+        in: path
+        description: The Sleeper league ID
+        required: true
+        type: string
+        pattern: '^[0-9]+$'
+    responses:
+      200:
+        description: Rosters retrieved successfully
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['success']
+            league_id:
+              type: string
+            rosters:
+              type: array
+              items:
+                type: object
+                properties:
+                  roster_id:
+                    type: integer
+                  owner_id:
+                    type: string
+                  players:
+                    type: array
+                    items:
+                      type: string
+            count:
+              type: integer
+            timestamp:
+              type: string
+              format: date-time
+      404:
+        description: League not found
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+            league_id:
+              type: string
+      500:
+        description: Server error
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+            details:
+              type: string
     """
     # First try to get full league data (uses caching)
     league_result = DatabaseManager.get_league_data(league_id)
@@ -591,13 +1149,77 @@ def get_league_rosters(league_id: str):
 @with_error_handling
 def get_league_users(league_id: str):
     """
-    Get league users data.
-
-    Args:
-        league_id: The Sleeper league ID
-
-    Returns:
-        JSON response with users data
+    Get league users
+    ---
+    tags:
+      - Sleeper Leagues
+    summary: Get league users
+    description: Get league users data for all participants in the league
+    parameters:
+      - name: league_id
+        in: path
+        description: The Sleeper league ID
+        required: true
+        type: string
+        pattern: '^[0-9]+$'
+    responses:
+      200:
+        description: Users retrieved successfully
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['success']
+            league_id:
+              type: string
+            users:
+              type: array
+              items:
+                type: object
+                properties:
+                  user_id:
+                    type: string
+                  username:
+                    type: string
+                  display_name:
+                    type: string
+                  avatar:
+                    type: string
+                  team_name:
+                    type: string
+            count:
+              type: integer
+            last_updated:
+              type: string
+              format: date-time
+            timestamp:
+              type: string
+              format: date-time
+      404:
+        description: League not found
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+            league_id:
+              type: string
+      500:
+        description: Server error
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+            details:
+              type: string
     """
     # First try to get full league data (uses caching)
     league_result = DatabaseManager.get_league_data(league_id)
@@ -636,13 +1258,87 @@ def get_league_users(league_id: str):
 @with_error_handling
 def refresh_league_data(league_id: str):
     """
-    Refresh all league data from Sleeper API (league info, rosters, users).
-
-    Args:  
-        league_id: The Sleeper league ID
-
-    Returns:
-        JSON response with comprehensive refresh results including users and rosters
+    Refresh league data
+    ---
+    tags:
+      - Sleeper Leagues
+    summary: Refresh league data
+    description: Refresh all league data from Sleeper API (league info, rosters, users)
+    parameters:
+      - name: league_id
+        in: path
+        description: The Sleeper league ID
+        required: true
+        type: string
+        pattern: '^[0-9]+$'
+    responses:
+      200:
+        description: League data refreshed successfully
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['success', 'partial_success', 'error']
+            timestamp:
+              type: string
+              format: date-time
+            league_id:
+              type: string
+            league_data:
+              type: object
+              properties:
+                status:
+                  type: string
+                save_result:
+                  type: object
+            users_data:
+              type: object
+              properties:
+                status:
+                  type: string
+                message:
+                  type: string
+            rosters_data:
+              type: object
+              properties:
+                status:
+                  type: string
+                message:
+                  type: string
+            errors:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  error:
+                    type: string
+      404:
+        description: League not found
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+            league_id:
+              type: string
+      500:
+        description: Server error
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+            details:
+              type: string
     """
     logger.info("League data refresh requested for league_id: %s", league_id)
 
@@ -710,17 +1406,100 @@ def refresh_league_data(league_id: str):
 @with_error_handling
 def get_research_data(season: str):
     """
-    Get player research data for a specific season.
-
-    Args:
-        season: The NFL season year (e.g., "2024")
-
-    Query parameters:
-        week (int): Week number (default: 1)
-        league_type (int): League type - 1=redraft, 2=dynasty (default: 2)
-
-    Returns comprehensive research metrics including rankings, projections, 
-    performance data, and statistical analysis. Checks database first.
+    Get player research data
+    ---
+    tags:
+      - Sleeper Research
+    summary: Get player research data
+    description: |
+      Get player research data for a specific season. Returns comprehensive research metrics including rankings, projections, performance data, and statistical analysis. Checks database first.
+    parameters:
+      - name: season
+        in: path
+        description: The NFL season year
+        required: true
+        type: string
+        pattern: '^[0-9]{4}$'
+      - name: week
+        in: query
+        description: Week number (1-18 for regular season)
+        required: false
+        type: integer
+        minimum: 1
+        maximum: 22
+        default: 1
+      - name: league_type
+        in: query
+        description: League type - 1 for redraft, 2 for dynasty
+        required: false
+        type: integer
+        enum: [1, 2]
+        default: 2
+    responses:
+      200:
+        description: Research data retrieved successfully
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['success']
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  season:
+                    type: string
+                  week:
+                    type: integer
+                  league_type:
+                    type: integer
+                  player_id:
+                    type: string
+                  research_data:
+                    type: object
+                    description: Research metrics and analytics data
+                  last_updated:
+                    type: string
+                    format: date-time
+            source:
+              type: string
+              enum: ['database', 'sleeper_api']
+            database_saved:
+              type: boolean
+            timestamp:
+              type: string
+              format: date-time
+      404:
+        description: Research data not found
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+              example: 'Failed to fetch research data'
+            details:
+              type: string
+            season:
+              type: string
+      500:
+        description: Server error
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+            details:
+              type: string
     """
     # Get query parameters
     week = int(request.args.get('week', 1))
@@ -771,17 +1550,87 @@ def get_research_data(season: str):
 @with_error_handling
 def refresh_research_data(season: str):
     """
-    Manually refresh research data from Sleeper API.
-
-    Query parameters:
-        week (int): Week number (default: 1)
-        league_type (int): League type (default: 2 for dynasty)
-
-    Args:
-        season: The NFL season year (e.g., "2024")
-
-    Returns:
-        JSON response with refresh results
+    Refresh research data
+    ---
+    tags:
+      - Sleeper Research
+    summary: Refresh research data
+    description: Manually refresh research data from Sleeper API for a specific season
+    parameters:
+      - name: season
+        in: path
+        description: The NFL season year
+        required: true
+        type: string
+        pattern: '^[0-9]{4}$'
+      - name: week
+        in: query
+        description: Week number (1-18 for regular season)
+        required: false
+        type: integer
+        minimum: 1
+        maximum: 22
+        default: 1
+      - name: league_type
+        in: query
+        description: League type - 1 for redraft, 2 for dynasty
+        required: false
+        type: integer
+        enum: [1, 2]
+        default: 2
+    responses:
+      200:
+        description: Research data refreshed successfully
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['success']
+            message:
+              type: string
+              example: 'Research data refreshed successfully'
+            season:
+              type: string
+            week:
+              type: integer
+            league_type:
+              type: integer
+            refresh_results:
+              type: object
+            timestamp:
+              type: string
+              format: date-time
+      400:
+        description: Invalid parameters or failed to refresh
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+              example: 'Failed to refresh research data'
+            details:
+              type: string
+            season:
+              type: string
+      500:
+        description: Server error
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+              example: 'Failed to save refreshed research data'
+            details:
+              type: string
+            season:
+              type: string
     """
     # Get query parameters
     week = int(request.args.get('week', 1))

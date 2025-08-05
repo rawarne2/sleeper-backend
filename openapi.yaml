@@ -1,0 +1,1119 @@
+openapi: 3.1.0
+info:
+  title: Sleeper Backend API
+  description: |
+    A comprehensive fantasy football API that aggregates data from **KeepTradeCut (KTC)** and **Sleeper API**.
+    
+    This API provides comprehensive fantasy football data by combining:
+    - 🏈 **KeepTradeCut (KTC)**: Player rankings and trade values (Dynasty & Redraft rankings, 1QB & Superflex league formats, TEP scoring variations)
+    - 🏈 **Sleeper API**: Player data & league management (Comprehensive player profiles, League management, Research data and projections)
+    
+    ## Performance Optimizations
+    - **Database Caching Strategy**: First API call fetches from external APIs and caches in database, subsequent calls served instantly from local cache
+    - **Response Time Guidelines**: First refresh call takes 30-60 seconds, cached data retrieval < 1 second, health checks < 100ms
+    - **Gunicorn Multi-Worker Setup**: 9 worker processes for concurrent request handling with load balancing
+  version: 1.0.0
+  contact:
+    name: API Support
+    url: https://github.com/rawarne2/sleeper-backend
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:5000
+    description: Development server
+  - url: https://sleeper-backend.vercel.app
+    description: Production server
+
+tags:
+  - name: Health
+    description: System health and status endpoints
+  - name: KTC Player Rankings
+    description: KeepTradeCut player rankings and values
+  - name: Sleeper Players
+    description: Sleeper player data management
+  - name: Sleeper Leagues
+    description: Sleeper league management endpoints
+  - name: Sleeper Research
+    description: Sleeper player research and analytics data
+  - name: Bulk Operations
+    description: Bulk refresh operations for scheduled tasks
+
+paths:
+  /api/ktc/health:
+    get:
+      tags:
+        - Health
+      summary: Database health check
+      description: Check API and database health status
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                database: "connected" 
+                timestamp: "2025-01-05T17:58:12.123456+00:00"
+        '500':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/ktc/refresh:
+    post:
+      tags:
+        - KTC Player Rankings
+      summary: Refresh KTC player rankings
+      description: |
+        Fetch fresh KTC rankings and store in database. Returns all player data including dynasty/redraft values, rankings, trends, and tiers.
+        
+        **Performance Note**: This operation takes 30-60 seconds as it fetches from external APIs.
+      operationId: refreshKTCRankings
+      parameters:
+        - $ref: '#/components/parameters/IsRedraft'
+        - $ref: '#/components/parameters/LeagueFormat'
+        - $ref: '#/components/parameters/TepLevel'
+      responses:
+        '200':
+          description: Rankings refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KTCRefreshResponse'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error during refresh
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/ktc/rankings:
+    get:
+      tags:
+        - KTC Player Rankings
+      summary: Get stored player rankings
+      description: |
+        Retrieve stored player rankings with filtering options. Returns comprehensive player data including KTC rankings, Sleeper data, physical attributes, career info, and injury status.
+        
+        **Performance Note**: Served from database cache, typically < 1 second response time.
+      operationId: getKTCRankings
+      parameters:
+        - $ref: '#/components/parameters/IsRedraft'
+        - $ref: '#/components/parameters/LeagueFormat'
+        - $ref: '#/components/parameters/TepLevel'
+      responses:
+        '200':
+          description: Rankings retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KTCRankingsResponse'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No rankings found for specified parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error during retrieval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/ktc/cleanup:
+    post:
+      tags:
+        - KTC Player Rankings
+      summary: Clean up incomplete data
+      description: Endpoint to clean up incomplete or corrupted data from the database
+      operationId: cleanupKTCData
+      parameters:
+        - $ref: '#/components/parameters/IsRedraft'
+        - $ref: '#/components/parameters/LeagueFormat'
+        - $ref: '#/components/parameters/TepLevel'
+      responses:
+        '200':
+          description: Cleanup completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CleanupResponse'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error during cleanup
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/ktc/refresh/all:
+    post:
+      tags:
+        - Bulk Operations
+      summary: Comprehensive KTC refresh
+      description: |
+        All KTC refresh - scrapes and saves ALL KTC data. Gets dynasty + redraft data with all league formats (1QB + Superflex) and all TEP levels (base, TEP, TEPP, TEPPP) in a single operation.
+        
+        **Ideal for cron jobs** since it ensures complete data coverage without needing multiple calls with different parameters.
+        
+        **Performance Note**: This is a comprehensive operation that may take several minutes to complete.
+      operationId: refreshAllKTCData
+      responses:
+        '200':
+          description: Comprehensive refresh completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComprehensiveRefreshResponse'
+        '500':
+          description: Server error during comprehensive refresh
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/sleeper/refresh:
+    post:
+      tags:
+        - Sleeper Players
+      summary: Refresh Sleeper player data
+      description: |
+        Refresh Sleeper player data and merge with existing KTC data. Returns comprehensive player data including physical attributes, career info, fantasy data, injury status, and metadata.
+      operationId: refreshSleeperData
+      responses:
+        '200':
+          description: Sleeper data refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SleeperRefreshResponse'
+        '500':
+          description: Server error during Sleeper refresh
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/sleeper/league/{league_id}:
+    get:
+      tags:
+        - Sleeper Leagues
+      summary: Get comprehensive league data
+      description: |
+        Get comprehensive league data (league info, rosters, users). Returns complete league configuration, all rosters with player IDs, and user information. Checks database first, falls back to Sleeper API.
+      operationId: getLeagueData
+      parameters:
+        - $ref: '#/components/parameters/LeagueId'
+      responses:
+        '200':
+          description: League data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeagueDataResponse'
+        '404':
+          description: League not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/sleeper/league/{league_id}/rosters:
+    get:
+      tags:
+        - Sleeper Leagues
+      summary: Get league rosters
+      description: Get league rosters data for all teams in the league
+      operationId: getLeagueRosters
+      parameters:
+        - $ref: '#/components/parameters/LeagueId'
+      responses:
+        '200':
+          description: Rosters retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RostersResponse'
+        '404':
+          description: League not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/sleeper/league/{league_id}/users:
+    get:
+      tags:
+        - Sleeper Leagues
+      summary: Get league users
+      description: Get league users data for all participants in the league
+      operationId: getLeagueUsers
+      parameters:
+        - $ref: '#/components/parameters/LeagueId'
+      responses:
+        '200':
+          description: Users retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsersResponse'
+        '404':
+          description: League not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/sleeper/league/{league_id}/refresh:
+    post:
+      tags:
+        - Sleeper Leagues
+      summary: Refresh league data
+      description: Refresh all league data from Sleeper API (league info, rosters, users)
+      operationId: refreshLeagueData
+      parameters:
+        - $ref: '#/components/parameters/LeagueId'
+      responses:
+        '200':
+          description: League data refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeagueRefreshResponse'
+        '404':
+          description: League not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/sleeper/players/research/{season}:
+    get:
+      tags:
+        - Sleeper Research
+      summary: Get player research data
+      description: |
+        Get player research data for a specific season. Returns comprehensive research metrics including rankings, projections, performance data, and statistical analysis. Checks database first.
+      operationId: getResearchData
+      parameters:
+        - $ref: '#/components/parameters/Season'
+        - $ref: '#/components/parameters/Week'
+        - $ref: '#/components/parameters/LeagueType'
+      responses:
+        '200':
+          description: Research data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchDataResponse'
+        '404':
+          description: Research data not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/sleeper/players/research/{season}/refresh:
+    post:
+      tags:
+        - Sleeper Research
+      summary: Refresh research data
+      description: Manually refresh research data from Sleeper API for a specific season
+      operationId: refreshResearchData
+      parameters:
+        - $ref: '#/components/parameters/Season'
+        - $ref: '#/components/parameters/Week'
+        - $ref: '#/components/parameters/LeagueType'
+      responses:
+        '200':
+          description: Research data refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchRefreshResponse'
+        '400':
+          description: Invalid parameters or failed to refresh
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  parameters:
+    IsRedraft:
+      name: is_redraft
+      in: query
+      description: Ranking type - 'true' for redraft (current season only), 'false' for dynasty (long-term player value)
+      required: false
+      schema:
+        type: string
+        enum: ['true', 'false']
+        default: 'false'
+      example: 'false'
+
+    LeagueFormat:
+      name: league_format
+      in: query
+      description: League format - '1qb' for standard leagues, 'superflex' for superflex leagues (can start 2 QBs)
+      required: false
+      schema:
+        type: string
+        enum: ['1qb', 'superflex']
+        default: '1qb'
+      example: 'superflex'
+
+    TepLevel:
+      name: tep_level
+      in: query
+      description: |
+        TEP (Tight End Premium) scoring level:
+        - '' (empty): Standard scoring
+        - 'tep': +0.5 points per TE reception
+        - 'tepp': +1.0 points per TE reception
+        - 'teppp': +1.5 points per TE reception
+      required: false
+      schema:
+        type: string
+        enum: ['', 'tep', 'tepp', 'teppp']
+        default: ''
+      example: 'tep'
+
+    LeagueId:
+      name: league_id
+      in: path
+      description: The Sleeper league ID
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9]+$'
+      example: '1210364682523656192'
+
+    Season:
+      name: season
+      in: path
+      description: The NFL season year
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9]{4}$'
+      example: '2024'
+
+    Week:
+      name: week
+      in: query
+      description: Week number (1-18 for regular season)
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 22
+        default: 1
+      example: 1
+
+    LeagueType:
+      name: league_type
+      in: query
+      description: League type - 1 for redraft, 2 for dynasty
+      required: false
+      schema:
+        type: integer
+        enum: [1, 2]
+        default: 2
+      example: 2
+
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - database
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: ['healthy', 'unhealthy']
+          description: Overall service health status
+        database:
+          type: string
+          enum: ['connected', 'connection_failed', 'error']
+          description: Database connection status
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of health check
+        error:
+          type: string
+          description: Error details if unhealthy
+
+    ErrorResponse:
+      type: object
+      required:
+        - status
+        - error
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: ['error']
+        error:
+          type: string
+          description: Error message
+        details:
+          type: string
+          description: Additional error details
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+
+    Player:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Internal player ID
+        playerName:
+          type: string
+          description: Player name
+        position:
+          type: string
+          enum: ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']
+          description: Player position
+        team:
+          type: string
+          description: Player team abbreviation
+        sleeper_player_id:
+          type: string
+          description: Sleeper API player ID
+        birth_date:
+          type: string
+          format: date
+          description: Player birth date
+        height:
+          type: string
+          description: Player height (e.g., "6'2\"")
+        weight:
+          type: string
+          description: Player weight (e.g., "220")
+        college:
+          type: string
+          description: Player college
+        years_exp:
+          type: integer
+          description: Years of NFL experience
+        number:
+          type: integer
+          description: Jersey number
+        injury_status:
+          type: string
+          description: Current injury status
+        full_name:
+          type: string
+          description: Player full name
+        status:
+          type: string
+          description: Player roster status
+        ktc:
+          $ref: '#/components/schemas/KTCData'
+        last_updated:
+          type: string
+          format: date-time
+          description: Last update timestamp
+
+    KTCData:
+      type: object
+      properties:
+        ktc_player_id:
+          type: integer
+          description: KTC internal player ID
+        age:
+          type: number
+          format: float
+          description: Player age
+        rookie:
+          type: string
+          enum: ['Yes', 'No']
+          description: Whether player is a rookie
+        oneQBValues:
+          $ref: '#/components/schemas/PlayerValues'
+        superflexValues:
+          $ref: '#/components/schemas/PlayerValues'
+        slug:
+          type: string
+          description: KTC player slug
+        draftYear:
+          type: integer
+          description: NFL draft year
+        byeWeek:
+          type: integer
+          description: Team bye week
+
+    PlayerValues:
+      type: object
+      properties:
+        value:
+          type: integer
+          description: Player trade value
+        rank:
+          type: integer
+          description: Overall rank
+        positionalRank:
+          type: integer
+          description: Position rank
+        overallTier:
+          type: integer
+          description: Overall tier (1-5)
+        positionalTier:
+          type: integer
+          description: Position tier (1-5)
+        overallTrend:
+          type: integer
+          description: Overall trend direction
+        positionalTrend:
+          type: integer
+          description: Position trend direction
+        startSitValue:
+          type: integer
+          description: Start/sit recommendation value
+        kept:
+          type: integer
+          description: Times kept in trades
+        traded:
+          type: integer
+          description: Times traded
+        cut:
+          type: integer
+          description: Times cut/dropped
+        tep:
+          $ref: '#/components/schemas/TEPValues'
+        tepp:
+          $ref: '#/components/schemas/TEPValues'
+        teppp:
+          $ref: '#/components/schemas/TEPValues'
+
+    TEPValues:
+      type: object
+      properties:
+        value:
+          type: integer
+          description: TEP-adjusted trade value
+        rank:
+          type: integer
+          description: TEP-adjusted overall rank
+        positionalRank:
+          type: integer
+          description: TEP-adjusted position rank
+        overallTier:
+          type: integer
+          description: TEP-adjusted overall tier
+        positionalTier:
+          type: integer
+          description: TEP-adjusted position tier
+
+    KTCRefreshResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Rankings refreshed successfully"
+        timestamp:
+          type: string
+          format: date-time
+        database_success:
+          type: boolean
+        file_saved:
+          type: boolean
+        s3_uploaded:
+          type: boolean
+        players:
+          type: array
+          items:
+            $ref: '#/components/schemas/Player'
+        operations_summary:
+          type: object
+          properties:
+            players_count:
+              type: integer
+            database_saved_count:
+              type: integer
+            file_saved:
+              type: boolean
+            s3_uploaded:
+              type: boolean
+
+    KTCRankingsResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        is_redraft:
+          type: boolean
+        league_format:
+          type: string
+          enum: ['1qb', 'superflex']
+        tep_level:
+          type: string
+          enum: ['', 'tep', 'tepp', 'teppp']
+        count:
+          type: integer
+        players:
+          type: array
+          items:
+            $ref: '#/components/schemas/Player'
+
+    CleanupResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Database cleanup completed"
+        timestamp:
+          type: string
+          format: date-time
+        cleanup_result:
+          type: object
+          properties:
+            status:
+              type: string
+            records_removed:
+              type: integer
+            configuration:
+              type: object
+
+    ComprehensiveRefreshResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Comprehensive refresh completed successfully"
+        timestamp:
+          type: string
+          format: date-time
+        results:
+          type: object
+          properties:
+            overall_status:
+              type: string
+              enum: ['success', 'partial_success', 'error']
+            dynasty:
+              type: object
+              properties:
+                status:
+                  type: string
+                players_count:
+                  type: integer
+                db_count:
+                  type: integer
+            redraft:
+              type: object
+              properties:
+                status:
+                  type: string
+                players_count:
+                  type: integer
+                db_count:
+                  type: integer
+        summary:
+          type: object
+          properties:
+            dynasty_players:
+              type: integer
+            dynasty_saved:
+              type: integer
+            redraft_players:
+              type: integer
+            redraft_saved:
+              type: integer
+            total_players:
+              type: integer
+            total_saved:
+              type: integer
+
+    SleeperRefreshResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Sleeper data refreshed and merged successfully"
+        timestamp:
+          type: string
+          format: date-time
+        sleeper_data_results:
+          type: object
+          properties:
+            total_sleeper_players:
+              type: integer
+            existing_records_before:
+              type: integer
+            ktc_players_updated:
+              type: integer
+            new_records_created:
+              type: integer
+            match_failures:
+              type: integer
+            total_processed:
+              type: integer
+        database_success:
+          type: boolean
+        merge_effective:
+          type: boolean
+
+    League:
+      type: object
+      properties:
+        id:
+          type: integer
+        league_id:
+          type: string
+          description: Sleeper league ID
+        name:
+          type: string
+          description: League name
+        season:
+          type: string
+          description: Season year
+        total_rosters:
+          type: integer
+          description: Number of teams in league
+        roster_positions:
+          type: array
+          items:
+            type: string
+          description: Required roster positions
+        scoring_settings:
+          type: object
+          description: League scoring settings
+        league_settings:
+          type: object
+          description: League configuration settings
+        status:
+          type: string
+          description: League status
+        draft_id:
+          type: string
+          description: Associated draft ID
+        last_updated:
+          type: string
+          format: date-time
+
+    Roster:
+      type: object
+      properties:
+        id:
+          type: integer
+        league_id:
+          type: string
+        roster_id:
+          type: integer
+          description: Team/roster ID within league
+        owner_id:
+          type: string
+          description: User ID of team owner
+        players:
+          type: array
+          items:
+            type: string
+          description: Array of player IDs on roster
+        starters:
+          type: array
+          items:
+            type: string
+          description: Array of starting player IDs
+        reserve:
+          type: array
+          items:
+            type: string
+          description: Array of reserve player IDs
+        taxi:
+          type: array
+          items:
+            type: string
+          description: Array of taxi squad player IDs
+        settings:
+          type: object
+          description: Roster-specific settings
+        last_updated:
+          type: string
+          format: date-time
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        league_id:
+          type: string
+        user_id:
+          type: string
+          description: Sleeper user ID
+        username:
+          type: string
+          description: Sleeper username
+        display_name:
+          type: string
+          description: Display name
+        avatar:
+          type: string
+          description: Avatar URL/ID
+        team_name:
+          type: string
+          description: Fantasy team name
+        user_metadata:
+          type: object
+          description: Additional user data
+        last_updated:
+          type: string
+          format: date-time
+
+    LeagueDataResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ['success']
+        data:
+          type: object
+          properties:
+            league:
+              $ref: '#/components/schemas/League'
+            rosters:
+              type: array
+              items:
+                $ref: '#/components/schemas/Roster'
+            users:
+              type: array
+              items:
+                $ref: '#/components/schemas/User'
+        source:
+          type: string
+          enum: ['database', 'sleeper_api']
+        database_saved:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+
+    RostersResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ['success']
+        league_id:
+          type: string
+        rosters:
+          type: array
+          items:
+            $ref: '#/components/schemas/Roster'
+        count:
+          type: integer
+        last_updated:
+          type: string
+          format: date-time
+        timestamp:
+          type: string
+          format: date-time
+
+    UsersResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ['success']
+        league_id:
+          type: string
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        count:
+          type: integer
+        last_updated:
+          type: string
+          format: date-time
+        timestamp:
+          type: string
+          format: date-time
+
+    LeagueRefreshResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ['success', 'partial_success', 'error']
+        timestamp:
+          type: string
+          format: date-time
+        league_id:
+          type: string
+        league_data:
+          type: object
+          properties:
+            status:
+              type: string
+            save_result:
+              type: object
+        users_data:
+          type: object
+          properties:
+            status:
+              type: string
+            message:
+              type: string
+        rosters_data:
+          type: object
+          properties:
+            status:
+              type: string
+            message:
+              type: string
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              error:
+                type: string
+
+    ResearchData:
+      type: object
+      properties:
+        id:
+          type: integer
+        season:
+          type: string
+        week:
+          type: integer
+        league_type:
+          type: integer
+        player_id:
+          type: string
+        research_data:
+          type: object
+          description: Research metrics and analytics data
+        last_updated:
+          type: string
+          format: date-time
+
+    ResearchDataResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ['success']
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResearchData'
+        source:
+          type: string
+          enum: ['database', 'sleeper_api']
+        database_saved:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+
+    ResearchRefreshResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ['success']
+        message:
+          type: string
+          example: "Research data refreshed successfully"
+        season:
+          type: string
+        week:
+          type: integer
+        league_type:
+          type: integer
+        refresh_results:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
+
+  examples:
+    KTCRefreshExample:
+      summary: KTC Refresh Request Example
+      description: Example of refreshing KTC data for dynasty superflex with TEP
+      value:
+        is_redraft: "false"
+        league_format: "superflex"
+        tep_level: "tep"
+
+    PlayerExample:
+      summary: Player Data Example
+      description: Example of a complete player object with KTC and Sleeper data
+      value:
+        playerName: "Josh Allen"
+        position: "QB"
+        team: "BUF"
+        sleeper_player_id: "4017"
+        birth_date: "1996-05-21"
