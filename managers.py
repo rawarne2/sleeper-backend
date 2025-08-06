@@ -870,6 +870,8 @@ class DatabaseManager:
                 'starters': json.dumps(roster_data.get('starters', [])),
                 'reserve': json.dumps(roster_data.get('reserve', [])),
                 'taxi': json.dumps(roster_data.get('taxi', [])),
+                'metadata': json.dumps(roster_data.get('metadata', {})),
+                'settings': json.dumps(roster_data.get('settings', {}))
             }
 
             result = DatabaseManager._upsert_record(
