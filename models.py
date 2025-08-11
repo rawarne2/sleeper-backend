@@ -134,16 +134,16 @@ class Player(db.Model):
             'number': self.number,
             'depth_chart_order': self.depth_chart_order,
             'depth_chart_position': self.depth_chart_position,
-            'fantasy_positions': json.loads(self.fantasy_positions) if self.fantasy_positions else None,
+            'fantasy_positions': self._safe_json_loads(self.fantasy_positions),
             'search_rank': self.search_rank,
             'high_school': self.high_school,
             'rookie_year': self.rookie_year,
             'hashtag': self.hashtag,
             'injury_status': self.injury_status,
             'injury_start_date': self.injury_start_date.isoformat() if self.injury_start_date else None,
-            'player_metadata': json.loads(self.player_metadata) if self.player_metadata else None,
+            'player_metadata': self._safe_json_loads(self.player_metadata),
             # Additional Sleeper fields
-            'competitions': json.loads(self.competitions) if self.competitions else None,
+            'competitions': self._safe_json_loads(self.competitions),
             'injury_body_part': self.injury_body_part,
             'injury_notes': self.injury_notes,
             'team_changed_at': self.team_changed_at.isoformat() if self.team_changed_at else None,
@@ -196,7 +196,7 @@ class Player(db.Model):
             'birthday': self.birthday,
             'draftYear': self.draftYear,
             'byeWeek': self.byeWeek,
-            'injury': json.loads(self.injury) if self.injury else None,
+            'injury': self._safe_json_loads(self.injury),
             # OneQB Values
             'oneQBValues': self.oneqb_values.to_dict() if self.oneqb_values else None,
             # Superflex Values
@@ -207,6 +207,17 @@ class Player(db.Model):
         result['ktc'] = ktc_data
 
         return result
+
+    def _safe_json_loads(self, json_str):
+        """Safely load JSON string, returning None if parsing fails."""
+        if not json_str:
+            return None
+        try:
+            return json.loads(json_str)
+        except (json.JSONDecodeError, TypeError) as e:
+            # Log the error but don't break the entire response
+            print(f"JSON parsing error for player {self.player_name}: {e}")
+            return None
 
 
 class SleeperLeague(db.Model):
