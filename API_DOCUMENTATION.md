@@ -88,14 +88,6 @@ POST /api/sleeper/players/research/{season}/refresh
 **POST /api/sleeper/players/research/{season}/refresh** - Refresh research
 - Same query parameters as GET endpoint
 
-### 🔄 Bulk Operations
-```
-POST /api/sleeper/refresh/all
-```
-Refresh multiple leagues and research data (for scheduled tasks)
-- Query Parameters:
-  - `leagues`: Comma-separated list of league IDs
-  - `season`: Season year (default: current year)
 
 ## 🎮 How to Use
 

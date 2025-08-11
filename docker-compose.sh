@@ -17,7 +17,9 @@ show_help() {
     echo "  help        Show this help message"
     echo ""
     echo "The application will be available at http://localhost:5000"
-    echo "Health check endpoint: http://localhost:5000/api/ktc/health"
+    echo "📖 Interactive API documentation: http://localhost:5000/docs/"
+    echo "📄 OpenAPI specification: http://localhost:5000/openapi.json"
+    echo "🏥 Health check endpoint: http://localhost:5000/api/ktc/health"
 }
 
 case "$1" in
@@ -59,4 +61,4 @@ case "$1" in
         show_help
         exit 1
         ;;
-esac 
+esac

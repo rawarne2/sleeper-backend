@@ -2,6 +2,12 @@
 
 A Flask-based API for scraping and serving fantasy football player rankings from KeepTradeCut (KTC).
 
+## Documentation
+
+- **Production** `https://sleeper-backend.vercel.app/docs`
+- **Local**`http://localhost:5000/docs`
+
+
 ## Features
 
 - **Player Rankings**: Scrape dynasty and redraft player rankings from KTC
@@ -33,6 +39,9 @@ Use the provided `docker-compose.sh` script to run everything in containers with
 ```
 
 The application will be available at `http://localhost:5000`
+
+**📖 Interactive API Documentation**: `http://localhost:5000/docs/`
+**📄 OpenAPI Specification**: `http://localhost:5000/openapi.json`
 
 ### Option 2: Local Development (Simple)
 
@@ -69,15 +78,36 @@ This application uses a **dual-database approach** for optimal development and d
 - Production deployments (Vercel) require PostgreSQL
 - Local development can use either database
 
+## Interactive API Documentation
+
+The application now includes **built-in interactive API documentation** powered by Swagger/OpenAPI:
+
+- **📖 Interactive Documentation**: Visit `http://localhost:5000/docs/` to explore and test all API endpoints directly in your browser
+- **🏠 Auto-redirect**: The root URL `http://localhost:5000/` automatically redirects to the documentation
+- **📄 OpenAPI Spec**: Machine-readable specification available at `http://localhost:5000/openapi.json`
+
+**Benefits of Interactive Documentation:**
+- ✅ Test all endpoints directly from the web interface
+- ✅ View detailed request/response schemas
+- ✅ No need to remember curl syntax
+- ✅ Real-time API validation and examples
+
 ## Using the API
 
-### 1. Check Health
+You can use the API in two ways:
+
+### Option 1: Interactive Documentation (Recommended)
+Visit `http://localhost:5000/docs/` in your browser to test endpoints interactively.
+
+### Option 2: Command Line (Advanced Users)
+
+#### 1. Check Health
 
 ```bash
 curl http://localhost:5000/api/ktc/health
 ```
 
-### 2. Load Rankings Data
+#### 2. Load Rankings Data
 
 ```bash
 # Superflex redraft rankings
@@ -87,7 +117,7 @@ curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex&is_r
 curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=1qb&is_redraft=false&tep_level=tep"
 ```
 
-### 3. Get Rankings
+#### 3. Get Rankings
 
 ```bash
 # Get the rankings you just loaded
@@ -131,7 +161,6 @@ curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=
 - `POST /api/sleeper/league/{league_id}/refresh` - Refresh specific league data
 - `GET /api/sleeper/players/research/{season}` - Get player research data
 - `POST /api/sleeper/players/research/{season}/refresh` - Refresh research data
-- `POST /api/sleeper/refresh/all` - Refresh all data (for scheduled tasks)
 
 ## API Parameters
 
