@@ -3,11 +3,11 @@ info:
   title: Sleeper Backend API
   description: |
     A comprehensive fantasy football API that aggregates data from **KeepTradeCut (KTC)** and **Sleeper API**.
-    
+
     This API provides comprehensive fantasy football data by combining:
     - 🏈 **KeepTradeCut (KTC)**: Player rankings and trade values (Dynasty & Redraft rankings, 1QB & Superflex league formats, TEP scoring variations)
     - 🏈 **Sleeper API**: Player data & league management (Comprehensive player profiles, League management, Research data and projections)
-    
+
     ## Performance Optimizations
     - **Database Caching Strategy**: First API call fetches from external APIs and caches in database, subsequent calls served instantly from local cache
     - **Response Time Guidelines**: First refresh call takes 30-60 seconds, cached data retrieval < 1 second, health checks < 100ms
@@ -39,6 +39,8 @@ tags:
     description: Sleeper player research and analytics data
   - name: Bulk Operations
     description: Bulk refresh operations for scheduled tasks
+  - name: Sleeper Weekly Stats
+    description: Sleeper weekly fantasy football stats and roster information
 
 paths:
   /api/ktc/health:
@@ -49,22 +51,22 @@ paths:
       description: Check API and database health status
       operationId: healthCheck
       responses:
-        '200':
+        "200":
           description: Service is healthy
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
+                $ref: "#/components/schemas/HealthResponse"
               example:
                 status: "healthy"
-                database: "connected" 
+                database: "connected"
                 timestamp: "2025-01-05T17:58:12.123456+00:00"
-        '500':
+        "500":
           description: Service is unhealthy
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/ktc/refresh:
     post:
@@ -73,32 +75,32 @@ paths:
       summary: Refresh KTC player rankings
       description: |
         Fetch fresh KTC rankings and store in database. Returns all player data including dynasty/redraft values, rankings, trends, and tiers.
-        
+
         **Performance Note**: This operation takes 30-60 seconds as it fetches from external APIs.
       operationId: refreshKTCRankings
       parameters:
-        - $ref: '#/components/parameters/IsRedraft'
-        - $ref: '#/components/parameters/LeagueFormat'
-        - $ref: '#/components/parameters/TepLevel'
+        - $ref: "#/components/parameters/IsRedraft"
+        - $ref: "#/components/parameters/LeagueFormat"
+        - $ref: "#/components/parameters/TepLevel"
       responses:
-        '200':
+        "200":
           description: Rankings refreshed successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/KTCRefreshResponse'
-        '400':
+                $ref: "#/components/schemas/KTCRefreshResponse"
+        "400":
           description: Invalid parameters
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Server error during refresh
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/ktc/rankings:
     get:
@@ -107,38 +109,38 @@ paths:
       summary: Get stored player rankings
       description: |
         Retrieve stored player rankings with filtering options. Returns comprehensive player data including KTC rankings, Sleeper data, physical attributes, career info, and injury status.
-        
+
         **Performance Note**: Served from database cache, typically < 1 second response time.
       operationId: getKTCRankings
       parameters:
-        - $ref: '#/components/parameters/IsRedraft'
-        - $ref: '#/components/parameters/LeagueFormat'
-        - $ref: '#/components/parameters/TepLevel'
+        - $ref: "#/components/parameters/IsRedraft"
+        - $ref: "#/components/parameters/LeagueFormat"
+        - $ref: "#/components/parameters/TepLevel"
       responses:
-        '200':
+        "200":
           description: Rankings retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/KTCRankingsResponse'
-        '400':
+                $ref: "#/components/schemas/KTCRankingsResponse"
+        "400":
           description: Invalid parameters
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
           description: No rankings found for specified parameters
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Server error during retrieval
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/ktc/cleanup:
     post:
@@ -148,28 +150,28 @@ paths:
       description: Endpoint to clean up incomplete or corrupted data from the database
       operationId: cleanupKTCData
       parameters:
-        - $ref: '#/components/parameters/IsRedraft'
-        - $ref: '#/components/parameters/LeagueFormat'
-        - $ref: '#/components/parameters/TepLevel'
+        - $ref: "#/components/parameters/IsRedraft"
+        - $ref: "#/components/parameters/LeagueFormat"
+        - $ref: "#/components/parameters/TepLevel"
       responses:
-        '200':
+        "200":
           description: Cleanup completed successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CleanupResponse'
-        '400':
+                $ref: "#/components/schemas/CleanupResponse"
+        "400":
           description: Invalid parameters
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Server error during cleanup
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/ktc/refresh/all:
     post:
@@ -178,24 +180,24 @@ paths:
       summary: Comprehensive KTC refresh
       description: |
         All KTC refresh - scrapes and saves ALL KTC data. Gets dynasty + redraft data with all league formats (1QB + Superflex) and all TEP levels (base, TEP, TEPP, TEPPP) in a single operation.
-        
+
         **Ideal for cron jobs** since it ensures complete data coverage without needing multiple calls with different parameters.
-        
+
         **Performance Note**: This is a comprehensive operation that may take several minutes to complete.
       operationId: refreshAllKTCData
       responses:
-        '200':
+        "200":
           description: Comprehensive refresh completed successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ComprehensiveRefreshResponse'
-        '500':
+                $ref: "#/components/schemas/ComprehensiveRefreshResponse"
+        "500":
           description: Server error during comprehensive refresh
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/sleeper/refresh:
     post:
@@ -206,18 +208,18 @@ paths:
         Refresh Sleeper player data and merge with existing KTC data. Returns comprehensive player data including physical attributes, career info, fantasy data, injury status, and metadata.
       operationId: refreshSleeperData
       responses:
-        '200':
+        "200":
           description: Sleeper data refreshed successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SleeperRefreshResponse'
-        '500':
+                $ref: "#/components/schemas/SleeperRefreshResponse"
+        "500":
           description: Server error during Sleeper refresh
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/sleeper/league/{league_id}:
     get:
@@ -228,26 +230,26 @@ paths:
         Get comprehensive league data (league info, rosters, users). Returns complete league configuration, all rosters with player IDs, and user information. Checks database first, falls back to Sleeper API.
       operationId: getLeagueData
       parameters:
-        - $ref: '#/components/parameters/LeagueId'
+        - $ref: "#/components/parameters/LeagueId"
       responses:
-        '200':
+        "200":
           description: League data retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LeagueDataResponse'
-        '404':
+                $ref: "#/components/schemas/LeagueDataResponse"
+        "404":
           description: League not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/sleeper/league/{league_id}/rosters:
     get:
@@ -257,26 +259,26 @@ paths:
       description: Get league rosters data for all teams in the league
       operationId: getLeagueRosters
       parameters:
-        - $ref: '#/components/parameters/LeagueId'
+        - $ref: "#/components/parameters/LeagueId"
       responses:
-        '200':
+        "200":
           description: Rosters retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RostersResponse'
-        '404':
+                $ref: "#/components/schemas/RostersResponse"
+        "404":
           description: League not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/sleeper/league/{league_id}/users:
     get:
@@ -286,26 +288,150 @@ paths:
       description: Get league users data for all participants in the league
       operationId: getLeagueUsers
       parameters:
-        - $ref: '#/components/parameters/LeagueId'
+        - $ref: "#/components/parameters/LeagueId"
       responses:
-        '200':
+        "200":
           description: Users retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UsersResponse'
-        '404':
+                $ref: "#/components/schemas/UsersResponse"
+        "404":
           description: League not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/sleeper/league/{league_id}/stats/week/{week}:
+    get:
+      tags:
+        - Sleeper Weekly Stats
+      summary: Get weekly stats for a specific week
+      description: |
+        Get weekly fantasy points and roster information for all players in a specific week.
+        Returns player scoring data including points, roster ID, and is_starter status.
+      parameters:
+        - $ref: "#/components/parameters/LeagueId"
+        - $ref: "#/components/parameters/Week"
+        - $ref: "#/components/parameters/Season"
+        - $ref: "#/components/parameters/LeagueType"
+        - name: average
+          in: query
+          description: Whether to return season averages (weeks 1-16 only)
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Weekly stats retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklyStatsResponse"
+        "404":
+          description: Weekly stats not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/sleeper/league/{league_id}/stats/week/{week}/refresh:
+    post:
+      tags:
+        - Sleeper Weekly Stats
+      summary: Refresh weekly stats for a specific week
+      description: |
+        Fetch fresh weekly stats data from Sleeper API for a specific week and save to database.
+        This endpoint fetches matchup data and extracts player scoring information.
+      parameters:
+        - $ref: "#/components/parameters/LeagueId"
+        - $ref: "#/components/parameters/Week"
+        - $ref: "#/components/parameters/Season"
+        - $ref: "#/components/parameters/LeagueType"
+      responses:
+        "200":
+          description: Weekly stats refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklyStatsRefreshResponse"
+        "400":
+          description: Invalid parameters or failed to refresh
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/sleeper/league/{league_id}/stats/seed:
+    post:
+      tags:
+        - Sleeper Weekly Stats
+      summary: Seed league stats information
+      description: |
+        Create or update league information needed for weekly stats tracking.
+        This should be called before fetching weekly stats to ensure proper league setup.
+      parameters:
+        - $ref: "#/components/parameters/LeagueId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                league_name:
+                  type: string
+                  description: The league name
+                  default: "Fantasy League"
+                season:
+                  type: string
+                  description: The NFL season year
+                  pattern: "^[0-9]{4}$"
+                  example: "2024"
+                scoring_settings:
+                  type: object
+                  description: League scoring settings
+              required:
+                - season
+      responses:
+        "200":
+          description: League stats seeded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeagueStatsSeedResponse"
+        "400":
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/sleeper/league/{league_id}/refresh:
     post:
@@ -315,26 +441,26 @@ paths:
       description: Refresh all league data from Sleeper API (league info, rosters, users)
       operationId: refreshLeagueData
       parameters:
-        - $ref: '#/components/parameters/LeagueId'
+        - $ref: "#/components/parameters/LeagueId"
       responses:
-        '200':
+        "200":
           description: League data refreshed successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LeagueRefreshResponse'
-        '404':
+                $ref: "#/components/schemas/LeagueRefreshResponse"
+        "404":
           description: League not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/sleeper/players/research/{season}:
     get:
@@ -345,28 +471,28 @@ paths:
         Get player research data for a specific season. Returns comprehensive research metrics including rankings, projections, performance data, and statistical analysis. Checks database first.
       operationId: getResearchData
       parameters:
-        - $ref: '#/components/parameters/Season'
-        - $ref: '#/components/parameters/Week'
-        - $ref: '#/components/parameters/LeagueType'
+        - $ref: "#/components/parameters/Season"
+        - $ref: "#/components/parameters/Week"
+        - $ref: "#/components/parameters/LeagueType"
       responses:
-        '200':
+        "200":
           description: Research data retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ResearchDataResponse'
-        '404':
+                $ref: "#/components/schemas/ResearchDataResponse"
+        "404":
           description: Research data not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/sleeper/players/research/{season}/refresh:
     post:
@@ -376,28 +502,28 @@ paths:
       description: Manually refresh research data from Sleeper API for a specific season
       operationId: refreshResearchData
       parameters:
-        - $ref: '#/components/parameters/Season'
-        - $ref: '#/components/parameters/Week'
-        - $ref: '#/components/parameters/LeagueType'
+        - $ref: "#/components/parameters/Season"
+        - $ref: "#/components/parameters/Week"
+        - $ref: "#/components/parameters/LeagueType"
       responses:
-        '200':
+        "200":
           description: Research data refreshed successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ResearchRefreshResponse'
-        '400':
+                $ref: "#/components/schemas/ResearchRefreshResponse"
+        "400":
           description: Invalid parameters or failed to refresh
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   parameters:
@@ -408,9 +534,9 @@ components:
       required: false
       schema:
         type: string
-        enum: ['true', 'false']
-        default: 'false'
-      example: 'false'
+        enum: ["true", "false"]
+        default: "false"
+      example: "false"
 
     LeagueFormat:
       name: league_format
@@ -419,9 +545,9 @@ components:
       required: false
       schema:
         type: string
-        enum: ['1qb', 'superflex']
-        default: '1qb'
-      example: 'superflex'
+        enum: ["1qb", "superflex"]
+        default: "1qb"
+      example: "superflex"
 
     TepLevel:
       name: tep_level
@@ -435,9 +561,9 @@ components:
       required: false
       schema:
         type: string
-        enum: ['', 'tep', 'tepp', 'teppp']
-        default: ''
-      example: 'tep'
+        enum: ["", "tep", "tepp", "teppp"]
+        default: ""
+      example: "tep"
 
     LeagueId:
       name: league_id
@@ -446,8 +572,8 @@ components:
       required: true
       schema:
         type: string
-        pattern: '^[0-9]+$'
-      example: '1210364682523656192'
+        pattern: "^[0-9]+$"
+      example: "1210364682523656192"
 
     Season:
       name: season
@@ -456,8 +582,8 @@ components:
       required: true
       schema:
         type: string
-        pattern: '^[0-9]{4}$'
-      example: '2024'
+        pattern: "^[0-9]{4}$"
+      example: "2024"
 
     Week:
       name: week
@@ -492,11 +618,11 @@ components:
       properties:
         status:
           type: string
-          enum: ['healthy', 'unhealthy']
+          enum: ["healthy", "unhealthy"]
           description: Overall service health status
         database:
           type: string
-          enum: ['connected', 'connection_failed', 'error']
+          enum: ["connected", "connection_failed", "error"]
           description: Database connection status
         timestamp:
           type: string
@@ -515,7 +641,7 @@ components:
       properties:
         status:
           type: string
-          enum: ['error']
+          enum: ["error"]
         error:
           type: string
           description: Error message
@@ -538,7 +664,7 @@ components:
           description: Player name
         position:
           type: string
-          enum: ['QB', 'RB', 'WR', 'TE', 'K', 'DEF']
+          enum: ["QB", "RB", "WR", "TE", "K", "DEF"]
           description: Player position
         team:
           type: string
@@ -575,7 +701,7 @@ components:
           type: string
           description: Player roster status
         ktc:
-          $ref: '#/components/schemas/KTCData'
+          $ref: "#/components/schemas/KTCData"
         last_updated:
           type: string
           format: date-time
@@ -593,12 +719,12 @@ components:
           description: Player age
         rookie:
           type: string
-          enum: ['Yes', 'No']
+          enum: ["Yes", "No"]
           description: Whether player is a rookie
         oneQBValues:
-          $ref: '#/components/schemas/PlayerValues'
+          $ref: "#/components/schemas/PlayerValues"
         superflexValues:
-          $ref: '#/components/schemas/PlayerValues'
+          $ref: "#/components/schemas/PlayerValues"
         slug:
           type: string
           description: KTC player slug
@@ -646,11 +772,11 @@ components:
           type: integer
           description: Times cut/dropped
         tep:
-          $ref: '#/components/schemas/TEPValues'
+          $ref: "#/components/schemas/TEPValues"
         tepp:
-          $ref: '#/components/schemas/TEPValues'
+          $ref: "#/components/schemas/TEPValues"
         teppp:
-          $ref: '#/components/schemas/TEPValues'
+          $ref: "#/components/schemas/TEPValues"
 
     TEPValues:
       type: object
@@ -689,7 +815,7 @@ components:
         players:
           type: array
           items:
-            $ref: '#/components/schemas/Player'
+            $ref: "#/components/schemas/Player"
         operations_summary:
           type: object
           properties:
@@ -712,16 +838,16 @@ components:
           type: boolean
         league_format:
           type: string
-          enum: ['1qb', 'superflex']
+          enum: ["1qb", "superflex"]
         tep_level:
           type: string
-          enum: ['', 'tep', 'tepp', 'teppp']
+          enum: ["", "tep", "tepp", "teppp"]
         count:
           type: integer
         players:
           type: array
           items:
-            $ref: '#/components/schemas/Player'
+            $ref: "#/components/schemas/Player"
 
     CleanupResponse:
       type: object
@@ -756,7 +882,7 @@ components:
           properties:
             overall_status:
               type: string
-              enum: ['success', 'partial_success', 'error']
+              enum: ["success", "partial_success", "error"]
             dynasty:
               type: object
               properties:
@@ -834,9 +960,6 @@ components:
         season:
           type: string
           description: Season year
-        total_rosters:
-          type: integer
-          description: Number of teams in league
         roster_positions:
           type: array
           items:
@@ -932,23 +1055,23 @@ components:
       properties:
         status:
           type: string
-          enum: ['success']
+          enum: ["success"]
         data:
           type: object
           properties:
             league:
-              $ref: '#/components/schemas/League'
+              $ref: "#/components/schemas/League"
             rosters:
               type: array
               items:
-                $ref: '#/components/schemas/Roster'
+                $ref: "#/components/schemas/Roster"
             users:
               type: array
               items:
-                $ref: '#/components/schemas/User'
+                $ref: "#/components/schemas/User"
         source:
           type: string
-          enum: ['database', 'sleeper_api']
+          enum: ["database", "sleeper_api"]
         database_saved:
           type: boolean
         timestamp:
@@ -960,13 +1083,13 @@ components:
       properties:
         status:
           type: string
-          enum: ['success']
+          enum: ["success"]
         league_id:
           type: string
         rosters:
           type: array
           items:
-            $ref: '#/components/schemas/Roster'
+            $ref: "#/components/schemas/Roster"
         count:
           type: integer
         last_updated:
@@ -981,13 +1104,13 @@ components:
       properties:
         status:
           type: string
-          enum: ['success']
+          enum: ["success"]
         league_id:
           type: string
         users:
           type: array
           items:
-            $ref: '#/components/schemas/User'
+            $ref: "#/components/schemas/User"
         count:
           type: integer
         last_updated:
@@ -1002,7 +1125,7 @@ components:
       properties:
         status:
           type: string
-          enum: ['success', 'partial_success', 'error']
+          enum: ["success", "partial_success", "error"]
         timestamp:
           type: string
           format: date-time
@@ -1064,14 +1187,14 @@ components:
       properties:
         status:
           type: string
-          enum: ['success']
+          enum: ["success"]
         data:
           type: array
           items:
-            $ref: '#/components/schemas/ResearchData'
+            $ref: "#/components/schemas/ResearchData"
         source:
           type: string
-          enum: ['database', 'sleeper_api']
+          enum: ["database", "sleeper_api"]
         database_saved:
           type: boolean
         timestamp:
@@ -1083,7 +1206,7 @@ components:
       properties:
         status:
           type: string
-          enum: ['success']
+          enum: ["success"]
         message:
           type: string
           example: "Research data refreshed successfully"
@@ -1095,6 +1218,80 @@ components:
           type: integer
         refresh_results:
           type: object
+        timestamp:
+          type: string
+          format: date-time
+
+    WeeklyStatsResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["success"]
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              player_id:
+                type: string
+              roster_id:
+                type: integer
+              points:
+                type: number
+              is_starter:
+                type: boolean
+              last_updated:
+                type: string
+                format: date-time
+        source:
+          type: string
+          enum: ["database", "sleeper_api"]
+        database_saved:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+
+    WeeklyStatsRefreshResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["success"]
+        message:
+          type: string
+          example: "Weekly stats refreshed successfully"
+        season:
+          type: string
+        week:
+          type: integer
+        league_type:
+          type: integer
+        refresh_results:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
+
+    LeagueStatsSeedResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["success"]
+        message:
+          type: string
+          example: "League stats seeded successfully"
+        action:
+          type: string
+          enum: ["created", "updated"]
+        league_id:
+          type: string
+        league_name:
+          type: string
+        season:
+          type: string
         timestamp:
           type: string
           format: date-time

@@ -5,13 +5,30 @@ A comprehensive fantasy football API that aggregates data from **KeepTradeCut (K
 ## 🚀 Quick Start
 
 1. **Start the server:**
+
    ```bash
    ./startup.sh
    ```
 
 2. **Server runs on:**
+
    ```
    http://localhost:5000
+   ```
+
+3. **Seed your data in the correct order:**
+
+   ```bash
+   # 1. First, seed Sleeper player data (foundation - takes 30-60 seconds)
+   curl -X POST "http://localhost:5000/api/sleeper/refresh"
+   
+   # 2. Then, merge KTC rankings into existing Sleeper players (fast - takes 5-10 seconds)
+   curl -X POST "http://localhost:5000/api/ktc/refresh/all"
+   
+   # 3. Finally, seed your league for weekly stats (optional)
+   curl -X POST "http://localhost:5000/api/sleeper/league/YOUR_LEAGUE_ID/stats/seed" \
+     -H "Content-Type: application/json" \
+     -d '{"league_name": "My League", "season": "2024", "league_type": "dynasty"}'
    ```
 
 ## 📋 API Overview
@@ -31,12 +48,15 @@ This API provides comprehensive fantasy football data by combining:
 ## 📚 Available Endpoints (13 total)
 
 ### 🏥 System Health
+
 ```
 GET /api/ktc/health
 ```
+
 Check API and database health status.
 
 ### 🏈 KTC Player Rankings
+
 ```
 POST /api/ktc/refresh
 GET /api/ktc/rankings
@@ -44,24 +64,30 @@ POST /api/ktc/cleanup
 ```
 
 **POST /api/ktc/refresh** - Refresh KTC rankings for specific configuration
+
 - Query Parameters:
   - `is_redraft`: "true" or "false" (default: "false")
   - `league_format`: "1qb" or "superflex" (default: "1qb")
   - `tep_level`: "", "tep", "tepp", or "teppp" (default: "")
 
 **GET /api/ktc/rankings** - Get stored rankings with filtering
+
 - Same query parameters as refresh endpoint
 
 **POST /api/ktc/cleanup** - Clean up incomplete data
+
 - Same query parameters as refresh endpoint
 
 ### 👤 Sleeper Player Data
+
 ```
 POST /api/sleeper/refresh
 ```
+
 Refresh and merge Sleeper player data with KTC data.
 
 ### 🏟️ Sleeper League Management
+
 ```
 GET /api/sleeper/league/{league_id}
 GET /api/sleeper/league/{league_id}/rosters
@@ -74,24 +100,53 @@ POST /api/sleeper/league/{league_id}/refresh
 **GET /api/sleeper/league/{league_id}/users** - Get users only
 **POST /api/sleeper/league/{league_id}/refresh** - Refresh league data
 
-### 📊 Sleeper Research Data
+### 📊 Sleeper Weekly Stats
+
+```
+GET /api/sleeper/league/{league_id}/stats/week/{week}
+POST /api/sleeper/league/{league_id}/stats/week/{week}/refresh
+POST /api/sleeper/league/{league_id}/stats/seed
+```
+
+**GET /api/sleeper/league/{league_id}/stats/week/{week}** - Get weekly stats for a specific week
+
+- Query Parameters:
+  - `season`: NFL season year (default: "2024")
+  - `league_type`: 1 for redraft, 2 for dynasty (default: 2)
+  - `average`: "true" to return season averages (weeks 1-16 only)
+
+**POST /api/sleeper/league/{league_id}/stats/week/{week}/refresh** - Refresh weekly stats from Sleeper API
+
+- Same query parameters as GET endpoint
+
+**POST /api/sleeper/league/{league_id}/stats/seed** - Seed league information
+
+- Request Body (JSON):
+  - `league_name`: League name (default: "Fantasy League")
+  - `season`: NFL season year (required)
+  - `scoring_settings`: League scoring settings object
+
+### 🔬 Sleeper Research Data
+
 ```
 GET /api/sleeper/players/research/{season}
 POST /api/sleeper/players/research/{season}/refresh
 ```
 
 **GET /api/sleeper/players/research/{season}** - Get research data
+
 - Query Parameters:
   - `week`: Week number (default: 1)
   - `league_type`: 1=redraft, 2=dynasty (default: 2)
 
 **POST /api/sleeper/players/research/{season}/refresh** - Refresh research
-- Same query parameters as GET endpoint
 
+- Same query parameters as GET endpoint
 
 ## 🎮 How to Use
 
 ### 1. **First-Time Setup**
+
 ```bash
 # Load KTC data first
 curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex"
@@ -103,14 +158,17 @@ curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&tep_level=t
 ### 2. **Parameter Examples**
 
 **League Formats:**
+
 - `1qb` - Standard leagues (only 1 QB can start)
 - `superflex` - Superflex leagues (can start 2 QBs, making QBs much more valuable)
 
 **Ranking Types:**
+
 - `is_redraft=false` - Dynasty (long-term player value, considers age)
 - `is_redraft=true` - Redraft (current season only)
 
 **TEP Levels:**
+
 - `tep_level=""` - Standard scoring
 - `tep_level=tep` - +0.5 points per TE reception
 - `tep_level=tepp` - +1.0 points per TE reception  
@@ -119,6 +177,7 @@ curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&tep_level=t
 ## 📊 Response Data Structure
 
 ### Player Data Example
+
 ```json
 {
   "playerName": "Josh Allen",
@@ -150,6 +209,7 @@ curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&tep_level=t
 ## 🔧 Usage Examples
 
 ### KTC Rankings
+
 ```bash
 # Dynasty Superflex with TEP
 curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=false&tep_level=tep"
@@ -162,6 +222,7 @@ curl "http://localhost:5000/api/ktc/rankings?league_format=1qb&is_redraft=false&
 ```
 
 ### League Management
+
 ```bash
 # Get league data
 curl "http://localhost:5000/api/sleeper/league/1210364682523656192"
@@ -174,6 +235,7 @@ curl -X POST "http://localhost:5000/api/sleeper/league/1210364682523656192/refre
 ```
 
 ### Research Data
+
 ```bash
 # Get 2024 dynasty research
 curl "http://localhost:5000/api/sleeper/players/research/2024?league_type=2"
@@ -185,16 +247,19 @@ curl "http://localhost:5000/api/sleeper/players/research/2024?week=10&league_typ
 ## ⚡ Performance Optimizations
 
 ### **Database Caching Strategy**
+
 - **First API call**: Data fetched from external APIs and cached in database
 - **Subsequent calls**: Data served instantly from local database cache
 - **Smart refresh**: Use refresh endpoints only when data needs updating
 
 ### **Response Time Guidelines**
+
 - **First refresh call**: 30-60 seconds (fetching from external APIs)
 - **Cached data retrieval**: < 1 second (from local database)
 - **Health checks**: < 100ms (database connection test)
 
 ### **Best Practices for Performance**
+
 ```bash
 # ❌ Don't call refresh endpoints repeatedly
 curl -X POST /api/ktc/refresh  # Takes 30-60 seconds
@@ -208,6 +273,7 @@ curl /api/sleeper/league/123456789 # Checks cache first, API fallback
 ```
 
 ### **Gunicorn Multi-Worker Setup**
+
 - **9 worker processes** for concurrent request handling
 - **Load balancing** across CPU cores
 - **Process isolation** prevents blocking between requests
@@ -215,26 +281,31 @@ curl /api/sleeper/league/123456789 # Checks cache first, API fallback
 ## 🚀 Getting Started
 
 1. **Install dependencies:**
+
    ```bash
    pip install -r requirements.txt
    ```
 
 2. **Start the server:**
+
    ```bash
    ./startup.sh
    ```
 
 3. **Test the API:**
+
    ```bash
    curl http://localhost:5000/api/ktc/health
    ```
 
 4. **Load initial data:**
+
    ```bash
    curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex"
    ```
 
 5. **Get player data:**
+
    ```bash
    curl "http://localhost:5000/api/ktc/rankings?league_format=superflex"
    ```

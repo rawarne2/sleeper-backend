@@ -27,7 +27,8 @@ class Player(db.Model):
     player_name = db.Column(db.String(100), nullable=False)
     position = db.Column(db.String(10), nullable=False)
     team = db.Column(db.String(10))
-    match_key = db.Column(db.String(150), index=True)  # normalized_name-position for efficient matching
+    # normalized_name-position for efficient matching
+    match_key = db.Column(db.String(150), index=True)
 
     # KTC data
     ktc_player_id = db.Column(db.Integer)  # KTC playerID field
@@ -56,7 +57,8 @@ class Player(db.Model):
     player_metadata = db.Column(db.Text)  # JSON string for additional metadata
 
     # Additional Sleeper API fields
-    competitions = db.Column(db.Text)  # array of unknown values. currently empty but may have values during season?
+    # array of unknown values. currently empty but may have values during season?
+    competitions = db.Column(db.Text)
     injury_body_part = db.Column(db.String(50))
     injury_notes = db.Column(db.Text)
     team_changed_at = db.Column(db.DateTime)
@@ -239,7 +241,6 @@ class SleeperLeague(db.Model):
     # sport = db.Column(db.String(10), default='nfl')
 
     # League configuration
-    total_rosters = db.Column(db.Integer)
     roster_positions = db.Column(db.Text)  # JSON string
     scoring_settings = db.Column(db.Text)  # JSON string
     league_settings = db.Column(db.Text)  # JSON string
@@ -267,7 +268,6 @@ class SleeperLeague(db.Model):
             'league_id': self.league_id,
             'name': self.name,
             'season': self.season,
-            'total_rosters': self.total_rosters,
             'roster_positions': json.loads(self.roster_positions) if self.roster_positions else None,
             'scoring_settings': json.loads(self.scoring_settings) if self.scoring_settings else None,
             'league_settings': json.loads(self.league_settings) if self.league_settings else None,
@@ -379,28 +379,73 @@ class SleeperUser(db.Model):
         }
 
 
-class SleeperResearch(db.Model):
+class SleeperWeeklyData(db.Model):
     """
-    SQLAlchemy model for Sleeper player research data.
+    SQLAlchemy model for Sleeper weekly player data.
 
-    Stores player research and rankings data from Sleeper's research endpoint.
+    Stores both research data and weekly fantasy points/roster information
+    for players from Sleeper league matchups, grouped by week.
     """
-    __tablename__ = 'sleeper_research'
+    __tablename__ = 'sleeper_weekly_data'
 
     # Primary key
     id = db.Column(db.Integer, primary_key=True)
 
-    # Research identification
+    # Weekly identification
     season = db.Column(db.String(4), nullable=False, index=True)
     week = db.Column(db.Integer, nullable=False, default=1)
-    league_type = db.Column(db.Integer, nullable=False,
-                            default=2)  # 2 for dynasty
+    league_type = db.Column(db.String(20), nullable=False,
+                            default='dynasty')  # 'dynasty' or 'redraft'
 
     # Player identification
     player_id = db.Column(db.String(20), nullable=False, index=True)
 
-    # Research data
-    research_data = db.Column(db.Text)  # JSON string of research metrics
+    # Weekly scoring data
+    points = db.Column(db.Numeric(6, 2))  # Fantasy points scored
+    roster_id = db.Column(db.Integer)  # Sleeper roster ID
+    # Whether player was in starting lineup
+    is_starter = db.Column(db.Boolean, default=False)
+
+    # Research data fields (broken out from JSON)
+    # Projections and analysis data
+    projected_points = db.Column(db.Numeric(6, 2))  # Projected fantasy points
+    projected_rank = db.Column(db.Integer)  # Projected positional rank
+    projected_tier = db.Column(db.Integer)  # Projected tier
+    actual_rank = db.Column(db.Integer)  # Actual positional rank
+    actual_tier = db.Column(db.Integer)  # Actual tier
+
+    # Performance metrics
+    snap_count = db.Column(db.Integer)  # Number of snaps played
+    snap_percentage = db.Column(db.Numeric(5, 2))  # Snap percentage
+    target_share = db.Column(db.Numeric(5, 2))  # Target share percentage
+    air_yards = db.Column(db.Integer)  # Air yards
+    yards_after_catch = db.Column(db.Integer)  # Yards after catch
+
+    # Advanced metrics
+    ppr_points = db.Column(db.Numeric(6, 2))  # PPR points
+    half_ppr_points = db.Column(db.Numeric(6, 2))  # Half PPR points
+    standard_points = db.Column(db.Numeric(6, 2))  # Standard scoring points
+
+    # Matchup context
+    matchup_id = db.Column(db.String(20))  # Sleeper matchup ID
+    opponent_roster_id = db.Column(db.Integer)  # Opponent roster ID
+    home_away = db.Column(db.String(10))  # 'home' or 'away'
+
+    # Weather and field conditions
+    weather_condition = db.Column(db.String(50))  # Weather conditions
+    temperature = db.Column(db.Integer)  # Temperature in Fahrenheit
+    wind_speed = db.Column(db.Integer)  # Wind speed in mph
+
+    # Additional context
+    game_started = db.Column(db.Boolean, default=True)  # Whether game started
+    # Whether game finished
+    game_finished = db.Column(db.Boolean, default=True)
+    injury_status = db.Column(db.String(50))  # Injury status for the week
+    practice_status = db.Column(db.String(50))  # Practice participation status
+
+    # Raw research data (JSON backup)
+    # JSON string for additional research data
+    research_data = db.Column(db.Text)
 
     # Metadata
     last_updated = db.Column(db.DateTime, nullable=False,
@@ -408,17 +453,99 @@ class SleeperResearch(db.Model):
 
     # Unique constraint for season + week + league_type + player_id
     __table_args__ = (db.UniqueConstraint('season', 'week',
-                      'league_type', 'player_id', name='_research_unique_uc'),)
+                      'league_type', 'player_id', name='_weekly_data_unique_uc'),)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert research object to dictionary for API responses."""
+        """Convert weekly data object to dictionary for API responses."""
         return {
             'id': self.id,
             'season': self.season,
             'week': self.week,
             'league_type': self.league_type,
             'player_id': self.player_id,
-            'research_data': json.loads(self.research_data) if self.research_data else {},
+            'points': float(self.points) if self.points else 0.0,
+            'roster_id': self.roster_id,
+            'is_starter': self.is_starter,
+            'projected_points': float(self.projected_points) if self.projected_points else None,
+            'projected_rank': self.projected_rank,
+            'projected_tier': self.projected_tier,
+            'actual_rank': self.actual_rank,
+            'actual_tier': self.actual_tier,
+            'snap_count': self.snap_count,
+            'snap_percentage': float(self.snap_percentage) if self.snap_percentage else None,
+            'target_share': float(self.target_share) if self.target_share else None,
+            'air_yards': self.air_yards,
+            'yards_after_catch': self.yards_after_catch,
+            'ppr_points': float(self.ppr_points) if self.ppr_points else None,
+            'half_ppr_points': float(self.half_ppr_points) if self.half_ppr_points else None,
+            'standard_points': float(self.standard_points) if self.standard_points else None,
+            'matchup_id': self.matchup_id,
+            'opponent_roster_id': self.opponent_roster_id,
+            'home_away': self.home_away,
+            'weather_condition': self.weather_condition,
+            'temperature': self.temperature,
+            'wind_speed': self.wind_speed,
+            'game_started': self.game_started,
+            'game_finished': self.game_finished,
+            'injury_status': self.injury_status,
+            'practice_status': self.practice_status,
+            'research_data': self._safe_json_loads(self.research_data),
+            'last_updated': self.last_updated.isoformat() if self.last_updated else None
+        }
+
+    def _safe_json_loads(self, json_str):
+        """Safely load JSON string, returning None if parsing fails."""
+        if not json_str:
+            return None
+        try:
+            return json.loads(json_str)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+
+class SleeperLeagueStats(db.Model):
+    """
+    SQLAlchemy model for storing Sleeper league information needed for weekly stats.
+
+    This model stores league IDs and metadata to enable fetching weekly matchup data.
+    """
+    __tablename__ = 'sleeper_league_stats'
+
+    # Primary key
+    id = db.Column(db.Integer, primary_key=True)
+
+    # League identification
+    league_id = db.Column(db.String(20), nullable=False,
+                          unique=True, index=True)
+    league_name = db.Column(db.String(200))
+    season = db.Column(db.String(4), nullable=False, index=True)
+    league_type = db.Column(db.String(20), nullable=False,
+                            default='dynasty')  # 'dynasty' or 'redraft'
+
+    # League configuration
+    scoring_settings = db.Column(db.Text)  # JSON string
+
+    # Stats tracking
+    # Track last week data was fetched
+    last_week_updated = db.Column(db.Integer, default=0)
+    # Usually 18 weeks (17 regular + 1 playoff)
+    total_weeks_available = db.Column(db.Integer, default=18)
+
+    # Metadata
+    last_updated = db.Column(db.DateTime, nullable=False,
+                             default=lambda: datetime.now(UTC))
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert league stats object to dictionary for API responses."""
+        return {
+            'id': self.id,
+            'league_id': self.league_id,
+            'league_name': self.league_name,
+            'season': self.season,
+            'league_type': self.league_type,
+            'scoring_settings': json.loads(self.scoring_settings) if self.scoring_settings else {},
+            'last_week_updated': self.last_week_updated,
+            'total_weeks_available': self.total_weeks_available,
             'last_updated': self.last_updated.isoformat() if self.last_updated else None
         }
 

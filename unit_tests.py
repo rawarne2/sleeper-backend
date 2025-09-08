@@ -1,3 +1,5 @@
+from app import app
+from models import db, Player as PlayerModel, SleeperLeague, SleeperRoster, SleeperUser
 import os
 import pytest
 import json
@@ -6,9 +8,6 @@ from typing import TypedDict, List, Union, Literal, Optional
 
 # Set test database URI before importing app
 os.environ['TEST_DATABASE_URI'] = 'sqlite:///:memory:'
-
-from models import db, Player as PlayerModel, SleeperLeague, SleeperRoster, SleeperUser, SleeperResearch
-from app import app
 
 
 # Type definitions for our API responses
@@ -55,8 +54,6 @@ def sample_player(client):
             player_name="Josh Allen",
             position="QB",
             team="BUF",
-            league_format="superflex",
-            is_redraft=False,
             age=28.0,
             rookie="No",
             sleeper_player_id="4881",
@@ -75,7 +72,7 @@ def test_health_check_endpoint(client):
     """Test health check endpoint returns proper status."""
     response = client.get('/api/ktc/health')
     assert response.status_code == 200
-    
+
     data = json.loads(response.data)
     assert 'status' in data
     assert 'database' in data
@@ -90,7 +87,8 @@ def test_health_check_endpoint(client):
 
 def test_ktc_refresh_endpoint_exists(client):
     """Test that the KTC refresh endpoint exists and accepts POST requests."""
-    response = client.post('/api/ktc/refresh?league_format=superflex&tep_level=tep')
+    response = client.post(
+        '/api/ktc/refresh?league_format=superflex&tep_level=tep')
     # Either success or scraping error (expected in test environment)
     assert response.status_code in [200, 500]
 
@@ -126,7 +124,8 @@ def test_ktc_refresh_all_endpoint(client):
 def test_ktc_rankings_endpoint_exists(client):
     """Test that the KTC rankings endpoint exists."""
     response = client.get('/api/ktc/rankings')
-    assert response.status_code in [200, 404, 500]  # Either data exists, not found, or database error
+    # Either data exists, not found, or database error
+    assert response.status_code in [200, 404, 500]
 
 
 def test_ktc_rankings_parameter_validation(client):
@@ -146,10 +145,11 @@ def test_ktc_rankings_parameter_validation(client):
 
 def test_ktc_rankings_with_data(client, sample_player):
     """Test KTC rankings endpoint returns data when available."""
-    response = client.get('/api/ktc/rankings?league_format=superflex&is_redraft=false')
+    response = client.get(
+        '/api/ktc/rankings?league_format=superflex&is_redraft=false')
     # May return 500 due to database query issues in test environment
     assert response.status_code in [200, 404, 500]
-    
+
     if response.status_code == 200:
         data = json.loads(response.data)
         assert 'players' in data
@@ -162,8 +162,10 @@ def test_ktc_rankings_with_data(client, sample_player):
 
 def test_ktc_cleanup_endpoint(client):
     """Test KTC cleanup endpoint."""
-    response = client.post('/api/ktc/cleanup?league_format=superflex&tep_level=tep')
-    assert response.status_code in [200, 500]  # Either success or database error
+    response = client.post(
+        '/api/ktc/cleanup?league_format=superflex&tep_level=tep')
+    # Either success or database error
+    assert response.status_code in [200, 500]
 
 
 # ============================================================================
@@ -185,7 +187,7 @@ def test_sleeper_league_endpoint_invalid_id(client):
     """Test Sleeper league endpoint with invalid league ID."""
     response = client.get('/api/sleeper/league/invalid_id')
     assert response.status_code == 404
-    
+
     data = json.loads(response.data)
     assert 'status' in data
     assert data['status'] == 'error'
@@ -196,7 +198,7 @@ def test_sleeper_league_rosters_endpoint_invalid_id(client):
     """Test Sleeper league rosters endpoint with invalid league ID."""
     response = client.get('/api/sleeper/league/invalid_id/rosters')
     assert response.status_code == 404
-    
+
     data = json.loads(response.data)
     assert 'status' in data
     assert data['status'] == 'error'
@@ -206,7 +208,7 @@ def test_sleeper_league_users_endpoint_invalid_id(client):
     """Test Sleeper league users endpoint with invalid league ID."""
     response = client.get('/api/sleeper/league/invalid_id/users')
     assert response.status_code == 404
-    
+
     data = json.loads(response.data)
     assert 'status' in data
     assert data['status'] == 'error'
@@ -227,7 +229,7 @@ def test_sleeper_research_endpoint_invalid_season(client):
     """Test Sleeper research endpoint with invalid season."""
     response = client.get('/api/sleeper/players/research/invalid')
     assert response.status_code == 404
-    
+
     data = json.loads(response.data)
     assert 'status' in data
     assert data['status'] == 'error'
@@ -242,7 +244,8 @@ def test_sleeper_research_endpoint_valid_season(client):
 
 def test_sleeper_research_endpoint_with_parameters(client):
     """Test Sleeper research endpoint with query parameters."""
-    response = client.get('/api/sleeper/players/research/2024?week=10&league_type=1')
+    response = client.get(
+        '/api/sleeper/players/research/2024?week=10&league_type=1')
     # Either success or API error (expected in test environment)
     assert response.status_code in [200, 404, 500]
 
@@ -256,7 +259,8 @@ def test_sleeper_research_refresh_endpoint(client):
 
 def test_sleeper_research_refresh_with_parameters(client):
     """Test Sleeper research refresh endpoint with parameters."""
-    response = client.post('/api/sleeper/players/research/2024/refresh?week=5&league_type=2')
+    response = client.post(
+        '/api/sleeper/players/research/2024/refresh?week=5&league_type=2')
     # Either success or API error (expected in test environment)
     assert response.status_code in [200, 400, 500]
 
@@ -276,7 +280,7 @@ def test_wrong_http_method(client):
     # Try GET on POST-only endpoint
     response = client.get('/api/ktc/refresh')
     assert response.status_code == 405
-    
+
     # Try POST on GET-only endpoint
     response = client.post('/api/ktc/rankings')
     assert response.status_code == 405
@@ -293,8 +297,6 @@ def test_player_model_creation(client):
             player_name="Christian McCaffrey",
             position="RB",
             team="SF",
-            league_format="1qb",
-            is_redraft=True,
             age=27.5,
             rookie="No",
             sleeper_player_id="4035",
@@ -302,14 +304,12 @@ def test_player_model_creation(client):
         )
         db.session.add(player)
         db.session.commit()
-        
+
         # Test to_dict method
         player_dict = player.to_dict()
-        assert player_dict['Player Name'] == "Christian McCaffrey"
-        assert player_dict['Position'] == "RB"
-        assert player_dict['Team'] == "SF"
-        assert player_dict['league_format'] == "1qb"
-        assert player_dict['is_redraft'] is True
+        assert player_dict['playerName'] == "Christian McCaffrey"
+        assert player_dict['position'] == "RB"
+        assert player_dict['team'] == "SF"
 
 
 def test_sleeper_league_model_creation(client):
@@ -319,19 +319,17 @@ def test_sleeper_league_model_creation(client):
             league_id="1210364682523656192",
             name="Test League",
             season="2025",
-            total_rosters=12,
             status="in_season",
             last_updated=datetime.now(UTC)
         )
         db.session.add(league)
         db.session.commit()
-        
+
         # Test to_dict method
         league_dict = league.to_dict()
         assert league_dict['league_id'] == "1210364682523656192"
         assert league_dict['name'] == "Test League"
         assert league_dict['season'] == "2025"
-        assert league_dict['total_rosters'] == 12
 
 
 def test_sleeper_roster_model_creation(client):
@@ -346,7 +344,7 @@ def test_sleeper_roster_model_creation(client):
         )
         db.session.add(league)
         db.session.commit()
-        
+
         # Then create a roster
         roster = SleeperRoster(
             league_id="1210364682523656192",
@@ -358,7 +356,7 @@ def test_sleeper_roster_model_creation(client):
         )
         db.session.add(roster)
         db.session.commit()
-        
+
         # Test to_dict method
         roster_dict = roster.to_dict()
         assert roster_dict['league_id'] == "1210364682523656192"
@@ -380,7 +378,7 @@ def test_sleeper_user_model_creation(client):
         )
         db.session.add(league)
         db.session.commit()
-        
+
         # Then create a user
         user = SleeperUser(
             league_id="1210364682523656192",
@@ -391,36 +389,13 @@ def test_sleeper_user_model_creation(client):
         )
         db.session.add(user)
         db.session.commit()
-        
+
         # Test to_dict method
         user_dict = user.to_dict()
         assert user_dict['league_id'] == "1210364682523656192"
         assert user_dict['user_id'] == "736083244801474560"
         assert user_dict['username'] == "testuser"
         assert user_dict['display_name'] == "Test User"
-
-
-def test_sleeper_research_model_creation(client):
-    """Test SleeperResearch model creation and to_dict method."""
-    with app.app_context():
-        research = SleeperResearch(
-            season="2024",
-            week=1,
-            league_type=2,
-            player_id="4881",
-            research_data='{"rank": 1, "value": 100}',
-            last_updated=datetime.now(UTC)
-        )
-        db.session.add(research)
-        db.session.commit()
-        
-        # Test to_dict method
-        research_dict = research.to_dict()
-        assert research_dict['season'] == "2024"
-        assert research_dict['week'] == 1
-        assert research_dict['league_type'] == 2
-        assert research_dict['player_id'] == "4881"
-        assert research_dict['research_data'] == {"rank": 1, "value": 100}
 
 
 # ============================================================================
@@ -432,7 +407,7 @@ def test_api_blueprint_registration(client):
     # Test that /api routes are accessible
     response = client.get('/api/ktc/health')
     assert response.status_code == 200
-    
+
     # Test that non-api routes return 404
     response = client.get('/ktc/health')
     assert response.status_code == 404

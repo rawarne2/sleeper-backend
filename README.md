@@ -7,13 +7,82 @@ A Flask-based API for scraping and serving fantasy football player rankings from
 - **Production** `https://sleeper-backend.vercel.app/docs`
 - **Local**`http://localhost:5000/docs`
 
+## 🚀 Features
 
-## Features
-
-- **Player Rankings**: Scrape dynasty and redraft player rankings from KTC
-- **Multiple Formats**: Support for 1QB and Superflex league formats  
+- **KTC Integration**: Player rankings and trade values from KeepTradeCut
+- **Sleeper Integration**: Player profiles and league management from Sleeper API
 - **TEP Support**: Tight End Premium scoring (tep, tepp, teppp)
-- **Database Storage**: PostgreSQL for production/Docker, SQLite for development/testing
+- **Multiple Formats**: 1QB and Superflex league support
+- **Dynasty & Redraft**: Both ranking types supported
+- **Weekly Stats**: Fantasy points and roster data from Sleeper matchups
+- **Season Averages**: Calculate player averages (weeks 1-16)
+- **Database Caching**: Fast response times with persistent storage
+
+## 📊 Weekly Stats
+
+The project now includes weekly fantasy football stats functionality that fetches data from Sleeper league matchups. This allows you to:
+
+- **Track weekly performance**: Get fantasy points for all players each week
+- **Calculate season averages**: Compute player averages across weeks 1-16 (regular season)
+- **Monitor roster changes**: Track which players started vs. sat each week
+- **Historical analysis**: Store and query data across multiple seasons
+
+### Weekly Stats Endpoints
+
+```bash
+# Seed league information (run once per league)
+POST /api/sleeper/league/{league_id}/stats/seed
+
+# Refresh weekly stats for a specific week
+POST /api/sleeper/league/{league_id}/stats/week/{week}/refresh
+
+# Get weekly stats for a specific week
+GET /api/sleeper/league/{league_id}/stats/week/{week}
+
+# Get season averages (weeks 1-16 only)
+GET /api/sleeper/league/{league_id}/stats/week/{week}?average=true
+```
+
+### Example Usage
+
+```bash
+# 1. First, seed Sleeper player data (foundation - takes 30-60 seconds)
+curl -X POST "http://localhost:5000/api/sleeper/refresh"
+
+# 2. Then, merge KTC rankings into existing Sleeper players (fast - takes 5-10 seconds)
+curl -X POST "http://localhost:5000/api/ktc/refresh/all"
+
+# 3. Seed your league (replace with your league ID, league name, and season)
+curl -X POST "http://localhost:5000/api/sleeper/league/1050831680350568448/stats/seed" \
+  -H "Content-Type: application/json" \
+  -d '{"league_name": "My League", "season": "2024", "league_type": "dynasty"}'
+
+# 4. Refresh week 1 stats
+curl -X POST "http://localhost:5000/api/sleeper/league/1050831680350568448/stats/week/1/refresh?season=2024&league_type=dynasty"
+
+# 5. Get week 1 stats
+curl "http://localhost:5000/api/sleeper/league/1050831680350568448/stats/week/1?season=2024&league_type=dynasty"
+
+# 6. Get season averages
+curl "http://localhost:5000/api/sleeper/league/1050831680350568448/stats/week/1?season=2024&league_type=dynasty&average=true"
+```
+
+### Data Structure
+
+Weekly stats include:
+
+- **Player ID**: Sleeper player identifier
+- **Fantasy Points**: Decimal points scored (e.g., 26.08)
+- **Roster ID**: Which team the player belongs to
+- **Starter Status**: Whether the player was in the starting lineup
+- **Week & Season**: Temporal context for the data
+
+### Notes
+
+- **Weeks 1-16**: Only regular season weeks are used for average calculations
+- **Data Persistence**: All stats are stored in the database for fast retrieval
+- **League Setup**: Run the seed endpoint once per league before fetching stats
+- **Cron Jobs**: Future implementation will include automated weekly updates
 
 ## Quick Start
 
@@ -87,6 +156,7 @@ The application now includes **built-in interactive API documentation** powered 
 - **📄 OpenAPI Spec**: Machine-readable specification available at `http://localhost:5000/openapi.json`
 
 **Benefits of Interactive Documentation:**
+
 - ✅ Test all endpoints directly from the web interface
 - ✅ View detailed request/response schemas
 - ✅ No need to remember curl syntax
@@ -97,6 +167,7 @@ The application now includes **built-in interactive API documentation** powered 
 You can use the API in two ways:
 
 ### Option 1: Interactive Documentation (Recommended)
+
 Visit `http://localhost:5000/docs/` in your browser to test endpoints interactively.
 
 ### Option 2: Command Line (Advanced Users)
@@ -130,186 +201,4 @@ curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=
 |--------|---------|
 | `docker-compose.sh` | Manage Docker containers with PostgreSQL (up, down, logs, status, clean) |
 | `startup.sh` | Start Flask application locally with SQLite |
-| `run_tests.sh` | Run the test suite |
-| `setup_postgres.py` | Set up PostgreSQL databases (for advanced local PostgreSQL setup) |
-
-## Setup Comparison
-
-| Feature | Local (`./startup.sh`) | Docker (`./docker-compose.sh`) |
-|---------|----------------------|-------------------------------|
-| Database | **SQLite** (file-based) | **PostgreSQL** (containerized) |
-| Setup | Zero setup required | Docker required |
-| Performance | Fast startup | Production-ready |
-| Use Case | Development/Testing | Production/Team development |
-| Data Persistence | Local file | Container volume |
-
-## API Endpoints
-
-### KTC (KeepTradeCut) Rankings
-
-- `POST /api/ktc/refresh` - Load fresh rankings data
-- `GET /api/ktc/rankings` - Get stored rankings
-- `POST /api/ktc/cleanup` - Clean up database
-- `GET /api/ktc/health` - Check database health
-
-### Sleeper API Integration
-
-- `POST /api/sleeper/refresh` - Refresh Sleeper player data
-- `GET /api/sleeper/league/{league_id}` - Get league data (info, rosters, users)
-- `GET /api/sleeper/league/{league_id}/rosters` - Get league rosters only
-- `GET /api/sleeper/league/{league_id}/users` - Get league users only
-- `POST /api/sleeper/league/{league_id}/refresh` - Refresh specific league data
-- `GET /api/sleeper/players/research/{season}` - Get player research data
-- `POST /api/sleeper/players/research/{season}/refresh` - Refresh research data
-
-## API Parameters
-
-**League Format:**
-
-- `1qb` - Standard 1 quarterback leagues (only 1 QB can be started)
-- `superflex` - Superflex/2QB leagues (can start 2 QBs or 1 QB + flex player)
-
-*Note: Superflex leagues heavily favor QBs since you can start 2, making QB values much higher than in 1QB leagues.*
-
-**Ranking Type:**
-
-- `is_redraft=true` - Redraft/fantasy rankings (draft new team each year)
-- `is_redraft=false` - Dynasty rankings (keep players long-term)
-
-*Note: Dynasty values focus on long-term potential and age, while redraft focuses only on the current season's performance.*
-
-**TEP Level:**
-
-- `tep` - Tight End Premium (about +0.5 points per reception)
-- `tepp` - Tight End Premium Plus (about +1.0 points per reception)  
-- `teppp` - Tight End Premium Plus Plus (about +1.5 points per reception)
-- Leave empty for standard scoring
-
-*Note: TEP makes tight ends more valuable since they get bonus points. Only applies to dynasty rankings. TEP values are managed by the KTC API.*
-
-## Example API Calls
-
-**Load Different Rankings:**
-
-```bash
-# Superflex dynasty with TEP
-curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex&is_redraft=false&tep_level=tep"
-
-# 1QB redraft (standard scoring)
-curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=1qb&is_redraft=true"
-
-# Superflex dynasty with max TEP
-curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex&is_redraft=false&tep_level=teppp"
-```
-
-**Get Rankings:**
-
-```bash
-# Get superflex dynasty TEP rankings
-curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=false&tep_level=tep"
-
-# Get 1QB redraft rankings
-curl "http://localhost:5000/api/ktc/rankings?league_format=1qb&is_redraft=true"
-
-# Get superflex redraft rankings
-curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=true"
-```
-
-**Clean Up Data:**
-
-```bash
-# Clean up specific configuration
-curl -X POST "http://localhost:5000/api/ktc/cleanup?league_format=superflex&is_redraft=false&tep_level=tep"
-```
-
-## Environment Variables (Optional)
-
-Create a `.env` file for S3 uploads or custom database settings:
-
-```bash
-# Database (if not using default)
-DATABASE_URL=postgresql://user:pass@host:port/database
-
-# S3 Upload (optional)
-AWS_ACCESS_KEY_ID=your_key
-AWS_SECRET_ACCESS_KEY=your_secret
-S3_BUCKET=your-bucket
-```
-
-## Common Commands
-
-```bash
-# Quick start (local development)
-./startup.sh
-
-# Quick start (Docker)
-./docker-compose.sh up
-
-# Load superflex redraft data
-curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex&is_redraft=true&tep_level=tep"
-
-# Get rankings
-curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=true&tep_level=tep"
-
-# Check logs (Docker)
-./docker-compose.sh logs
-
-# Stop everything
-./docker-compose.sh down
-```
-
-## Troubleshooting
-
-- **Database issues**: Try `./docker-compose.sh clean` then `./docker-compose.sh up`
-- **Empty rankings**: Call the `/refresh` endpoint first to populate data
-- **Script permissions**: Run `chmod +x docker-compose.sh startup.sh run_tests.sh`
-- **Local development**: Use `./startup.sh` for SQLite-based development
-
-## Development
-
-### Running Tests
-
-**Option 1: Direct Testing (Recommended for development)**
-
-Run tests directly with pytest - fastest and doesn't require Docker:
-
-```bash
-# Run all tests
-python -m pytest -v
-
-# Run specific test file
-python -m pytest unit_tests.py -v
-python -m pytest test_ktc_api.py -v
-python -m pytest test_ktc_simple.py -v
-```
-
-**Option 2: Docker-based Testing**
-
-Run tests in a Docker container (uses SQLite for testing):
-
-```bash
-# Run all tests in Docker
-./run_tests.sh
-
-# Run specific test file in Docker
-./run_tests.sh unit_tests.py -v
-```
-
-**Setting up for Development**
-
-For local development:
-
-```bash
-# Simple setup (SQLite)
-./startup.sh
-
-# OR advanced setup (PostgreSQL)
-python setup_postgres.py
-export DATABASE_URL="postgresql://user:pass@localhost:5432/sleeper_db"
-./startup.sh
-```
-
-
-**Note**
-
-This project does not currently handle leagues that allow kickers or defenses. This will be a feature in future iterations.
+| `run_tests.sh`

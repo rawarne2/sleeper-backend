@@ -407,6 +407,74 @@ class SleeperScraper:
             return None
 
     @staticmethod
+    def fetch_weekly_matchups(league_id: str, week: int) -> Optional[List[Dict[str, Any]]]:
+        """
+        Fetch weekly matchup data from Sleeper API.
+
+        Args:
+            league_id: The Sleeper league ID
+            week: The week number to fetch
+
+        Returns:
+            List of matchup objects or None if failed
+        """
+        try:
+            logger.info(
+                "Fetching weekly matchups for league: %s, week: %s", league_id, week)
+            url = f"https://api.sleeper.app/v1/league/{league_id}/matchups/{week}"
+            response = requests.get(url, timeout=60)
+            response.raise_for_status()
+
+            matchups_data = response.json()
+            logger.info("Successfully fetched %s matchups for week %s",
+                        len(matchups_data), week)
+            return matchups_data
+
+        except requests.RequestException as e:
+            logger.error(
+                "Failed to fetch matchups for league %s, week %s: %s", league_id, week, e)
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(
+                "Failed to parse matchups response for league %s, week %s: %s", league_id, week, e)
+            return None
+
+    @staticmethod
+    def parse_weekly_matchups(matchups_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Parse weekly matchup data to extract player scoring information.
+
+        Args:
+            matchups_data: Raw matchup data from Sleeper API
+
+        Returns:
+            List of parsed player scoring records
+        """
+        if not matchups_data:
+            logger.error("No matchup data provided for parsing")
+            return []
+
+        player_records = []
+
+        for matchup in matchups_data:
+            roster_id = matchup.get('roster_id')
+            players_points = matchup.get('players_points', {})
+            starters = set(matchup.get('starters', []))
+
+            for player_id, points in players_points.items():
+                if player_id and points is not None:  # Skip players with no points
+                    player_records.append({
+                        'player_id': player_id,
+                        'points': float(points),
+                        'roster_id': roster_id,
+                        'is_starter': player_id in starters
+                    })
+
+        logger.info("Successfully parsed %s player scoring records from matchups", len(
+            player_records))
+        return player_records
+
+    @staticmethod
     def scrape_league_data(league_id: str) -> Dict[str, Any]:
         """
         Comprehensive scraping of all league-related data.
@@ -595,6 +663,11 @@ class KTCScraper:
     @staticmethod
     def _extract_basic_player_info(player_obj: Dict[str, Any]) -> Dict[str, Any]:
         """Extract basic player information from KTC data."""
+        # Handle fantasy_positions field - convert list to JSON string if present
+        fantasy_positions = player_obj.get('fantasy_positions', [])
+        fantasy_positions_json = json.dumps(
+            fantasy_positions) if fantasy_positions else None
+
         return {
             'name': player_obj.get('playerName', ''),
             'position': player_obj.get('position', ''),
@@ -621,7 +694,8 @@ class KTCScraper:
             'birthday': player_obj.get('birthday'),
             'draftYear': player_obj.get('draftYear'),
             'byeWeek': player_obj.get('byeWeek'),
-            'injury': json.dumps(player_obj.get('injury', {})) if player_obj.get('injury') else None
+            'injury': json.dumps(player_obj.get('injury', {})) if player_obj.get('injury') else None,
+            'fantasy_positions': fantasy_positions_json
         }
 
     @staticmethod
@@ -657,7 +731,8 @@ class KTCScraper:
             'birthday': player_info['birthday'],
             'draftYear': player_info['draftYear'],
             'byeWeek': player_info['byeWeek'],
-            'injury': player_info['injury']
+            'injury': player_info['injury'],
+            'fantasy_positions': player_info['fantasy_positions']
         }
 
         # Extract oneQB and superflex values as separate objects
@@ -759,7 +834,6 @@ class KTCScraper:
             logger.error("Error in scrape_players_from_array: %s", e)
             return []
 
-
     @staticmethod
     def scrape_ktc(is_redraft: bool) -> List[Dict[str, Any]]:
         """
@@ -824,7 +898,7 @@ def scrape_and_process_data(ktc_scraper, league_format: str, is_redraft: bool, t
             sleeper_players_db = Player.query.filter(
                 Player.sleeper_player_id.isnot(None)
             ).all()
-            
+
             # Convert to the format expected by PlayerMerger using to_dict() method
             sleeper_players = []
             for player in sleeper_players_db:
@@ -833,11 +907,13 @@ def scrape_and_process_data(ktc_scraper, league_format: str, is_redraft: bool, t
                 # PlayerMerger expects 'player_id' key instead of 'sleeper_player_id'
                 sleeper_data['player_id'] = sleeper_data['sleeper_player_id']
                 sleeper_players.append(sleeper_data)
-            
-            logger.info("Retrieved %s Sleeper players from database", len(sleeper_players))
-            
+
+            logger.info("Retrieved %s Sleeper players from database",
+                        len(sleeper_players))
+
         except Exception as db_error:
-            logger.warning("Failed to get Sleeper data from database: %s. Will use KTC data only.", db_error)
+            logger.warning(
+                "Failed to get Sleeper data from database: %s. Will use KTC data only.", db_error)
             sleeper_players = []
 
         # Merge KTC and Sleeper data
@@ -845,10 +921,11 @@ def scrape_and_process_data(ktc_scraper, league_format: str, is_redraft: bool, t
             logger.info("Merging KTC and existing Sleeper player data...")
             merged_players = PlayerMerger.merge_player_data(
                 ktc_players, sleeper_players)
-            logger.info("Successfully merged player data: %s KTC players with %s existing Sleeper players", 
-                       len(ktc_players), len(sleeper_players))
+            logger.info("Successfully merged player data: %s KTC players with %s existing Sleeper players",
+                        len(ktc_players), len(sleeper_players))
         else:
-            logger.warning("No Sleeper data available from database, using KTC data only")
+            logger.warning(
+                "No Sleeper data available from database, using KTC data only")
             merged_players = ktc_players
 
         # Sort players by appropriate rank based on league format
@@ -860,9 +937,10 @@ def scrape_and_process_data(ktc_scraper, league_format: str, is_redraft: bool, t
             else:  # superflex
                 superflex_values = player.get('superflex_values', {})
                 return superflex_values.get('rank') if superflex_values else float('inf')
-        
+
         players_sorted = sorted(merged_players, key=get_sort_key)
-        logger.info("Sorted %s players by %s rankings", len(players_sorted), league_format)
+        logger.info("Sorted %s players by %s rankings",
+                    len(players_sorted), league_format)
         return players_sorted, None
 
     except Exception as e:
@@ -894,7 +972,7 @@ def scrape_and_save_all_ktc_data(ktc_scraper, database_manager) -> Dict[str, Any
     try:
         # Import here to avoid circular imports
         from utils import save_and_verify_database
-        
+
         # Scrape and save dynasty data (contains all formats and TEP levels)
         logger.info("Scraping comprehensive dynasty data from KTC...")
         dynasty_players, dynasty_error = scrape_and_process_data(

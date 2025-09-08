@@ -1,12 +1,15 @@
 from datetime import datetime, UTC
 from flask import Blueprint, jsonify, request
 from functools import wraps
+import json
 
 from scrapers import SleeperScraper, KTCScraper
 from managers import FileManager, DatabaseManager
 from utils import (save_and_verify_database, perform_file_operations,
                    validate_parameters, setup_logging)
 from scrapers import scrape_and_process_data, scrape_and_save_all_ktc_data
+from models import SleeperWeeklyData
+from app import db
 
 # Create a blueprint for routes
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -41,7 +44,7 @@ def refresh_sleeper_data():
     summary: Refresh Sleeper player data
     description: |
       Refresh Sleeper player data and merge with existing KTC data. Returns comprehensive player data including physical attributes, career info, fantasy data, injury status, and metadata. Merges with KTC players by name/position.
-      
+
       **Performance Note**: This operation takes 30-60 seconds as it fetches from external APIs.
     responses:
       200:
@@ -155,7 +158,7 @@ def refresh_rankings():
     summary: Refresh KTC player rankings
     description: |
       Fetch fresh KTC rankings and store in database. Returns all player data including dynasty/redraft values, rankings, trends, and tiers.
-      
+
       **Performance Note**: This operation takes 30-60 seconds as it fetches from external APIs.
     parameters:
       - name: is_redraft
@@ -300,7 +303,7 @@ def refresh_rankings():
         for player in players_sorted:
             # Always use to_dict() method for consistent structure
             player_dict = player.to_dict()
-            
+
             if league_format == 'superflex':
                 # Only include players with superflex values
                 if player_dict.get('ktc', {}).get('superflexValues'):
@@ -541,7 +544,7 @@ def get_rankings():
     summary: Get stored player rankings
     description: |
       Retrieve stored player rankings with filtering options. Returns comprehensive player data including KTC rankings, Sleeper data, physical attributes, career info, and injury status.
-      
+
       **Performance Note**: Served from database cache, typically < 1 second response time.
     parameters:
       - name: is_redraft
@@ -684,13 +687,13 @@ def get_rankings():
         players_data = []
         for player in players:
             player_dict = player.to_dict()
-            
+
             # Filter KTC values based on league_format parameter and apply TEP filtering
             if league_format == 'superflex':
                 # Only include superflex values, remove oneQB values
                 if player_dict.get('ktc', {}).get('superflexValues'):
                     player_dict['ktc']['oneQBValues'] = None
-                    
+
                     # Apply TEP level filtering to superflex values
                     superflex_values = player_dict['ktc']['superflexValues']
                     if tep_level and superflex_values:
@@ -713,13 +716,13 @@ def get_rankings():
                             superflex_values['positionalRank'] = superflex_values['teppp']['positionalRank']
                             superflex_values['overallTier'] = superflex_values['teppp']['overallTier']
                             superflex_values['positionalTier'] = superflex_values['teppp']['positionalTier']
-                    
+
                     players_data.append(player_dict)
             else:  # 1qb
                 # Only include oneQB values, remove superflex values
                 if player_dict.get('ktc', {}).get('oneQBValues'):
                     player_dict['ktc']['superflexValues'] = None
-                    
+
                     # Apply TEP level filtering to oneQB values
                     oneqb_values = player_dict['ktc']['oneQBValues']
                     if tep_level and oneqb_values:
@@ -742,7 +745,7 @@ def get_rankings():
                             oneqb_values['positionalRank'] = oneqb_values['teppp']['positionalRank']
                             oneqb_values['overallTier'] = oneqb_values['teppp']['overallTier']
                             oneqb_values['positionalTier'] = oneqb_values['teppp']['positionalTier']
-                    
+
                     players_data.append(player_dict)
 
         return jsonify({
@@ -773,11 +776,11 @@ def refresh_ktc_all():
     summary: Comprehensive KTC refresh
     description: |
       All KTC refresh - scrapes and saves ALL KTC data. Gets dynasty + redraft data with all league formats (1QB + Superflex) and all TEP levels (base, TEP, TEPP, TEPPP) in a single operation.
-      
+
       **Ideal for cron jobs** since it ensures complete data coverage without needing multiple calls with different parameters.
-      
+
       **Performance Note**: This is a comprehensive operation that may take several minutes to complete.
-      
+
       No query parameters needed - this is truly comprehensive!
     responses:
       200:
@@ -937,7 +940,6 @@ def get_league_data(league_id: str):
                       type: string
                     season:
                       type: string
-                    total_rosters:
                       type: integer
                     status:
                       type: string
@@ -1430,11 +1432,11 @@ def get_research_data(season: str):
         default: 1
       - name: league_type
         in: query
-        description: League type - 1 for redraft, 2 for dynasty
+        description: League type
         required: false
-        type: integer
-        enum: [1, 2]
-        default: 2
+        type: string
+        enum: ['dynasty', 'redraft']
+        default: 'dynasty'
     responses:
       200:
         description: Research data retrieved successfully
@@ -1503,22 +1505,32 @@ def get_research_data(season: str):
     """
     # Get query parameters
     week = int(request.args.get('week', 1))
-    league_type = int(request.args.get('league_type', 2))
+    league_type = request.args.get('league_type', 'dynasty')
 
-    # Try to get from database first
-    db_result = DatabaseManager.get_research_data(season, week, league_type)
+    logger.info(
+        "Research data requested for season: %s, week: %s", season, week)
 
-    if db_result.get('status') == 'success':
+    # Check database first
+    research_records = SleeperWeeklyData.query.filter_by(
+        season=season,
+        week=week,
+        league_type=league_type
+    ).all()
+
+    if research_records:
+        logger.info("Found %s research records in database",
+                    len(research_records))
         return jsonify({
             'status': 'success',
-            'data': db_result,
+            'data': [record.to_dict() for record in research_records],
             'source': 'database',
+            'database_saved': True,
             'timestamp': datetime.now(UTC).isoformat()
         })
 
-    # If not in database, fetch from API
+    # If not in database, try to fetch from Sleeper API
     logger.info(
-        "Research data not found in database, fetching from Sleeper API: %s", season)
+        "No research data found in database, fetching from Sleeper API...")
     research_data = SleeperScraper.scrape_research_data(
         season, week, league_type)
 
@@ -1526,22 +1538,15 @@ def get_research_data(season: str):
         return jsonify({
             'status': 'error',
             'error': 'Failed to fetch research data',
-            'details': research_data.get('error'),
+            'details': research_data.get('error', 'Unknown error'),
             'season': season
         }), 404
 
-    # Save to database
-    save_result = DatabaseManager.save_research_data(research_data)
-
-    if save_result.get('status') != 'success':
-        logger.warning(
-            "Failed to save research data to database: %s", save_result.get('error'))
-
     return jsonify({
         'status': 'success',
-        'data': research_data,
+        'data': research_data.get('research_data', []),
         'source': 'sleeper_api',
-        'database_saved': save_result.get('status') == 'success',
+        'database_saved': False,
         'timestamp': datetime.now(UTC).isoformat()
     })
 
@@ -1573,11 +1578,11 @@ def refresh_research_data(season: str):
         default: 1
       - name: league_type
         in: query
-        description: League type - 1 for redraft, 2 for dynasty
+        description: League type
         required: false
-        type: integer
-        enum: [1, 2]
-        default: 2
+        type: string
+        enum: ['dynasty', 'redraft']
+        default: 'dynasty'
     responses:
       200:
         description: Research data refreshed successfully
@@ -1634,7 +1639,7 @@ def refresh_research_data(season: str):
     """
     # Get query parameters
     week = int(request.args.get('week', 1))
-    league_type = int(request.args.get('league_type', 2))
+    league_type = request.args.get('league_type', 'dynasty')
 
     logger.info(
         "Manual refresh requested for research data: season=%s, week=%s", season, week)
@@ -1647,27 +1652,505 @@ def refresh_research_data(season: str):
         return jsonify({
             'status': 'error',
             'error': 'Failed to refresh research data',
-            'details': research_data.get('error'),
+            'details': research_data.get('error', 'Unknown error'),
             'season': season
         }), 400
 
     # Save to database
-    save_result = DatabaseManager.save_research_data(research_data)
+    try:
+        # Clear existing records for this season/week/league_type
+        SleeperWeeklyData.query.filter_by(
+            season=season,
+            week=week,
+            league_type=league_type
+        ).delete()
 
-    if save_result.get('status') != 'success':
+        # Save new records
+        saved_count = 0
+        for player_id, player_data in research_data.get('research_data', {}).items():
+            try:
+                new_record = SleeperWeeklyData(
+                    season=season,
+                    week=week,
+                    league_type=league_type,
+                    player_id=player_id,
+                    research_data=json.dumps(player_data)
+                )
+                db.session.add(new_record)
+                saved_count += 1
+            except Exception as e:
+                logger.error(
+                    "Error saving research record for player %s: %s", player_id, e)
+                continue
+
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Research data refreshed successfully',
+            'season': season,
+            'week': week,
+            'league_type': league_type,
+            'refresh_results': {
+                'saved_count': saved_count,
+                'total_players': len(research_data.get('research_data', {}))
+            },
+            'timestamp': datetime.now(UTC).isoformat()
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error("Error saving refreshed research data: %s", e)
         return jsonify({
             'status': 'error',
             'error': 'Failed to save refreshed research data',
-            'details': save_result.get('error'),
+            'details': str(e),
             'season': season
+        }), 500
+
+
+# ============================================================================
+# SLEEPER WEEKLY STATS ENDPOINTS
+# ============================================================================
+
+@api_bp.route('/sleeper/league/<string:league_id>/stats/seed', methods=['POST'])
+@with_error_handling
+def seed_league_stats(league_id: str):
+    """
+    Seed league stats information
+    ---
+    tags:
+      - Sleeper Weekly Stats
+    summary: Seed league stats information
+    description: |
+      Seed or update league information needed for weekly stats functionality.
+      This endpoint should be called once per league before fetching weekly stats.
+    parameters:
+      - name: league_id
+        in: path
+        description: The Sleeper league ID
+        required: true
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              league_name:
+                type: string
+                description: The league name
+                example: "My Fantasy League"
+              season:
+                type: string
+                description: The NFL season year
+                pattern: '^[0-9]{4}$'
+                example: "2024"
+              league_type:
+                type: string
+                description: League type
+                enum: ['dynasty', 'redraft']
+                default: 'dynasty'
+                example: 'dynasty'
+              scoring_settings:
+                type: string
+                description: League scoring settings as JSON string (optional)
+                example: '{"pass_yd": 0.04, "pass_td": 4}'
+            required:
+              - league_name
+              - season
+    responses:
+      200:
+        description: League stats seeded successfully
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['success']
+            message:
+              type: string
+              example: 'League stats seeded successfully'
+            action:
+              type: string
+              enum: ['created', 'updated']
+            league_id:
+              type: string
+            league_name:
+              type: string
+            season:
+              type: string
+            timestamp:
+              type: string
+              format: date-time
+      400:
+        description: Invalid request data
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+              example: 'Missing required fields'
+            details:
+              type: string
+      500:
+        description: Server error
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+            details:
+              type: string
+    """
+    # Get request data
+    data = request.get_json()
+
+    if not data:
+        return jsonify({
+            'status': 'error',
+            'error': 'No JSON data provided'
+        }), 400
+
+    # Validate required fields
+    league_name = data.get('league_name')
+    season = data.get('season')
+
+    if not league_name or not season:
+        return jsonify({
+            'status': 'error',
+            'error': 'Missing required fields: league_name and season are required'
+        }), 400
+
+    # Get optional fields
+    league_type = data.get('league_type', 'dynasty')
+    scoring_settings = data.get('scoring_settings')
+
+    logger.info("Seeding league stats for league: %s, season: %s, type: %s",
+                league_id, season, league_type)
+
+    # Use DatabaseManager to seed league stats
+    result = DatabaseManager.seed_league_stats(
+        league_id=league_id,
+        league_name=league_name,
+        season=season,
+        league_type=league_type,
+        scoring_settings=scoring_settings
+    )
+
+    if result.get('status') == 'error':
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to seed league stats',
+            'details': result.get('error', 'Unknown error')
         }), 500
 
     return jsonify({
         'status': 'success',
-        'message': 'Research data refreshed successfully',
+        'message': 'League stats seeded successfully',
+        'action': result.get('action'),
+        'league_id': league_id,
+        'league_name': league_name,
         'season': season,
+        'timestamp': datetime.now(UTC).isoformat()
+    })
+
+
+@api_bp.route('/sleeper/league/<string:league_id>/stats/week/<int:week>', methods=['GET'])
+@with_error_handling
+def get_weekly_stats(league_id: str, week: int):
+    """
+    Get weekly stats for a specific week
+    ---
+    tags:
+      - Sleeper Weekly Stats
+    summary: Get weekly stats for a specific week
+    description: |
+      Get weekly fantasy points and roster information for all players in a specific week.
+      Returns player scoring data including points, roster ID, and starter status.
+    parameters:
+      - name: league_id
+        in: path
+        description: The Sleeper league ID
+        required: true
+        type: string
+      - name: week
+        in: path
+        description: The week number
+        required: true
+        type: integer
+        minimum: 1
+        maximum: 18
+      - name: season
+        in: query
+        description: The NFL season year
+        required: false
+        type: string
+        pattern: '^[0-9]{4}$'
+        default: '2024'
+      - name: league_type
+        in: query
+        description: League type
+        required: false
+        type: string
+        enum: ['dynasty', 'redraft']
+        default: 'dynasty'
+      - name: average
+        in: query
+        description: Whether to return season averages (weeks 1-16 only)
+        required: false
+        type: boolean
+        default: false
+    responses:
+      200:
+        description: Weekly stats retrieved successfully
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['success']
+            data_type:
+              type: string
+              enum: ['weekly', 'averages']
+            season:
+              type: string
+            week:
+              type: integer
+            records:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  season:
+                    type: string
+                  week:
+                    type: integer
+                  league_type:
+                    type: integer
+                  player_id:
+                    type: string
+                  points:
+                    type: number
+                    format: float
+                  roster_id:
+                    type: integer
+                  is_starter:
+                    type: boolean
+                  last_updated:
+                    type: string
+                    format: date-time
+            count:
+              type: integer
+            timestamp:
+              type: string
+              format: date-time
+      404:
+        description: Weekly stats not found
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+              example: 'No weekly stats found for the specified parameters'
+            details:
+              type: string
+      500:
+        description: Server error
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+            details:
+              type: string
+    """
+    # Get query parameters
+    season = request.args.get('season', '2024')
+    league_type = request.args.get('league_type', 'dynasty')
+    average = request.args.get('average', 'false').lower() == 'true'
+
+    logger.info("Weekly stats requested for league: %s, week: %s, season: %s, average: %s",
+                league_id, week, season, average)
+
+    # Get stats from database
+    stats_result = DatabaseManager.get_weekly_stats(
+        season=season,
+        week=week if not average else None,
+        league_type=league_type,
+        average=average
+    )
+
+    if stats_result.get('status') == 'error':
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to retrieve weekly stats',
+            'details': stats_result.get('error', 'Unknown error')
+        }), 500
+
+    return jsonify({
+        **stats_result,
+        'timestamp': datetime.now(UTC).isoformat()
+    })
+
+
+@api_bp.route('/sleeper/league/<string:league_id>/stats/week/<int:week>/refresh', methods=['POST'])
+@with_error_handling
+def refresh_weekly_stats(league_id: str, week: int):
+    """
+    Refresh weekly stats for a specific week
+    ---
+    tags:
+      - Sleeper Weekly Stats
+    summary: Refresh weekly stats for a specific week
+    description: |
+      Fetch fresh weekly stats data from Sleeper API for a specific week and save to database.
+      This endpoint fetches matchup data and extracts player scoring information.
+    parameters:
+      - name: league_id
+        in: path
+        description: The Sleeper league ID
+        required: true
+        type: string
+      - name: week
+        in: path
+        description: The week number
+        required: true
+        type: integer
+        minimum: 1
+        maximum: 18
+      - name: season
+        in: query
+        description: The NFL season year
+        required: false
+        type: string
+        pattern: '^[0-9]{4}$'
+        default: '2024'
+      - name: league_type
+        in: query
+        description: League type
+        required: false
+        type: string
+        enum: ['dynasty', 'redraft']
+        default: 'dynasty'
+    responses:
+      200:
+        description: Weekly stats refreshed successfully
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['success']
+            message:
+              type: string
+              example: 'Weekly stats refreshed successfully'
+            league_id:
+              type: string
+            week:
+              type: integer
+            season:
+              type: string
+            refresh_results:
+              type: object
+              properties:
+                saved_count:
+                  type: integer
+                updated_count:
+                  type: integer
+                errors:
+                  type: integer
+                total_processed:
+                  type: integer
+            timestamp:
+              type: string
+              format: date-time
+      400:
+        description: Invalid parameters or failed to refresh
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+              example: 'Failed to refresh weekly stats'
+            details:
+              type: string
+      500:
+        description: Server error
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
+            details:
+              type: string
+    """
+    # Get query parameters
+    season = request.args.get('season', '2024')
+    league_type = request.args.get('league_type', 'dynasty')
+
+    logger.info("Weekly stats refresh requested for league: %s, week: %s, season: %s",
+                league_id, week, season)
+
+    # Fetch fresh data from Sleeper API
+    matchups_data = SleeperScraper.fetch_weekly_matchups(league_id, week)
+
+    if not matchups_data:
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to fetch weekly matchups',
+            'details': 'No matchup data returned from Sleeper API'
+        }), 400
+
+    # Parse the matchup data to extract player scoring records
+    weekly_stats = SleeperScraper.parse_weekly_matchups(matchups_data)
+
+    if not weekly_stats:
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to parse weekly matchups',
+            'details': 'No player scoring records found in matchup data'
+        }), 400
+
+    # Save to database
+    save_result = DatabaseManager.save_weekly_stats(
+        weekly_stats, season, week, league_type
+    )
+
+    if save_result.get('status') == 'error':
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to save weekly stats',
+            'details': save_result.get('error', 'Unknown error')
+        }), 500
+
+    return jsonify({
+        'status': 'success',
+        'message': 'Weekly stats refreshed successfully',
+        'league_id': league_id,
         'week': week,
-        'league_type': league_type,
+        'season': season,
         'refresh_results': save_result,
         'timestamp': datetime.now(UTC).isoformat()
     })
