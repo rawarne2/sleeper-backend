@@ -9,8 +9,10 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 # Import our modules
 from models import db
-from routes import api_bp
 from utils import setup_logging
+
+# Import routes after db is available to avoid circular imports
+from routes import api_bp
 
 # Load environment variables
 load_dotenv()
@@ -89,11 +91,11 @@ app.config.update({
 db.init_app(app)
 
 # Configure CORS to allow requests from frontend
-CORS(app, 
+CORS(app,
      origins=[
          # Local development
          "http://localhost:3000",
-         "http://localhost:3001", 
+         "http://localhost:3001",
          "http://127.0.0.1:3000",
          "http://127.0.0.1:3001",
          "http://localhost:5173",
@@ -101,27 +103,34 @@ CORS(app,
          # Production frontend
          "https://sleeper-dashboard-xi.vercel.app",
      ],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+     allow_headers=["Content-Type", "Authorization",
+                    "X-Requested-With", "Accept", "Origin"],
      methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
      supports_credentials=True,
      expose_headers=["Content-Range", "X-Content-Range"]
-)
+     )
 
 # Register blueprints
 app.register_blueprint(api_bp)
 
 # Add explicit OPTIONS handler for preflight requests
+
+
 @app.before_request
 def handle_preflight():
     from flask import request
     if request.method == "OPTIONS":
         from flask import make_response
         response = make_response()
-        response.headers.add("Access-Control-Allow-Origin", "https://sleeper-dashboard-xi.vercel.app")
-        response.headers.add('Access-Control-Allow-Headers', "Content-Type,Authorization,X-Requested-With,Accept,Origin")
-        response.headers.add('Access-Control-Allow-Methods', "GET,PUT,POST,DELETE,OPTIONS")
+        response.headers.add("Access-Control-Allow-Origin",
+                             "https://sleeper-dashboard-xi.vercel.app")
+        response.headers.add('Access-Control-Allow-Headers',
+                             "Content-Type,Authorization,X-Requested-With,Accept,Origin")
+        response.headers.add('Access-Control-Allow-Methods',
+                             "GET,PUT,POST,DELETE,OPTIONS")
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response
+
 
 @app.after_request
 def after_request(response):
@@ -130,20 +139,23 @@ def after_request(response):
     allowed_origins = [
         "https://sleeper-dashboard-xi.vercel.app",
         "http://localhost:3000",
-        "http://localhost:3001", 
+        "http://localhost:3001",
         "http://127.0.0.1:3000",
         "http://127.0.0.1:3001",
         "http://localhost:5173",
         "http://127.0.0.1:5173"
     ]
-    
+
     if origin in allowed_origins:
         response.headers.add('Access-Control-Allow-Origin', origin)
-        response.headers.add('Access-Control-Allow-Headers', "Content-Type,Authorization,X-Requested-With,Accept,Origin")
-        response.headers.add('Access-Control-Allow-Methods', "GET,PUT,POST,DELETE,OPTIONS")
+        response.headers.add('Access-Control-Allow-Headers',
+                             "Content-Type,Authorization,X-Requested-With,Accept,Origin")
+        response.headers.add('Access-Control-Allow-Methods',
+                             "GET,PUT,POST,DELETE,OPTIONS")
         response.headers.add('Access-Control-Allow-Credentials', 'true')
-    
+
     return response
+
 
 # Initialize database tables on startup
 with app.app_context():

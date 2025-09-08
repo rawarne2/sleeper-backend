@@ -8,8 +8,7 @@ from managers import FileManager, DatabaseManager
 from utils import (save_and_verify_database, perform_file_operations,
                    validate_parameters, setup_logging)
 from scrapers import scrape_and_process_data, scrape_and_save_all_ktc_data
-from models import SleeperWeeklyData
-from app import db
+from models import SleeperWeeklyData, db
 
 # Create a blueprint for routes
 api_bp = Blueprint('api', __name__, url_prefix='/api')
