@@ -6,10 +6,12 @@ from dotenv import load_dotenv
 from flask import Flask
 from flask_cors import CORS
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+import sqlalchemy.exc
 
 # Import our modules
 from models import db
 from utils import setup_logging
+from swagger_config import setup_swagger, add_documentation_routes
 
 # Import routes after db is available to avoid circular imports
 from routes import api_bp
@@ -59,11 +61,11 @@ if database_uri and database_uri.startswith('postgresql://'):
         cleaned_parsed = parsed._replace(query=cleaned_query)
         database_uri = urlunparse(cleaned_parsed)
 
-        logger.info(f"Cleaned database URI parameters")
-    except Exception as e:
-        logger.warning(f"Failed to clean database URI: {e}")
+        logger.info("Cleaned database URI parameters")
+    except (ValueError, TypeError) as e:
+        logger.warning("Failed to clean database URI: %s", e)
 
-logger.info(f"Using database connection: {database_uri[:50]}...")
+logger.info("Using database connection: %s...", database_uri[:50])
 
 # Configure engine options for Supabase/PostgreSQL
 engine_options = {}
@@ -109,6 +111,10 @@ CORS(app,
      supports_credentials=True,
      expose_headers=["Content-Range", "X-Content-Range"]
      )
+
+# Configure Swagger/OpenAPI documentation
+swagger = setup_swagger(
+    app, host="sleeper-backend.vercel.app", schemes=["https"])
 
 # Register blueprints
 app.register_blueprint(api_bp)
@@ -171,7 +177,7 @@ def initialize_database():
             tables = inspector.get_table_names()
             logger.info("Available tables: %s", tables)
             return True
-    except Exception as e:
+    except (sqlalchemy.exc.SQLAlchemyError, ConnectionError, OSError) as e:
         logger.error("Database initialization failed: %s", e)
         return False
 
@@ -180,5 +186,8 @@ def initialize_database():
 if not initialize_database():
     logger.error("Application will continue but database operations may fail")
 
+# Add documentation routes
+add_documentation_routes(app, logger)
+
 # Vercel serverless function handler
-app = app
+# The app variable is already defined above and ready for Vercel
