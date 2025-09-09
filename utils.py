@@ -31,7 +31,7 @@ ROOKIE_KEY = "rookie"          # KTC uses 'rookie' (boolean)
 DATABASE_URI = os.getenv(
     'TEST_DATABASE_URI',
     os.getenv('DATABASE_URL',
-              'postgresql://postgres:password@localhost:5433/sleeper_db')
+              'postgresql://postgres:password@localhost:5433/sleeper_db?sslmode=disable')
 )
 
 
@@ -98,23 +98,21 @@ def normalize_tep_level(tep_level: Optional[str]) -> Optional[str]:
 def create_player_match_key(player_name: str, position: str) -> str:
     """
     Create a match key for efficient player lookups.
-    
+
     Args:
         player_name: Player name (will be normalized)
         position: Player position
-        
+
     Returns:
         Match key string in format "normalized_name-position"
     """
     from data_types import normalize_name_for_matching
-    
+
     if not player_name or not position:
         return ""
-    
+
     normalized_name = normalize_name_for_matching(player_name)
     return f"{normalized_name}-{position.upper()}"
-
-
 
 
 def save_and_verify_database(database_manager, players_sorted: List[Dict[str, Any]], league_format: str,
@@ -140,7 +138,8 @@ def save_and_verify_database(database_manager, players_sorted: List[Dict[str, An
 
         # Verify database save was successful - provides confidence in data integrity
         logger.info("Verifying database save operation...")
-        verification_players, _ = database_manager.get_players_from_db(league_format)
+        verification_players, _ = database_manager.get_players_from_db(
+            league_format)
 
         # Simple verification - just check that we have some players saved
         # Note: We expect merged data to have fewer players than raw Sleeper data
@@ -151,7 +150,7 @@ def save_and_verify_database(database_manager, players_sorted: List[Dict[str, An
             return 0, error_msg
         elif len(verification_players) != added_count:
             logger.info(
-                "Database verification: saved %s players, found %s in database (normal when filtering for players with KTC values)", 
+                "Database verification: saved %s players, found %s in database (normal when filtering for players with KTC values)",
                 added_count, len(verification_players))
 
         logger.info(
@@ -161,8 +160,6 @@ def save_and_verify_database(database_manager, players_sorted: List[Dict[str, An
     except Exception as e:
         logger.error("Database operation failed: %s", e)
         return 0, str(e)
-
-
 
 
 def perform_file_operations(file_manager, players_sorted: List[Dict[str, Any]], added_count: int,
@@ -194,7 +191,7 @@ def perform_file_operations(file_manager, players_sorted: List[Dict[str, Any]], 
             else:
                 # Handle case where player is already a dict
                 players_dict.append(player)
-        
+
         json_data = {
             'message': 'Rankings refreshed successfully',
             'timestamp': datetime.now(UTC).isoformat(),

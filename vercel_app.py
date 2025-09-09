@@ -158,15 +158,27 @@ def after_request(response):
 
 
 # Initialize database tables on startup
-with app.app_context():
+def initialize_database():
+    """Initialize the database tables with proper error handling."""
     try:
-        db.create_all()
-        logger.info("Database tables initialized successfully")
+        with app.app_context():
+            db.create_all()
+            logger.info("Database tables initialized successfully")
+
+            # Print table info for debugging
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            tables = inspector.get_table_names()
+            logger.info("Available tables: %s", tables)
+            return True
     except Exception as e:
-        logger.error(f"Database initialization failed: {e}")
-        # Don't fail completely - let the app start but log the error
-        logger.error(
-            "Application will continue but database operations may fail")
+        logger.error("Database initialization failed: %s", e)
+        return False
+
+
+# Initialize database on startup
+if not initialize_database():
+    logger.error("Application will continue but database operations may fail")
 
 # Vercel serverless function handler
 app = app

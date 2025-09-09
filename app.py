@@ -156,7 +156,7 @@ curl -X POST "http://localhost:5000/api/sleeper/league/1210364682523656192/refre
             "description": "System health and status endpoints"
         },
         {
-            "name": "KTC Player Rankings", 
+            "name": "KTC Player Rankings",
             "description": "KeepTradeCut player rankings and values"
         },
         {
@@ -185,6 +185,8 @@ swagger = Swagger(app, config=swagger_config, template=swagger_template)
 app.register_blueprint(api_bp)
 
 # Add route for root path to redirect to docs
+
+
 @app.route('/')
 def index():
     """
@@ -195,6 +197,7 @@ def index():
         description: Redirect to API documentation
     """
     return redirect(url_for('flasgger.apidocs'))
+
 
 @app.route('/openapi.json')
 def openapi_spec():
@@ -211,35 +214,48 @@ def openapi_spec():
     """
     import yaml
     import json
-    
+
     try:
-        with open('openapi.yaml', 'r') as f:
-            openapi_spec = yaml.safe_load(f)
-        return json.dumps(openapi_spec, indent=2), 200, {'Content-Type': 'application/json'}
-    except Exception as e:
+        with open('openapi.yaml', 'r', encoding='utf-8') as f:
+            openapi_data = yaml.safe_load(f)
+        return json.dumps(openapi_data, indent=2), 200, {'Content-Type': 'application/json'}
+    except (FileNotFoundError, yaml.YAMLError, TypeError, ValueError) as e:
         logger.error("Error loading OpenAPI spec: %s", e)
         return {"error": "Failed to load OpenAPI specification"}, 500
+
+
+def initialize_database():
+    """Initialize the database tables with proper error handling."""
+    try:
+        with app.app_context():
+            db.create_all()
+            logger.info("Database tables initialized successfully")
+
+            # Print table info for debugging
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            tables = inspector.get_table_names()
+            logger.info("Available tables: %s", tables)
+            return True
+    except Exception as e:
+        logger.error("Database initialization failed: %s", e)
+        return False
 
 
 @app.cli.command("init_db")
 def init_db():
     """Initialize the database tables."""
-    db.create_all()
-    logger.info("Initialized the database.")
+    if initialize_database():
+        logger.info("Database initialized successfully via CLI")
+    else:
+        logger.error("Database initialization failed via CLI")
+        exit(1)
 
 
 @app.cli.command("create_tables")
 def create_tables():
     """Create all database tables including new Sleeper models."""
-    with app.app_context():
-        db.create_all()
-        logger.info("Created all database tables successfully.")
-
-        # Print table info
-        from sqlalchemy import inspect
-        inspector = inspect(db.engine)
-        tables = inspector.get_table_names()
-        logger.info("Available tables: %s", tables)
+    initialize_database()
 
 
 if __name__ == "__main__":
