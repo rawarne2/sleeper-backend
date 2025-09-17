@@ -18,12 +18,16 @@ POST {{BASE_URL}}/api/sleeper/refresh
 # POST https://sleeper-backend.vercel.app/api/sleeper/refresh
 
 ### ============================================================================
-### SLEEPER LEAGUE ENDPOINTS
+### SLEEPER LEAGUE ENDPOINTS - Both POST and PUT methods available
 ### ============================================================================
 
+### Update league data (2025 league)
+PUT {{BASE_URL}}/api/sleeper/league/1210364682523656192
+# PUT https://sleeper-backend.vercel.app/api/sleeper/league/1210364682523656192
+
 ### Refresh league data (2025 league)
-POST {{BASE_URL}}/api/sleeper/league/1210364682523656192/refresh
-# POST https://sleeper-backend.vercel.app/api/sleeper/league/1210364682523656192/refresh
+POST {{BASE_URL}}/api/sleeper/league/1210364682523656192
+# POST https://sleeper-backend.vercel.app/api/sleeper/league/1210364682523656192
 
 ### Get comprehensive league data (2025 league)
 GET {{BASE_URL}}/api/sleeper/league/1210364682523656192
@@ -38,12 +42,16 @@ GET {{BASE_URL}}/api/sleeper/league/1210364682523656192/users
 # GET https://sleeper-backend.vercel.app/api/sleeper/league/1210364682523656192/users
 
 ### ============================================================================
-### SLEEPER RESEARCH ENDPOINTS
+### SLEEPER RESEARCH ENDPOINTS - Both POST and PUT methods available
 ### ============================================================================
 
+### Update player research data (2025 season)
+PUT {{BASE_URL}}/api/sleeper/players/research/2025
+# PUT https://sleeper-backend.vercel.app/api/sleeper/players/research/2025
+
 ### Refresh player research data (2025 season)
-POST {{BASE_URL}}/api/sleeper/players/research/2025/refresh
-# POST https://sleeper-backend.vercel.app/api/sleeper/players/research/2025/refresh
+POST {{BASE_URL}}/api/sleeper/players/research/2025
+# POST https://sleeper-backend.vercel.app/api/sleeper/players/research/2025
 
 ### Get player research data (2025 season)
 GET {{BASE_URL}}/api/sleeper/players/research/2025
@@ -61,36 +69,52 @@ GET {{BASE_URL}}/api/sleeper/players/research/2024?week=10
 GET {{BASE_URL}}/api/sleeper/players/research/2024?league_type=1
 # GET https://sleeper-backend.vercel.app/api/sleeper/players/research/2024?league_type=1
 
+### Update player research data (2024 season)
+PUT {{BASE_URL}}/api/sleeper/players/research/2024
+# PUT https://sleeper-backend.vercel.app/api/sleeper/players/research/2024
+
 ### Refresh player research data (2024 season)
-POST {{BASE_URL}}/api/sleeper/players/research/2024/refresh
-# POST https://sleeper-backend.vercel.app/api/sleeper/players/research/2024/refresh
+POST {{BASE_URL}}/api/sleeper/players/research/2024
+# POST https://sleeper-backend.vercel.app/api/sleeper/players/research/2024
+
+### Update player research data (2024 season, week 17)
+PUT {{BASE_URL}}/api/sleeper/players/research/2024?week=17
+# PUT https://sleeper-backend.vercel.app/api/sleeper/players/research/2024?week=17
 
 ### Refresh player research data (2024 season, week 17)
-POST {{BASE_URL}}/api/sleeper/players/research/2024/refresh?week=17
-# POST https://sleeper-backend.vercel.app/api/sleeper/players/research/2024/refresh?week=17
+POST {{BASE_URL}}/api/sleeper/players/research/2024?week=17
+# POST https://sleeper-backend.vercel.app/api/sleeper/players/research/2024?week=17
+
+### Update league data (2024 league)
+PUT {{BASE_URL}}/api/sleeper/league/1210364682523656192
+# PUT https://sleeper-backend.vercel.app/api/sleeper/league/1050831680350568448
 
 ### Refresh league data (2024 league)
-POST {{BASE_URL}}/api/sleeper/league/1050831680350568448/refresh
-# POST https://sleeper-backend.vercel.app/api/sleeper/league/1050831680350568448/refresh
+POST {{BASE_URL}}/api/sleeper/league/1210364682523656192
+# POST https://sleeper-backend.vercel.app/api/sleeper/league/1050831680350568448
 
 ### ============================================================================
-### SLEEPER WEEKLY STATS ENDPOINTS
+### SLEEPER WEEKLY STATS ENDPOINTS - Both POST and PUT methods available
 ### ============================================================================
 
 ### Seed league stats (2024 league)
-POST {{BASE_URL}}/api/sleeper/league/1050831680350568448/stats/seed
+POST {{BASE_URL}}/api/sleeper/league/1210364682523656192/stats/seed
 # POST https://sleeper-backend.vercel.app/api/sleeper/league/1050831680350568448/stats/seed
 Content-Type: application/json
 
 {
-  "league_name": "My Fantasy League",
-  "season": "2024",
+  "league_name": "Salt Factory",
+  "season": "2025",
   "league_type": "dynasty"
 }
 
-### Refresh weekly stats (2024 league, week 1)
-POST {{BASE_URL}}/api/sleeper/league/1050831680350568448/stats/week/1/refresh?season=2024&league_type=dynasty
-# POST https://sleeper-backend.vercel.app/api/sleeper/league/1210364682523656192/stats/week/1/refresh?season=2025&league_type=dynasty
+### Update weekly stats (2025 league, week 1)
+PUT {{BASE_URL}}/api/sleeper/league/1210364682523656192/stats/week/1?season=2025&league_type=dynasty
+# PUT https://sleeper-backend.vercel.app/api/sleeper/league/1210364682523656192/stats/week/1?season=2025&league_type=dynasty
+
+### Refresh weekly stats (2025 league, week 1)
+POST {{BASE_URL}}/api/sleeper/league/1210364682523656192/stats/week/1?season=2025&league_type=dynasty
+# POST https://sleeper-backend.vercel.app/api/sleeper/league/1210364682523656192/stats/week/1?season=2025&league_type=dynasty
 
 ### Get weekly stats (2024 league, week 1)
 GET {{BASE_URL}}/api/sleeper/league/1050831680350568448/stats/week/1?season=2024&league_type=dynasty
@@ -102,19 +126,32 @@ GET {{BASE_URL}}/api/sleeper/league/1050831680350568448/stats/week/1?season=2024
 
 ### ============================================================================
 ### KTC ENDPOINTS (RUN AFTER SLEEPER - merges into existing players)
+### Both POST and PUT endpoints available
 ### ============================================================================
 
 ### Refresh all KTC data (merges into existing Sleeper players - takes 5-10 seconds)
 POST {{BASE_URL}}/api/ktc/refresh/all 
 # POST https://sleeper-backend.vercel.app/api/ktc/refresh/all
 
+### Update KTC rankings (specific configuration - dynasty superflex TEP)
+PUT {{BASE_URL}}/api/ktc/refresh?tep_level=tep&is_redraft=false&league_format=superflex
+# PUT https://sleeper-backend.vercel.app/api/ktc/refresh?tep_level=tep&is_redraft=false&league_format=superflex
+
 ### Refresh KTC rankings (specific configuration - dynasty superflex TEP)
 POST {{BASE_URL}}/api/ktc/refresh?tep_level=tep&is_redraft=false&league_format=superflex
 # POST https://sleeper-backend.vercel.app/api/ktc/refresh?tep_level=tep&is_redraft=false&league_format=superflex
 
+### Update KTC rankings (dynasty 1QB with TEP)
+PUT {{BASE_URL}}/api/ktc/refresh?tep_level=tep&is_redraft=false&league_format=1qb
+# PUT https://sleeper-backend.vercel.app/api/ktc/refresh?tep_level=tep&is_redraft=false&league_format=1qb
+
 ### Refresh KTC rankings (dynasty 1QB with TEP)
 POST {{BASE_URL}}/api/ktc/refresh?tep_level=tep&is_redraft=false&league_format=1qb
 # POST https://sleeper-backend.vercel.app/api/ktc/refresh?tep_level=tep&is_redraft=false&league_format=1qb
+
+### Update KTC rankings (redraft superflex)
+PUT {{BASE_URL}}/api/ktc/refresh?tep_level=&is_redraft=true&league_format=superflex
+# PUT https://sleeper-backend.vercel.app/api/ktc/refresh?tep_level=&is_redraft=true&league_format=superflex
 
 ### Refresh KTC rankings (redraft superflex)
 POST {{BASE_URL}}/api/ktc/refresh?tep_level=&is_redraft=true&league_format=superflex

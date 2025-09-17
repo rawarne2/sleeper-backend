@@ -59,24 +59,26 @@ Check API and database health status.
 
 ```
 POST /api/ktc/refresh
+PUT /api/ktc/refresh
 GET /api/ktc/rankings
 POST /api/ktc/cleanup
 ```
 
-**POST /api/ktc/refresh** - Refresh KTC rankings for specific configuration
+**POST /api/ktc/refresh** - Create/populate KTC rankings for specific configuration
+**PUT /api/ktc/refresh** - Update KTC rankings for specific configuration
 
 - Query Parameters:
   - `is_redraft`: "true" or "false" (default: "false")
   - `league_format`: "1qb" or "superflex" (default: "1qb")
   - `tep_level`: "", "tep", "tepp", or "teppp" (default: "")
 
-**GET /api/ktc/rankings** - Get stored rankings with filtering
+**GET /api/ktc/rankings** - Retrieve stored rankings with filtering
 
-- Same query parameters as refresh endpoint
+- Same query parameters as update endpoint
 
 **POST /api/ktc/cleanup** - Clean up incomplete data
 
-- Same query parameters as refresh endpoint
+- Same query parameters as update endpoint
 
 ### 👤 Sleeper Player Data
 
@@ -92,19 +94,22 @@ Refresh and merge Sleeper player data with KTC data.
 GET /api/sleeper/league/{league_id}
 GET /api/sleeper/league/{league_id}/rosters
 GET /api/sleeper/league/{league_id}/users
-POST /api/sleeper/league/{league_id}/refresh
+POST /api/sleeper/league/{league_id}
+PUT /api/sleeper/league/{league_id}
 ```
 
 **GET /api/sleeper/league/{league_id}** - Get comprehensive league data
 **GET /api/sleeper/league/{league_id}/rosters** - Get rosters only
 **GET /api/sleeper/league/{league_id}/users** - Get users only
-**POST /api/sleeper/league/{league_id}/refresh** - Refresh league data
+**POST /api/sleeper/league/{league_id}** - Refresh league data
+**PUT /api/sleeper/league/{league_id}** - Update league data
 
 ### 📊 Sleeper Weekly Stats
 
 ```
 GET /api/sleeper/league/{league_id}/stats/week/{week}
-POST /api/sleeper/league/{league_id}/stats/week/{week}/refresh
+POST /api/sleeper/league/{league_id}/stats/week/{week}
+PUT /api/sleeper/league/{league_id}/stats/week/{week}
 POST /api/sleeper/league/{league_id}/stats/seed
 ```
 
@@ -115,7 +120,8 @@ POST /api/sleeper/league/{league_id}/stats/seed
   - `league_type`: 1 for redraft, 2 for dynasty (default: 2)
   - `average`: "true" to return season averages (weeks 1-16 only)
 
-**POST /api/sleeper/league/{league_id}/stats/week/{week}/refresh** - Refresh weekly stats from Sleeper API
+**POST /api/sleeper/league/{league_id}/stats/week/{week}** - Refresh weekly stats from Sleeper API
+**PUT /api/sleeper/league/{league_id}/stats/week/{week}** - Update weekly stats from Sleeper API
 
 - Same query parameters as GET endpoint
 
@@ -130,7 +136,8 @@ POST /api/sleeper/league/{league_id}/stats/seed
 
 ```
 GET /api/sleeper/players/research/{season}
-POST /api/sleeper/players/research/{season}/refresh
+POST /api/sleeper/players/research/{season}
+PUT /api/sleeper/players/research/{season}
 ```
 
 **GET /api/sleeper/players/research/{season}** - Get research data
@@ -139,7 +146,8 @@ POST /api/sleeper/players/research/{season}/refresh
   - `week`: Week number (default: 1)
   - `league_type`: 1=redraft, 2=dynasty (default: 2)
 
-**POST /api/sleeper/players/research/{season}/refresh** - Refresh research
+**POST /api/sleeper/players/research/{season}** - Refresh research
+**PUT /api/sleeper/players/research/{season}** - Update research
 
 - Same query parameters as GET endpoint
 
@@ -149,6 +157,9 @@ POST /api/sleeper/players/research/{season}/refresh
 
 ```bash
 # Load KTC data first
+curl -X PUT "http://localhost:5000/api/ktc/refresh?league_format=superflex"
+
+# Or use POST endpoint
 curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex"
 
 # Then get rankings
@@ -230,8 +241,11 @@ curl "http://localhost:5000/api/sleeper/league/1210364682523656192"
 # Get only rosters
 curl "http://localhost:5000/api/sleeper/league/1210364682523656192/rosters"
 
-# Refresh league data
-curl -X POST "http://localhost:5000/api/sleeper/league/1210364682523656192/refresh"
+# Update league data
+curl -X PUT "http://localhost:5000/api/sleeper/league/1210364682523656192"
+
+# Or use POST endpoint
+curl -X POST "http://localhost:5000/api/sleeper/league/1210364682523656192"
 ```
 
 ### Research Data
@@ -261,12 +275,13 @@ curl "http://localhost:5000/api/sleeper/players/research/2024?week=10&league_typ
 ### **Best Practices for Performance**
 
 ```bash
-# ❌ Don't call refresh endpoints repeatedly
-curl -X POST /api/ktc/refresh  # Takes 30-60 seconds
+# ❌ Don't call update/refresh endpoints repeatedly
+curl -X PUT /api/ktc/refresh   # Takes 30-60 seconds
+curl -X POST /api/ktc/refresh   # Takes 30-60 seconds
 
-# ✅ Call refresh once, then use cached data
-curl -X POST /api/ktc/refresh  # One-time setup
-curl /api/ktc/rankings         # Fast cached responses
+# ✅ Call update/refresh once, then use cached data
+curl -X PUT /api/ktc/refresh   # One-time setup
+curl /api/ktc/rankings          # Fast cached responses
 
 # ✅ Use database-first endpoints for speed
 curl /api/sleeper/league/123456789 # Checks cache first, API fallback
@@ -301,6 +316,9 @@ curl /api/sleeper/league/123456789 # Checks cache first, API fallback
 4. **Load initial data:**
 
    ```bash
+   curl -X PUT "http://localhost:5000/api/ktc/refresh?league_format=superflex"
+   
+   # Or use POST endpoint
    curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex"
    ```
 
@@ -338,6 +356,6 @@ All endpoints return consistent error responses:
 ## 💡 Tips
 
 - Always check `/api/ktc/health` before making other requests
-- Use the refresh endpoints sparingly to avoid rate limiting
+- Use the update/refresh endpoints sparingly to avoid rate limiting
 - Cache responses on your end when possible
 - The API automatically handles database caching for optimal performance

@@ -13,6 +13,7 @@ This project now includes comprehensive OpenAPI 3.1 documentation with interacti
 ## 🚀 Quick Start
 
 ### Option 1: Documentation Server (Recommended)
+
 Start the documentation server with interactive Swagger UI:
 
 ```bash
@@ -23,16 +24,17 @@ source .venv/bin/activate
 ./docs_startup.sh
 ```
 
-Then visit: **http://localhost:5000/docs/**
+Then visit: **<http://localhost:5000/docs/>**
 
 ### Option 2: Regular Server
+
 The OpenAPI spec is also available with the regular server:
 
 ```bash
 ./startup.sh
 ```
 
-Access the OpenAPI spec at: **http://localhost:5000/openapi.json**
+Access the OpenAPI spec at: **<http://localhost:5000/openapi.json>**
 
 ## 📖 Documentation Access Points
 
@@ -48,44 +50,57 @@ Access the OpenAPI spec at: **http://localhost:5000/openapi.json**
 ### API Endpoints Organized by Category
 
 #### 🏥 Health
+
 - `GET /api/ktc/health` - System health check
 
 #### 🏈 KTC Player Rankings  
-- `POST /api/ktc/refresh` - Refresh KTC rankings
-- `GET /api/ktc/rankings` - Get stored rankings
+
+- `POST /api/ktc/refresh` - Create/populate KTC rankings
+- `PUT /api/ktc/refresh` - Update KTC rankings
+- `GET /api/ktc/rankings` - Retrieve stored rankings
 - `POST /api/ktc/cleanup` - Clean up data
 - `POST /api/ktc/refresh/all` - Comprehensive refresh
 
 #### 👤 Sleeper Players
+
 - `POST /api/sleeper/refresh` - Refresh Sleeper data
 
 #### 🏟️ Sleeper Leagues
+
 - `GET /api/sleeper/league/{league_id}` - Get league data
 - `GET /api/sleeper/league/{league_id}/rosters` - Get rosters
-- `GET /api/sleeper/league/{league_id}/users` - Get users  
-- `POST /api/sleeper/league/{league_id}/refresh` - Refresh league
+- `GET /api/sleeper/league/{league_id}/users` - Get users
+- `POST /api/sleeper/league/{league_id}` - Refresh league
+- `PUT /api/sleeper/league/{league_id}` - Update league
 
 #### 📊 Sleeper Research
+
 - `GET /api/sleeper/players/research/{season}` - Get research data
-- `POST /api/sleeper/players/research/{season}/refresh` - Refresh research
+- `POST /api/sleeper/players/research/{season}` - Refresh research
+- `PUT /api/sleeper/players/research/{season}` - Update research
 
 ## 🔧 Key Features
 
 ### Parameter Documentation
+
 All endpoints include detailed parameter descriptions:
+
 - **Query Parameters**: `is_redraft`, `league_format`, `tep_level`, etc.
 - **Path Parameters**: `league_id`, `season`
 - **Validation Rules**: Enum values, patterns, ranges
 - **Default Values**: Clearly specified for optional parameters
 
 ### Response Schemas
+
 Complete response schemas including:
+
 - **Success Responses**: Detailed data structures
 - **Error Responses**: Consistent error format
 - **Status Codes**: All possible HTTP response codes
 - **Examples**: Real-world response examples
 
 ### Performance Information
+
 - **Caching Behavior**: Database-first approach explained
 - **Response Times**: Expected performance for each endpoint type
 - **Best Practices**: Guidance on optimal API usage
@@ -93,6 +108,7 @@ Complete response schemas including:
 ## 🧪 Testing the API
 
 ### Using Swagger UI
+
 1. Navigate to `http://localhost:5000/docs/`
 2. Click on any endpoint to expand it
 3. Click "Try it out" to test the endpoint
@@ -100,14 +116,18 @@ Complete response schemas including:
 5. View the response directly in the interface
 
 ### Using curl Examples
+
 The documentation includes curl examples for common use cases:
 
 ```bash
 # Health check
 curl http://localhost:5000/api/ktc/health
 
-# Get dynasty superflex rankings with TEP
-curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=false&tep_level=tep"
+# Update dynasty superflex rankings with TEP
+curl -X PUT "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=false&tep_level=tep"
+
+# Or use POST endpoint
+curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex&is_redraft=false&tep_level=tep"
 
 # Get league data
 curl "http://localhost:5000/api/sleeper/league/1210364682523656192"
@@ -132,23 +152,27 @@ When adding new endpoints or modifying existing ones:
 ## 💡 Tips for API Users
 
 ### Getting Started
+
 1. **Check Health**: Always start with `/api/ktc/health`
-2. **Load Data**: Use `/api/ktc/refresh` to populate initial data
-3. **Query Data**: Use `/api/ktc/rankings` for fast cached responses
+2. **Load Data**: Use `/api/ktc/rankings` (PUT) or `/api/ktc/refresh` (POST) to populate initial data
+3. **Query Data**: Use `/api/ktc/rankings` (GET) for fast cached responses
 
 ### Parameter Usage
+
 - **League Format**: Use `superflex` for most dynasty leagues
 - **TEP Levels**: `tep` is most common (+0.5 per TE reception)
 - **Redraft vs Dynasty**: `is_redraft=false` for long-term values
 
 ### Performance Optimization
-- **First Call**: Refresh endpoints take 30-60 seconds
+
+- **First Call**: Update/refresh endpoints take 30-60 seconds
 - **Subsequent Calls**: Cached data returns in < 1 second
 - **Bulk Operations**: Use `/api/ktc/refresh/all` for scheduled tasks
 
 ## 🛠️ Development
 
 ### Extending Documentation
+
 To add documentation for new endpoints:
 
 ```python
@@ -183,7 +207,9 @@ def new_endpoint():
 ```
 
 ### Validation
+
 Always validate your OpenAPI spec:
+
 ```bash
 # Install validation tools
 pip install openapi-spec-validator

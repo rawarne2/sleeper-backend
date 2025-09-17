@@ -182,16 +182,20 @@ curl http://localhost:5000/api/ktc/health
 
 ```bash
 # Superflex redraft rankings
+curl -X PUT "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=true&tep_level=tep"
+
 curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex&is_redraft=true&tep_level=tep"
 
 # 1QB dynasty rankings
+curl -X PUT "http://localhost:5000/api/ktc/rankings?league_format=1qb&is_redraft=false&tep_level=tep"
+
 curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=1qb&is_redraft=false&tep_level=tep"
 ```
 
 #### 3. Get Rankings
 
 ```bash
-# Get the rankings you just loaded
+# Get the rankings you just loaded (same for both PUT and POST)
 curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=true&tep_level=tep"
 ```
 

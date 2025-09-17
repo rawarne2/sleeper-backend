@@ -33,6 +33,76 @@ def with_error_handling(f):
     return decorated_function
 
 
+def filter_players_by_format(players, league_format, tep_level):
+    """Helper function to filter players based on league format and TEP level."""
+    filtered_players = []
+    for player in players:
+        player_dict = player.to_dict()
+
+        if league_format == 'superflex':
+            # Only include players with superflex values
+            if player_dict.get('ktc', {}).get('superflexValues'):
+                # Remove oneQB values from response
+                if 'ktc' in player_dict and player_dict['ktc']:
+                    player_dict['ktc']['oneQBValues'] = None
+
+                # Apply TEP level filtering to superflex values
+                superflex_values = player_dict['ktc']['superflexValues']
+                if tep_level and superflex_values:
+                    if tep_level == 'tep' and superflex_values.get('tep', {}).get('value'):
+                        superflex_values['value'] = superflex_values['tep']['value']
+                        superflex_values['rank'] = superflex_values['tep']['rank']
+                        superflex_values['positionalRank'] = superflex_values['tep']['positionalRank']
+                        superflex_values['overallTier'] = superflex_values['tep']['overallTier']
+                        superflex_values['positionalTier'] = superflex_values['tep']['positionalTier']
+                    elif tep_level == 'tepp' and superflex_values.get('tepp', {}).get('value'):
+                        superflex_values['value'] = superflex_values['tepp']['value']
+                        superflex_values['rank'] = superflex_values['tepp']['rank']
+                        superflex_values['positionalRank'] = superflex_values['tepp']['positionalRank']
+                        superflex_values['overallTier'] = superflex_values['tepp']['overallTier']
+                        superflex_values['positionalTier'] = superflex_values['tepp']['positionalTier']
+                    elif tep_level == 'teppp' and superflex_values.get('teppp', {}).get('value'):
+                        superflex_values['value'] = superflex_values['teppp']['value']
+                        superflex_values['rank'] = superflex_values['teppp']['rank']
+                        superflex_values['positionalRank'] = superflex_values['teppp']['positionalRank']
+                        superflex_values['overallTier'] = superflex_values['teppp']['overallTier']
+                        superflex_values['positionalTier'] = superflex_values['teppp']['positionalTier']
+
+                filtered_players.append(player_dict)
+        else:  # 1qb
+            # Only include players with oneQB values
+            if player_dict.get('ktc', {}).get('oneQBValues'):
+                # Remove superflex values from response
+                if 'ktc' in player_dict and player_dict['ktc']:
+                    player_dict['ktc']['superflexValues'] = None
+
+                # Apply TEP level filtering to oneQB values
+                oneqb_values = player_dict['ktc']['oneQBValues']
+                if tep_level and oneqb_values:
+                    if tep_level == 'tep' and oneqb_values.get('tep', {}).get('value'):
+                        oneqb_values['value'] = oneqb_values['tep']['value']
+                        oneqb_values['rank'] = oneqb_values['tep']['rank']
+                        oneqb_values['positionalRank'] = oneqb_values['tep']['positionalRank']
+                        oneqb_values['overallTier'] = oneqb_values['tep']['overallTier']
+                        oneqb_values['positionalTier'] = oneqb_values['tep']['positionalTier']
+                    elif tep_level == 'tepp' and oneqb_values.get('tepp', {}).get('value'):
+                        oneqb_values['value'] = oneqb_values['tepp']['value']
+                        oneqb_values['rank'] = oneqb_values['tepp']['rank']
+                        oneqb_values['positionalRank'] = oneqb_values['tepp']['positionalRank']
+                        oneqb_values['overallTier'] = oneqb_values['tepp']['overallTier']
+                        oneqb_values['positionalTier'] = oneqb_values['tepp']['positionalTier']
+                    elif tep_level == 'teppp' and oneqb_values.get('teppp', {}).get('value'):
+                        oneqb_values['value'] = oneqb_values['teppp']['value']
+                        oneqb_values['rank'] = oneqb_values['teppp']['rank']
+                        oneqb_values['positionalRank'] = oneqb_values['teppp']['positionalRank']
+                        oneqb_values['overallTier'] = oneqb_values['teppp']['overallTier']
+                        oneqb_values['positionalTier'] = oneqb_values['teppp']['positionalTier']
+
+                filtered_players.append(player_dict)
+
+    return filtered_players
+
+
 @api_bp.route('/sleeper/refresh', methods=['POST'])
 def refresh_sleeper_data():
     """
@@ -147,15 +217,18 @@ def refresh_sleeper_data():
         }), 500
 
 
-@api_bp.route('/ktc/refresh', methods=['POST'])
+@api_bp.route('/ktc/refresh', methods=['POST', 'PUT'])
 def refresh_rankings():
     """
-    Refresh KTC player rankings
+    Refresh/Update KTC player rankings
     ---
     tags:
       - KTC Player Rankings
-    summary: Refresh KTC player rankings
+    summary: Refresh/Update KTC player rankings
     description: |
+      POST: Create/populate KTC rankings data
+      PUT: Update existing KTC rankings data
+
       Fetch fresh KTC rankings and store in database. Returns all player data including dynasty/redraft values, rankings, trends, and tiers.
 
       **Performance Note**: This operation takes 30-60 seconds as it fetches from external APIs.
@@ -298,33 +371,21 @@ def refresh_rankings():
             FileManager, players_sorted, added_count, league_format, is_redraft, tep_level)
 
         # Filter players based on league_format for response
-        filtered_players = []
-        for player in players_sorted:
-            # Always use to_dict() method for consistent structure
-            player_dict = player.to_dict()
+        filtered_players = filter_players_by_format(
+            players_sorted, league_format, tep_level)
 
-            if league_format == 'superflex':
-                # Only include players with superflex values
-                if player_dict.get('ktc', {}).get('superflexValues'):
-                    # Remove oneQB values from response
-                    if 'ktc' in player_dict and player_dict['ktc']:
-                        player_dict['ktc']['oneQBValues'] = None
-                    filtered_players.append(player_dict)
-            else:  # 1qb
-                # Only include players with oneQB values
-                if player_dict.get('ktc', {}).get('oneQBValues'):
-                    # Remove superflex values from response
-                    if 'ktc' in player_dict and player_dict['ktc']:
-                        player_dict['ktc']['superflexValues'] = None
-                    filtered_players.append(player_dict)
-
-        # Return success response with filtered data
+        # Return success response with filtered data (align with GET shape)
         return jsonify({
-            'message': 'Rankings refreshed successfully',
+            'message': 'Rankings updated successfully',
             'timestamp': datetime.now(UTC).isoformat(),
             'database_success': True,
             'file_saved': file_saved,
             's3_uploaded': s3_uploaded,
+            # GET-style echoes
+            'is_redraft': is_redraft,
+            'league_format': league_format,
+            'tep_level': tep_level,
+            'count': len(filtered_players),
             'players': filtered_players,
             'operations_summary': {
                 'players_count': len(filtered_players),
@@ -683,69 +744,8 @@ def get_rankings():
             }), 404
 
         # Convert players to dict format and filter based on league_format and tep_level
-        players_data = []
-        for player in players:
-            player_dict = player.to_dict()
-
-            # Filter KTC values based on league_format parameter and apply TEP filtering
-            if league_format == 'superflex':
-                # Only include superflex values, remove oneQB values
-                if player_dict.get('ktc', {}).get('superflexValues'):
-                    player_dict['ktc']['oneQBValues'] = None
-
-                    # Apply TEP level filtering to superflex values
-                    superflex_values = player_dict['ktc']['superflexValues']
-                    if tep_level and superflex_values:
-                        # Use TEP-specific values if requested and available
-                        if tep_level == 'tep' and superflex_values.get('tep', {}).get('value'):
-                            superflex_values['value'] = superflex_values['tep']['value']
-                            superflex_values['rank'] = superflex_values['tep']['rank']
-                            superflex_values['positionalRank'] = superflex_values['tep']['positionalRank']
-                            superflex_values['overallTier'] = superflex_values['tep']['overallTier']
-                            superflex_values['positionalTier'] = superflex_values['tep']['positionalTier']
-                        elif tep_level == 'tepp' and superflex_values.get('tepp', {}).get('value'):
-                            superflex_values['value'] = superflex_values['tepp']['value']
-                            superflex_values['rank'] = superflex_values['tepp']['rank']
-                            superflex_values['positionalRank'] = superflex_values['tepp']['positionalRank']
-                            superflex_values['overallTier'] = superflex_values['tepp']['overallTier']
-                            superflex_values['positionalTier'] = superflex_values['tepp']['positionalTier']
-                        elif tep_level == 'teppp' and superflex_values.get('teppp', {}).get('value'):
-                            superflex_values['value'] = superflex_values['teppp']['value']
-                            superflex_values['rank'] = superflex_values['teppp']['rank']
-                            superflex_values['positionalRank'] = superflex_values['teppp']['positionalRank']
-                            superflex_values['overallTier'] = superflex_values['teppp']['overallTier']
-                            superflex_values['positionalTier'] = superflex_values['teppp']['positionalTier']
-
-                    players_data.append(player_dict)
-            else:  # 1qb
-                # Only include oneQB values, remove superflex values
-                if player_dict.get('ktc', {}).get('oneQBValues'):
-                    player_dict['ktc']['superflexValues'] = None
-
-                    # Apply TEP level filtering to oneQB values
-                    oneqb_values = player_dict['ktc']['oneQBValues']
-                    if tep_level and oneqb_values:
-                        # Use TEP-specific values if requested and available
-                        if tep_level == 'tep' and oneqb_values.get('tep', {}).get('value'):
-                            oneqb_values['value'] = oneqb_values['tep']['value']
-                            oneqb_values['rank'] = oneqb_values['tep']['rank']
-                            oneqb_values['positionalRank'] = oneqb_values['tep']['positionalRank']
-                            oneqb_values['overallTier'] = oneqb_values['tep']['overallTier']
-                            oneqb_values['positionalTier'] = oneqb_values['tep']['positionalTier']
-                        elif tep_level == 'tepp' and oneqb_values.get('tepp', {}).get('value'):
-                            oneqb_values['value'] = oneqb_values['tepp']['value']
-                            oneqb_values['rank'] = oneqb_values['tepp']['rank']
-                            oneqb_values['positionalRank'] = oneqb_values['tepp']['positionalRank']
-                            oneqb_values['overallTier'] = oneqb_values['tepp']['overallTier']
-                            oneqb_values['positionalTier'] = oneqb_values['tepp']['positionalTier']
-                        elif tep_level == 'teppp' and oneqb_values.get('teppp', {}).get('value'):
-                            oneqb_values['value'] = oneqb_values['teppp']['value']
-                            oneqb_values['rank'] = oneqb_values['teppp']['rank']
-                            oneqb_values['positionalRank'] = oneqb_values['teppp']['positionalRank']
-                            oneqb_values['overallTier'] = oneqb_values['teppp']['overallTier']
-                            oneqb_values['positionalTier'] = oneqb_values['teppp']['positionalTier']
-
-                    players_data.append(player_dict)
+        players_data = filter_players_by_format(
+            players, league_format, tep_level)
 
         return jsonify({
             'timestamp': last_updated.isoformat() if last_updated else None,
@@ -1255,16 +1255,16 @@ def get_league_users(league_id: str):
     })
 
 
-@api_bp.route('/sleeper/league/<string:league_id>/refresh', methods=['POST'])
+@api_bp.route('/sleeper/league/<string:league_id>', methods=['POST', 'PUT'])
 @with_error_handling
 def refresh_league_data(league_id: str):
     """
-    Refresh league data
+    Refresh/Update league data
     ---
     tags:
       - Sleeper Leagues
-    summary: Refresh league data
-    description: Refresh all league data from Sleeper API (league info, rosters, users)
+    summary: Refresh/Update league data
+    description: Refresh all league data from Sleeper API (league info, rosters, users).
     parameters:
       - name: league_id
         in: path
@@ -1395,6 +1395,14 @@ def refresh_league_data(league_id: str):
             results['status'] = 'error'
         else:
             results['status'] = 'partial_success'
+
+    # Include the league data we just refreshed
+    if results['league_data'] and isinstance(results['league_data'], dict) and results['league_data'].get('status') == 'success':
+        results['data'] = results['league_data']['save_result']
+        results['source'] = 'database'
+    else:
+        results['data'] = None
+        results['source'] = 'sleeper_api'
 
     return jsonify(results)
 
@@ -1550,16 +1558,16 @@ def get_research_data(season: str):
     })
 
 
-@api_bp.route('/sleeper/players/research/<string:season>/refresh', methods=['POST'])
+@api_bp.route('/sleeper/players/research/<string:season>', methods=['POST', 'PUT'])
 @with_error_handling
 def refresh_research_data(season: str):
     """
-    Refresh research data
+    Refresh/Update research data
     ---
     tags:
       - Sleeper Research
-    summary: Refresh research data
-    description: Manually refresh research data from Sleeper API for a specific season
+    summary: Refresh/Update research data
+    description: Refresh research data from Sleeper API for a specific season.
     parameters:
       - name: season
         in: path
@@ -1656,56 +1664,48 @@ def refresh_research_data(season: str):
         }), 400
 
     # Save to database
-    try:
-        # Clear existing records for this season/week/league_type
-        SleeperWeeklyData.query.filter_by(
-            season=season,
-            week=week,
-            league_type=league_type
-        ).delete()
+    # Clear existing records for this season/week/league_type
+    SleeperWeeklyData.query.filter_by(
+        season=season,
+        week=week,
+        league_type=league_type
+    ).delete()
 
-        # Save new records
-        saved_count = 0
-        for player_id, player_data in research_data.get('research_data', {}).items():
-            try:
-                new_record = SleeperWeeklyData(
-                    season=season,
-                    week=week,
-                    league_type=league_type,
-                    player_id=player_id,
-                    research_data=json.dumps(player_data)
-                )
-                db.session.add(new_record)
-                saved_count += 1
-            except Exception as e:
-                logger.error(
-                    "Error saving research record for player %s: %s", player_id, e)
-                continue
+    # Save new records
+    saved_count = 0
+    for player_id, player_data in research_data.get('research_data', {}).items():
+        try:
+            new_record = SleeperWeeklyData(
+                season=season,
+                week=week,
+                league_type=league_type,
+                player_id=player_id,
+                research_data=json.dumps(player_data)
+            )
+            db.session.add(new_record)
+            saved_count += 1
+        except Exception as e:
+            logger.error(
+                "Error saving research record for player %s: %s", player_id, e)
+            continue
 
-        db.session.commit()
+    db.session.commit()
 
-        return jsonify({
-            'status': 'success',
-            'message': 'Research data refreshed successfully',
-            'season': season,
-            'week': week,
-            'league_type': league_type,
-            'refresh_results': {
-                'saved_count': saved_count,
-                'total_players': len(research_data.get('research_data', {}))
-            },
-            'timestamp': datetime.now(UTC).isoformat()
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        logger.error("Error saving refreshed research data: %s", e)
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to save refreshed research data',
-            'details': str(e),
-            'season': season
-        }), 500
+    return jsonify({
+        'status': 'success',
+        'message': 'Research data refreshed successfully',
+        'season': season,
+        'week': week,
+        'league_type': league_type,
+        'refresh_results': {
+            'saved_count': saved_count,
+            'total_players': len(research_data.get('research_data', {}))
+        },
+        'data': research_data.get('research_data', []),
+        'source': 'database',
+        'database_saved': True,
+        'timestamp': datetime.now(UTC).isoformat()
+    })
 
 
 # ============================================================================
@@ -2008,15 +2008,15 @@ def get_weekly_stats(league_id: str, week: int):
     })
 
 
-@api_bp.route('/sleeper/league/<string:league_id>/stats/week/<int:week>/refresh', methods=['POST'])
+@api_bp.route('/sleeper/league/<string:league_id>/stats/week/<int:week>', methods=['POST', 'PUT'])
 @with_error_handling
 def refresh_weekly_stats(league_id: str, week: int):
     """
-    Refresh weekly stats for a specific week
+    Refresh/Update weekly stats for a specific week
     ---
     tags:
       - Sleeper Weekly Stats
-    summary: Refresh weekly stats for a specific week
+    summary: Refresh/Update weekly stats for a specific week
     description: |
       Fetch fresh weekly stats data from Sleeper API for a specific week and save to database.
       This endpoint fetches matchup data and extracts player scoring information.
@@ -2151,6 +2151,14 @@ def refresh_weekly_stats(league_id: str, week: int):
         'week': week,
         'season': season,
         'refresh_results': save_result,
+        'refreshed_stats': {
+            'status': 'success',
+            'data_type': 'weekly',
+            'season': season,
+            'week': week,
+            'records': weekly_stats,
+            'count': len(weekly_stats)
+        },
         'timestamp': datetime.now(UTC).isoformat()
     })
 

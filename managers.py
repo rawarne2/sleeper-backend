@@ -1133,7 +1133,12 @@ class DatabaseManager:
 
     @staticmethod
     def _upsert_record(model_class, filter_criteria: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
-        """Generic upsert helper to reduce duplicate code."""
+        # TODO: finish implementing this and logic like it to reduce duplicate code
+        # - add type in args model_class: Type[BaseModel]
+        # """Generic upsert helper to reduce duplicate code."""
+        # from models import BaseModel
+        # from typing import Type, Any, Dict
+
         existing = model_class.query.filter_by(**filter_criteria).first()
 
         if existing:
