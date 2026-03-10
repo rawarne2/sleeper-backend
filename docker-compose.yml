@@ -23,7 +23,8 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "5000:5000"
+      - "5001:5001"
+      - "5678:5678" # debugpy - set REMOTE_DEBUG=1 to enable
     volumes:
       # Mount local data-files directory for JSON exports
       - ./data-files:/app/data-files
@@ -32,22 +33,19 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/sleeper_db?sslmode=disable
-      # AWS credentials - you can either:
-      # 1. Set these in your shell environment before running docker-compose
-      # 2. Create a .env file with these values
-      # 3. Uncomment and set directly (not recommended for production)
+      - REMOTE_DEBUG=${REMOTE_DEBUG:-0}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:password@postgres:5432/sleeper_db?sslmode=disable}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
       - S3_BUCKET=${S3_BUCKET}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/api/ktc/health"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/ktc/health"]
+      interval: 60s
+      timeout: 30s
       retries: 3
       start_period: 40s
 
 volumes:
-  postgres_data: 
+  postgres_data:

@@ -1,19 +1,14 @@
 #!/bin/sh
 
-# Set default environment for local development if not already set
+# Set default environment for local development if not already set.
+# If DATABASE_URL is provided (local Postgres, Supabase, etc.), use it as-is
+# and let the connection string control SSL behavior.
 if [ -z "$DATABASE_URL" ]; then
     export DATABASE_URL="sqlite:///sleeper_local.db"
     echo "Using default SQLite database for local development"
 else
-    echo "Using provided DATABASE_URL: ${DATABASE_URL:0:50}..."
-    if echo "$DATABASE_URL" | grep -q "postgresql"; then
-        echo "PostgreSQL database detected - ensuring SSL mode is disabled for local Docker"
-        # Ensure sslmode=disable is set for local PostgreSQL
-        if ! echo "$DATABASE_URL" | grep -q "sslmode="; then
-            export DATABASE_URL="${DATABASE_URL}?sslmode=disable"
-            echo "Added sslmode=disable to PostgreSQL connection string"
-        fi
-    fi
+    database_url_preview=$(printf '%s' "$DATABASE_URL" | cut -c1-80)
+    echo "Using provided DATABASE_URL: ${database_url_preview}..."
 fi
 
 # Initialize database
@@ -38,9 +33,16 @@ else
     echo "✅ Database initialized successfully (PostgreSQL)"
 fi
 echo "🚀 Starting Flask application with Gunicorn..."
-echo "📖 Interactive API documentation available at: http://localhost:5000/docs/"
-echo "📄 OpenAPI 3.0 specification available at: http://localhost:5000/openapi.json"
-echo "🏠 Root URL redirects to documentation: http://localhost:5000/"
+echo "📖 Interactive API documentation available at: http://localhost:5001/docs/"
+echo "📄 OpenAPI 3.0 specification available at: http://localhost:5001/openapi.json"
+echo "🏠 Root URL redirects to documentation: http://localhost:5001/"
 echo ""
 echo "Database is ready - you can now call /api/ktc/refresh endpoints to populate data"
+
+# When REMOTE_DEBUG=1, run with debugpy so VS Code can attach and breakpoints work
+if [ -n "$REMOTE_DEBUG" ] && [ "$REMOTE_DEBUG" != "0" ]; then
+    echo "🐛 Remote debug enabled - attach on port 5678 (e.g. VS Code 'Python: Remote Debug Docker')"
+    exec python -m debugpy --listen 0.0.0.0:5678 -m gunicorn --config gunicorn.conf.py --workers 1 wsgi:app
+fi
+
 exec gunicorn --config gunicorn.conf.py wsgi:app

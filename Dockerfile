@@ -27,7 +27,7 @@ COPY . .
 # Make startup script executable
 RUN chmod +x startup.sh
 
-# Expose port 5000 for Flask
-EXPOSE 5000
+# Expose port 5001 for Flask
+EXPOSE 5001
 
 CMD ["./startup.sh"]
