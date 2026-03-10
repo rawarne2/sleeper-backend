@@ -1,11 +1,12 @@
 import os
+import re
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, request
 from flask_cors import CORS
 
 # Import our modules
 from models import db
-from routes import api_bp
+from routes import register_blueprints
 from utils import DATABASE_URI, setup_logging
 from swagger_config import setup_swagger, add_documentation_routes
 
@@ -46,16 +47,13 @@ db.init_app(app)
 CORS(app, resources={
     r"/api/*": {
         "origins": [
-            # Local development
             "http://localhost:3000",
             "http://localhost:3001",
             "http://127.0.0.1:3000",
             "http://127.0.0.1:3001",
             "http://localhost:5173",
             "http://127.0.0.1:5173",
-            # Production frontend - specific domain
             "https://sleeper-dashboard-xi.vercel.app",
-            # All Vercel deployments (regex patterns)
             r"https://sleeper-dashboard-xi.*\.vercel\.app",
             r"https://.*\.vercel\.app"
         ],
@@ -65,11 +63,49 @@ CORS(app, resources={
     }
 })
 
-# Configure Swagger/OpenAPI documentation
-swagger = setup_swagger(app, host="localhost:5000", schemes=["http", "https"])
+# Explicit CORS for local network (mobile/tablet with Vite --host). Flask-CORS regex
+# can be unreliable, so we set headers ourselves for any origin matching these patterns.
+CORS_EXPLICIT_ORIGINS = {
+    "http://localhost:3000", "http://localhost:3001",
+    "http://127.0.0.1:3000", "http://127.0.0.1:3001",
+    "http://localhost:5173", "http://127.0.0.1:5173",
+    "https://sleeper-dashboard-xi.vercel.app",
+}
+CORS_LOCAL_NETWORK_REGEX = re.compile(
+    r"^http://(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$"
+)
+CORS_VERCEL_REGEX = re.compile(r"^https://.*\.vercel\.app$")
 
-# Register blueprints
-app.register_blueprint(api_bp)
+
+def _is_allowed_cors_origin(origin):
+    if not origin:
+        return False
+    if origin in CORS_EXPLICIT_ORIGINS:
+        return True
+    if CORS_LOCAL_NETWORK_REGEX.match(origin):
+        return True
+    if CORS_VERCEL_REGEX.match(origin):
+        return True
+    return False
+
+
+@app.after_request
+def _cors_after_request(response):
+    origin = request.headers.get("Origin")
+    if not origin or not request.path.startswith("/api/"):
+        return response
+    if _is_allowed_cors_origin(origin):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept"
+    return response
+
+# Configure Swagger/OpenAPI documentation
+swagger = setup_swagger(app, host="localhost:5001", schemes=["http", "https"])
+
+# Register all blueprints from the modular routes structure
+register_blueprints(app)
 
 # Add documentation routes
 add_documentation_routes(app, logger)
@@ -110,4 +146,4 @@ def create_tables():
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=True)

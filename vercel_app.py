@@ -14,7 +14,7 @@ from utils import setup_logging
 from swagger_config import setup_swagger, add_documentation_routes
 
 # Import routes after db is available to avoid circular imports
-from routes import api_bp
+from routes import register_blueprints
 
 # Load environment variables
 load_dotenv()
@@ -116,8 +116,8 @@ CORS(app,
 swagger = setup_swagger(
     app, host="sleeper-backend.vercel.app", schemes=["https"])
 
-# Register blueprints
-app.register_blueprint(api_bp)
+# Register all blueprints from the modular routes structure
+register_blueprints(app)
 
 # Add explicit OPTIONS handler for preflight requests
 

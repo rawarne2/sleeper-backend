@@ -34,6 +34,10 @@ DATABASE_URI = os.getenv(
               'postgresql://postgres:password@localhost:5433/sleeper_db?sslmode=disable')
 )
 
+# Normalize older postgres:// URLs to postgresql:// for SQLAlchemy
+if DATABASE_URI and DATABASE_URI.startswith('postgres://'):
+    DATABASE_URI = DATABASE_URI.replace('postgres://', 'postgresql://', 1)
+
 
 def setup_logging():
     """Configure logging for the application."""

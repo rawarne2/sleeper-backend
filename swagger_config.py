@@ -38,12 +38,12 @@ def get_swagger_config():
     }
 
 
-def get_swagger_template(host="localhost:5000", schemes=None):
+def get_swagger_template(host="localhost:5001", schemes=None):
     """
     Get the Swagger template configuration.
 
     Args:
-        host: The host for the API (default: localhost:5000 for dev)
+        host: The host for the API (default: localhost:5001 for dev)
         schemes: List of schemes (default: ["http", "https"] for dev, ["https"] for prod)
     """
     if schemes is None:
@@ -140,13 +140,13 @@ curl -X POST "{base_url}/api/sleeper/league/1210364682523656192/refresh"
     }
 
 
-def setup_swagger(app, host="localhost:5000", schemes=None):
+def setup_swagger(app, host="localhost:5001", schemes=None):
     """
     Set up Swagger/OpenAPI documentation for a Flask app.
 
     Args:
         app: Flask application instance
-        host: The host for the API (default: localhost:5000 for dev)
+        host: The host for the API (default: localhost:5001 for dev)
         schemes: List of schemes (default: ["http", "https"] for dev, ["https"] for prod)
     """
     swagger_config = get_swagger_config()

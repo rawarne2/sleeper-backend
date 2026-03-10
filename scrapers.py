@@ -373,6 +373,14 @@ class SleeperScraper:
             return None
 
     @staticmethod
+    def _normalize_research_league_type(league_type):
+        if league_type in ('dynasty', '2', 2):
+            return 2
+        if league_type in ('redraft', '1', 1):
+            return 1
+        return league_type
+
+    @staticmethod
     def fetch_players_research(season: str, week: int = 1, league_type: int = 2) -> Optional[Dict[str, Any]]:
         """
         Fetch player research data from Sleeper API.
@@ -386,6 +394,8 @@ class SleeperScraper:
             Research data dictionary or None if failed
         """
         try:
+            league_type = SleeperScraper._normalize_research_league_type(
+                league_type)
             logger.info("Fetching research data for season: %s, week: %s, league_type: %s",
                         season, week, league_type)
             url = f"https://api.sleeper.app/players/nfl/research/regular/{season}/{week}?league_type={league_type}"
