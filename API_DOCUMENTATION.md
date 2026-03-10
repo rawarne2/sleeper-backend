@@ -4,29 +4,33 @@ A comprehensive fantasy football API that aggregates data from **KeepTradeCut (K
 
 ## 🚀 Quick Start
 
-1. **Start the server:**
+1. **Start the server (choose one):**
 
    ```bash
+   # Option A: Local (no Docker)
    ./startup.sh
+
+   # Option B: Docker (PostgreSQL via Docker Compose)
+   ./docker-compose.sh up
    ```
 
 2. **Server runs on:**
 
    ```
-   http://localhost:5000
+   http://localhost:5001
    ```
 
 3. **Seed your data in the correct order:**
 
    ```bash
    # 1. First, seed Sleeper player data (foundation - takes 30-60 seconds)
-   curl -X POST "http://localhost:5000/api/sleeper/refresh"
+   curl -X POST "http://localhost:5001/api/sleeper/refresh"
    
    # 2. Then, merge KTC rankings into existing Sleeper players (fast - takes 5-10 seconds)
-   curl -X POST "http://localhost:5000/api/ktc/refresh/all"
+   curl -X POST "http://localhost:5001/api/ktc/refresh/all"
    
    # 3. Finally, seed your league for weekly stats (optional)
-   curl -X POST "http://localhost:5000/api/sleeper/league/YOUR_LEAGUE_ID/stats/seed" \
+   curl -X POST "http://localhost:5001/api/sleeper/league/YOUR_LEAGUE_ID/stats/seed" \
      -H "Content-Type: application/json" \
      -d '{"league_name": "My League", "season": "2024", "league_type": "dynasty"}'
    ```
@@ -117,7 +121,7 @@ POST /api/sleeper/league/{league_id}/stats/seed
 
 - Query Parameters:
   - `season`: NFL season year (default: "2024")
-  - `league_type`: 1 for redraft, 2 for dynasty (default: 2)
+  - `league_type`: `dynasty` or `redraft` (default: `dynasty`)
   - `average`: "true" to return season averages (weeks 1-16 only)
 
 **POST /api/sleeper/league/{league_id}/stats/week/{week}** - Refresh weekly stats from Sleeper API
@@ -144,7 +148,7 @@ PUT /api/sleeper/players/research/{season}
 
 - Query Parameters:
   - `week`: Week number (default: 1)
-  - `league_type`: 1=redraft, 2=dynasty (default: 2)
+  - `league_type`: `dynasty` or `redraft` (default: `dynasty`)
 
 **POST /api/sleeper/players/research/{season}** - Refresh research
 **PUT /api/sleeper/players/research/{season}** - Update research
@@ -157,13 +161,13 @@ PUT /api/sleeper/players/research/{season}
 
 ```bash
 # Load KTC data first
-curl -X PUT "http://localhost:5000/api/ktc/refresh?league_format=superflex"
+curl -X PUT "http://localhost:5001/api/ktc/refresh?league_format=superflex"
 
 # Or use POST endpoint
-curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex"
+curl -X POST "http://localhost:5001/api/ktc/refresh?league_format=superflex"
 
 # Then get rankings
-curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&tep_level=tep"
+curl "http://localhost:5001/api/ktc/rankings?league_format=superflex&tep_level=tep"
 ```
 
 ### 2. **Parameter Examples**
@@ -223,39 +227,39 @@ curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&tep_level=t
 
 ```bash
 # Dynasty Superflex with TEP
-curl "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=false&tep_level=tep"
+curl "http://localhost:5001/api/ktc/rankings?league_format=superflex&is_redraft=false&tep_level=tep"
 
 # Redraft 1QB Standard
-curl "http://localhost:5000/api/ktc/rankings?league_format=1qb&is_redraft=true"
+curl "http://localhost:5001/api/ktc/rankings?league_format=1qb&is_redraft=true"
 
 # Dynasty 1QB with maximum TEP
-curl "http://localhost:5000/api/ktc/rankings?league_format=1qb&is_redraft=false&tep_level=teppp"
+curl "http://localhost:5001/api/ktc/rankings?league_format=1qb&is_redraft=false&tep_level=teppp"
 ```
 
 ### League Management
 
 ```bash
 # Get league data
-curl "http://localhost:5000/api/sleeper/league/1210364682523656192"
+curl "http://localhost:5001/api/sleeper/league/1210364682523656192"
 
 # Get only rosters
-curl "http://localhost:5000/api/sleeper/league/1210364682523656192/rosters"
+curl "http://localhost:5001/api/sleeper/league/1210364682523656192/rosters"
 
 # Update league data
-curl -X PUT "http://localhost:5000/api/sleeper/league/1210364682523656192"
+curl -X PUT "http://localhost:5001/api/sleeper/league/1210364682523656192"
 
 # Or use POST endpoint
-curl -X POST "http://localhost:5000/api/sleeper/league/1210364682523656192"
+curl -X POST "http://localhost:5001/api/sleeper/league/1210364682523656192"
 ```
 
 ### Research Data
 
 ```bash
 # Get 2024 dynasty research
-curl "http://localhost:5000/api/sleeper/players/research/2024?league_type=2"
+curl "http://localhost:5001/api/sleeper/players/research/2024?league_type=dynasty"
 
 # Get 2024 redraft week 10 research  
-curl "http://localhost:5000/api/sleeper/players/research/2024?week=10&league_type=1"
+curl "http://localhost:5001/api/sleeper/players/research/2024?week=10&league_type=redraft"
 ```
 
 ## ⚡ Performance Optimizations
@@ -295,37 +299,41 @@ curl /api/sleeper/league/123456789 # Checks cache first, API fallback
 
 ## 🚀 Getting Started
 
-1. **Install dependencies:**
+1. **Install dependencies (for local / non-Docker runs):**
 
    ```bash
    pip install -r requirements.txt
    ```
 
-2. **Start the server:**
+2. **Start the server (pick one):**
 
    ```bash
+   # Local (no Docker)
    ./startup.sh
+
+   # Or Docker (uses docker-compose)
+   ./docker-compose.sh up
    ```
 
 3. **Test the API:**
 
    ```bash
-   curl http://localhost:5000/api/ktc/health
+   curl http://localhost:5001/api/ktc/health
    ```
 
 4. **Load initial data:**
 
    ```bash
-   curl -X PUT "http://localhost:5000/api/ktc/refresh?league_format=superflex"
+   curl -X PUT "http://localhost:5001/api/ktc/refresh?league_format=superflex"
    
    # Or use POST endpoint
-   curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex"
+   curl -X POST "http://localhost:5001/api/ktc/refresh?league_format=superflex"
    ```
 
 5. **Get player data:**
 
    ```bash
-   curl "http://localhost:5000/api/ktc/rankings?league_format=superflex"
+   curl "http://localhost:5001/api/ktc/rankings?league_format=superflex"
    ```
 
 ## 📈 Production Ready

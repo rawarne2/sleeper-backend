@@ -12,19 +12,16 @@ This project now includes comprehensive OpenAPI 3.1 documentation with interacti
 
 ## 🚀 Quick Start
 
-### Option 1: Documentation Server (Recommended)
+### Option 1: Local Server (Recommended)
 
 Start the documentation server with interactive Swagger UI:
 
 ```bash
-# Make sure you're in the virtual environment
-source .venv/bin/activate
-
-# Start the documentation server
-./docs_startup.sh
+# Start the API locally
+./startup.sh
 ```
 
-Then visit: **<http://localhost:5000/docs/>**
+Then visit: **<http://localhost:5001/docs/>**
 
 ### Option 2: Regular Server
 
@@ -34,16 +31,16 @@ The OpenAPI spec is also available with the regular server:
 ./startup.sh
 ```
 
-Access the OpenAPI spec at: **<http://localhost:5000/openapi.json>**
+Access the OpenAPI spec at: **<http://localhost:5001/openapi.json>**
 
 ## 📖 Documentation Access Points
 
 | URL | Description |
 |-----|-------------|
-| `http://localhost:5000/` | Redirects to documentation (docs server only) |
-| `http://localhost:5000/docs/` | Interactive Swagger UI interface |
-| `http://localhost:5000/openapi.json` | OpenAPI 3.1 specification (JSON) |
-| `http://localhost:5000/apispec.json` | Flasgger-generated spec (Swagger 2.0) |
+| `http://localhost:5001/` | Redirects to documentation |
+| `http://localhost:5001/docs/` | Interactive Swagger UI interface |
+| `http://localhost:5001/openapi.json` | OpenAPI 3.1 specification (JSON) |
+| `http://localhost:5001/apispec.json` | Flasgger-generated spec (Swagger 2.0) |
 
 ## 🏗️ Documentation Structure
 
@@ -109,7 +106,7 @@ Complete response schemas including:
 
 ### Using Swagger UI
 
-1. Navigate to `http://localhost:5000/docs/`
+1. Navigate to `http://localhost:5001/docs/`
 2. Click on any endpoint to expand it
 3. Click "Try it out" to test the endpoint
 4. Fill in parameters and click "Execute"
@@ -121,23 +118,24 @@ The documentation includes curl examples for common use cases:
 
 ```bash
 # Health check
-curl http://localhost:5000/api/ktc/health
+curl http://localhost:5001/api/ktc/health
 
 # Update dynasty superflex rankings with TEP
-curl -X PUT "http://localhost:5000/api/ktc/rankings?league_format=superflex&is_redraft=false&tep_level=tep"
+curl -X PUT "http://localhost:5001/api/ktc/refresh?league_format=superflex&is_redraft=false&tep_level=tep"
 
 # Or use POST endpoint
-curl -X POST "http://localhost:5000/api/ktc/refresh?league_format=superflex&is_redraft=false&tep_level=tep"
+curl -X POST "http://localhost:5001/api/ktc/refresh?league_format=superflex&is_redraft=false&tep_level=tep"
 
 # Get league data
-curl "http://localhost:5000/api/sleeper/league/1210364682523656192"
+curl "http://localhost:5001/api/sleeper/league/1210364682523656192"
 ```
 
 ## 📁 Documentation Files
 
 - `openapi.yaml` - OpenAPI 3.1 specification
-- `docs_app.py` - Flask app with Swagger UI integration
-- `docs_startup.sh` - Documentation server startup script
+- `app.py` - Local Flask app entrypoint
+- `swagger_config.py` - Shared Swagger and OpenAPI route configuration
+- `startup.sh` - Local startup script
 - `OPENAPI_README.md` - This documentation guide
 
 ## 🔄 Updating Documentation
@@ -146,7 +144,7 @@ When adding new endpoints or modifying existing ones:
 
 1. **Update OpenAPI Spec**: Modify `openapi.yaml`
 2. **Add Swagger Docstrings**: Add docstrings to route functions (optional)
-3. **Test Changes**: Run `./docs_startup.sh` and verify in browser
+3. **Test Changes**: Run `./startup.sh` and verify in browser
 4. **Update Examples**: Add new curl examples to documentation
 
 ## 💡 Tips for API Users
@@ -154,7 +152,7 @@ When adding new endpoints or modifying existing ones:
 ### Getting Started
 
 1. **Check Health**: Always start with `/api/ktc/health`
-2. **Load Data**: Use `/api/ktc/rankings` (PUT) or `/api/ktc/refresh` (POST) to populate initial data
+2. **Load Data**: Use `/api/ktc/refresh` (PUT or POST) to populate initial data
 3. **Query Data**: Use `/api/ktc/rankings` (GET) for fast cached responses
 
 ### Parameter Usage

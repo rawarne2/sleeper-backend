@@ -2,9 +2,9 @@
 # Call /api/ktc/refresh/all first when running the project for the first time. Then other refresh routes to populate data
 
 # Environment Variables
-# Set BASE_URL to http://localhost:5000 for local development
+# Set BASE_URL to http://localhost:5001 for local development
 # Set BASE_URL to https://sleeper-backend.vercel.app for production
-@BASE_URL = http://localhost:5000
+@BASE_URL = http://localhost:5001
 
 ### Health Check
 GET {{BASE_URL}}/api/ktc/health
@@ -66,8 +66,8 @@ GET {{BASE_URL}}/api/sleeper/players/research/2024?week=10
 # GET https://sleeper-backend.vercel.app/api/sleeper/players/research/2024?week=10
 
 ### Get player research data (2024 season, redraft)
-GET {{BASE_URL}}/api/sleeper/players/research/2024?league_type=1
-# GET https://sleeper-backend.vercel.app/api/sleeper/players/research/2024?league_type=1
+GET {{BASE_URL}}/api/sleeper/players/research/2024?league_type=redraft
+# GET https://sleeper-backend.vercel.app/api/sleeper/players/research/2024?league_type=redraft
 
 ### Update player research data (2024 season)
 PUT {{BASE_URL}}/api/sleeper/players/research/2024

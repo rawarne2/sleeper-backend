@@ -21,7 +21,7 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: http://localhost:5000
+  - url: http://localhost:5001
     description: Development server
   - url: https://sleeper-backend.vercel.app
     description: Production server
@@ -85,6 +85,38 @@ paths:
       responses:
         "200":
           description: Rankings refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KTCRefreshResponse"
+        "400":
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error during refresh
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags:
+        - KTC Player Rankings
+      summary: Update KTC player rankings
+      description: |
+        Fetch fresh KTC rankings and update the stored database records. Returns all player data including dynasty/redraft values, rankings, trends, and tiers.
+
+        **Performance Note**: This operation takes 30-60 seconds as it fetches from external APIs.
+      operationId: updateKTCRankings
+      parameters:
+        - $ref: "#/components/parameters/IsRedraft"
+        - $ref: "#/components/parameters/LeagueFormat"
+        - $ref: "#/components/parameters/TepLevel"
+      responses:
+        "200":
+          description: Rankings updated successfully
           content:
             application/json:
               schema:
@@ -250,6 +282,60 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags:
+        - Sleeper Leagues
+      summary: Refresh league data
+      description: Refresh all league data from Sleeper API (league info, rosters, users)
+      operationId: refreshLeagueData
+      parameters:
+        - $ref: "#/components/parameters/LeagueId"
+      responses:
+        "200":
+          description: League data refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeagueRefreshResponse"
+        "404":
+          description: League not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags:
+        - Sleeper Leagues
+      summary: Update league data
+      description: Refresh all league data from Sleeper API (league info, rosters, users)
+      operationId: updateLeagueData
+      parameters:
+        - $ref: "#/components/parameters/LeagueId"
+      responses:
+        "200":
+          description: League data refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeagueRefreshResponse"
+        "404":
+          description: League not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/sleeper/league/{league_id}/rosters:
     get:
@@ -319,8 +405,8 @@ paths:
         Returns player scoring data including points, roster ID, and is_starter status.
       parameters:
         - $ref: "#/components/parameters/LeagueId"
-        - $ref: "#/components/parameters/Week"
-        - $ref: "#/components/parameters/Season"
+        - $ref: "#/components/parameters/WeekPath"
+        - $ref: "#/components/parameters/SeasonQuery"
         - $ref: "#/components/parameters/LeagueType"
         - name: average
           in: query
@@ -348,8 +434,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-
-  /api/sleeper/league/{league_id}/stats/week/{week}/refresh:
     post:
       tags:
         - Sleeper Weekly Stats
@@ -359,8 +443,39 @@ paths:
         This endpoint fetches matchup data and extracts player scoring information.
       parameters:
         - $ref: "#/components/parameters/LeagueId"
-        - $ref: "#/components/parameters/Week"
-        - $ref: "#/components/parameters/Season"
+        - $ref: "#/components/parameters/WeekPath"
+        - $ref: "#/components/parameters/SeasonQuery"
+        - $ref: "#/components/parameters/LeagueType"
+      responses:
+        "200":
+          description: Weekly stats refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklyStatsRefreshResponse"
+        "400":
+          description: Invalid parameters or failed to refresh
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags:
+        - Sleeper Weekly Stats
+      summary: Update weekly stats for a specific week
+      description: |
+        Fetch fresh weekly stats data from Sleeper API for a specific week and save to database.
+        This endpoint fetches matchup data and extracts player scoring information.
+      parameters:
+        - $ref: "#/components/parameters/LeagueId"
+        - $ref: "#/components/parameters/WeekPath"
+        - $ref: "#/components/parameters/SeasonQuery"
         - $ref: "#/components/parameters/LeagueType"
       responses:
         "200":
@@ -408,10 +523,16 @@ paths:
                   description: The NFL season year
                   pattern: "^[0-9]{4}$"
                   example: "2024"
+                league_type:
+                  type: string
+                  description: League type
+                  enum: ["dynasty", "redraft"]
+                  default: "dynasty"
                 scoring_settings:
                   type: object
                   description: League scoring settings
               required:
+                - league_name
                 - season
       responses:
         "200":
@@ -433,35 +554,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /api/sleeper/league/{league_id}/refresh:
-    post:
-      tags:
-        - Sleeper Leagues
-      summary: Refresh league data
-      description: Refresh all league data from Sleeper API (league info, rosters, users)
-      operationId: refreshLeagueData
-      parameters:
-        - $ref: "#/components/parameters/LeagueId"
-      responses:
-        "200":
-          description: League data refreshed successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/LeagueRefreshResponse"
-        "404":
-          description: League not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
   /api/sleeper/players/research/{season}:
     get:
       tags:
@@ -472,7 +564,7 @@ paths:
       operationId: getResearchData
       parameters:
         - $ref: "#/components/parameters/Season"
-        - $ref: "#/components/parameters/Week"
+        - $ref: "#/components/parameters/WeekQuery"
         - $ref: "#/components/parameters/LeagueType"
       responses:
         "200":
@@ -493,8 +585,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-
-  /api/sleeper/players/research/{season}/refresh:
     post:
       tags:
         - Sleeper Research
@@ -503,7 +593,36 @@ paths:
       operationId: refreshResearchData
       parameters:
         - $ref: "#/components/parameters/Season"
-        - $ref: "#/components/parameters/Week"
+        - $ref: "#/components/parameters/WeekQuery"
+        - $ref: "#/components/parameters/LeagueType"
+      responses:
+        "200":
+          description: Research data refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchRefreshResponse"
+        "400":
+          description: Invalid parameters or failed to refresh
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags:
+        - Sleeper Research
+      summary: Update research data
+      description: Manually refresh research data from Sleeper API for a specific season
+      operationId: updateResearchData
+      parameters:
+        - $ref: "#/components/parameters/Season"
+        - $ref: "#/components/parameters/WeekQuery"
         - $ref: "#/components/parameters/LeagueType"
       responses:
         "200":
@@ -585,10 +704,32 @@ components:
         pattern: "^[0-9]{4}$"
       example: "2024"
 
-    Week:
+    SeasonQuery:
+      name: season
+      in: query
+      description: The NFL season year
+      required: false
+      schema:
+        type: string
+        pattern: "^[0-9]{4}$"
+        default: "2024"
+      example: "2024"
+
+    WeekPath:
+      name: week
+      in: path
+      description: Week number (1-18 for regular season)
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 18
+      example: 1
+
+    WeekQuery:
       name: week
       in: query
-      description: Week number (1-18 for regular season)
+      description: Week number (1-22)
       required: false
       schema:
         type: integer
@@ -600,13 +741,13 @@ components:
     LeagueType:
       name: league_type
       in: query
-      description: League type - 1 for redraft, 2 for dynasty
+      description: League type - "dynasty" or "redraft"
       required: false
       schema:
-        type: integer
-        enum: [1, 2]
-        default: 2
-      example: 2
+        type: string
+        enum: ["dynasty", "redraft"]
+        default: "dynasty"
+      example: "dynasty"
 
   schemas:
     HealthResponse:
@@ -1172,7 +1313,8 @@ components:
         week:
           type: integer
         league_type:
-          type: integer
+          type: string
+          enum: ["dynasty", "redraft"]
         player_id:
           type: string
         research_data:
@@ -1215,9 +1357,21 @@ components:
         week:
           type: integer
         league_type:
-          type: integer
+          type: string
+          enum: ["dynasty", "redraft"]
         refresh_results:
           type: object
+        data:
+          oneOf:
+            - type: array
+              items:
+                $ref: "#/components/schemas/ResearchData"
+            - type: object
+        source:
+          type: string
+          enum: ["database", "sleeper_api"]
+        database_saved:
+          type: boolean
         timestamp:
           type: string
           format: date-time
@@ -1228,7 +1382,16 @@ components:
         status:
           type: string
           enum: ["success"]
-        data:
+        data_type:
+          type: string
+          enum: ["weekly", "averages"]
+        season:
+          type: string
+        week:
+          type: integer
+        weeks_considered:
+          type: string
+        records:
           type: array
           items:
             type: object
@@ -1244,11 +1407,8 @@ components:
               last_updated:
                 type: string
                 format: date-time
-        source:
-          type: string
-          enum: ["database", "sleeper_api"]
-        database_saved:
-          type: boolean
+        player_averages:
+          type: object
         timestamp:
           type: string
           format: date-time
@@ -1262,13 +1422,15 @@ components:
         message:
           type: string
           example: "Weekly stats refreshed successfully"
+        league_id:
+          type: string
         season:
           type: string
         week:
           type: integer
-        league_type:
-          type: integer
         refresh_results:
+          type: object
+        refreshed_stats:
           type: object
         timestamp:
           type: string
