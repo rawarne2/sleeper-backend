@@ -1,4 +1,4 @@
-from copy import deepcopy
+from copy import copy as shallow_copy
 from datetime import datetime, UTC
 from flask import jsonify
 from functools import wraps
@@ -24,23 +24,37 @@ def with_error_handling(f):
     return decorated_function
 
 
+def _copy_ktc_values_block(values_dict):
+    """
+    Shallow copy of oneQB/superflex values dict so we can set value/rank/etc.
+    from tep/tepp/teppp without mutating shared references from ORM/to_dict.
+    """
+    if not values_dict or not isinstance(values_dict, dict):
+        return values_dict
+    block = shallow_copy(values_dict)
+    # Nested tep/tepp/teppp are read-only for our mutations; top-level keys
+    # we overwrite are value, rank, positionalRank, overallTier, positionalTier
+    return block
+
+
 def filter_players_by_format(players, league_format, tep_level):
     """Helper function to filter players based on league format and TEP level."""
     filtered_players = []
     for player in players:
-        # Support both SQLAlchemy model instances and plain dicts
+        # Support both SQLAlchemy model instances and plain dicts.
+        # Avoid deepcopy: to_dict() already builds fresh dicts; we only need
+        # shallow copies of the ktc value blocks we mutate.
         if hasattr(player, 'to_dict'):
-            player_dict = deepcopy(player.to_dict())
+            player_dict = player.to_dict()
         else:
-            raw_player = deepcopy(dict(player))
-            player_dict = raw_player
+            player_dict = dict(player)
 
             if 'ktc' not in player_dict:
                 player_dict['ktc'] = {
-                    'age': raw_player.get('age'),
-                    'rookie': raw_player.get('rookie'),
-                    'oneQBValues': raw_player.get('oneqb_values'),
-                    'superflexValues': raw_player.get('superflex_values')
+                    'age': player_dict.get('age'),
+                    'rookie': player_dict.get('rookie'),
+                    'oneQBValues': player_dict.get('oneqb_values'),
+                    'superflexValues': player_dict.get('superflex_values')
                 }
 
         if league_format == 'superflex':
@@ -53,6 +67,8 @@ def filter_players_by_format(players, league_format, tep_level):
                 # Apply TEP level filtering to superflex values
                 superflex_values = player_dict['ktc']['superflexValues']
                 if tep_level and superflex_values:
+                    superflex_values = _copy_ktc_values_block(superflex_values)
+                    player_dict['ktc']['superflexValues'] = superflex_values
                     if tep_level == 'tep' and superflex_values.get('tep', {}).get('value'):
                         superflex_values['value'] = superflex_values['tep']['value']
                         superflex_values['rank'] = superflex_values['tep']['rank']
@@ -83,6 +99,8 @@ def filter_players_by_format(players, league_format, tep_level):
                 # Apply TEP level filtering to oneQB values
                 oneqb_values = player_dict['ktc']['oneQBValues']
                 if tep_level and oneqb_values:
+                    oneqb_values = _copy_ktc_values_block(oneqb_values)
+                    player_dict['ktc']['oneQBValues'] = oneqb_values
                     if tep_level == 'tep' and oneqb_values.get('tep', {}).get('value'):
                         oneqb_values['value'] = oneqb_values['tep']['value']
                         oneqb_values['rank'] = oneqb_values['tep']['rank']

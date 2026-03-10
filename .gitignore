@@ -36,3 +36,4 @@ data-files/*.json
 .vercel
 .cursor*
 notes*
+agents*

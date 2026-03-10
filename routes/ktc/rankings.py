@@ -1,11 +1,16 @@
 from datetime import datetime, UTC
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, make_response, request
 from scrapers import KTCScraper
 from managers import DatabaseManager, FileManager
 from utils import (save_and_verify_database, perform_file_operations,
                    validate_parameters, setup_logging)
 from scrapers import scrape_and_process_data
 from routes.helpers import filter_players_by_format
+from routes.ktc.rankings_cache import (
+    get_cached_rankings_json,
+    invalidate_rankings_cache,
+    set_cached_rankings_json,
+)
 
 ktc_rankings_bp = Blueprint('ktc_rankings', __name__, url_prefix='/api/ktc')
 logger = setup_logging()
@@ -168,6 +173,11 @@ def refresh_rankings():
         filtered_players = filter_players_by_format(
             players_sorted, league_format, tep_level)
 
+        # Invalidate GET cache so next rankings request rebuilds from DB
+        invalidate_rankings_cache(
+            is_redraft=is_redraft, league_format=league_format, tep_level=tep_level
+        )
+
         # Return success response with filtered data (align with GET shape)
         return jsonify({
             'message': 'Rankings updated successfully',
@@ -296,6 +306,7 @@ def cleanup_database():
                 'configuration': cleanup_result['configuration']
             }), 500
 
+        invalidate_rankings_cache()
         return jsonify({
             'message': 'Database cleanup completed',
             'timestamp': datetime.now(UTC).isoformat(),
@@ -444,6 +455,16 @@ def get_rankings():
 
         is_redraft = is_redraft_str.lower() == 'true'
 
+        # Serve from in-process cache when possible (avoids DB load + filter + jsonify)
+        cached = get_cached_rankings_json(is_redraft, league_format, tep_level)
+        if cached is not None:
+            resp = make_response(cached)
+            resp.mimetype = 'application/json'
+            resp.headers['Cache-Control'] = (
+                'public, max-age=3600, stale-while-revalidate=86400'
+            )
+            return resp
+
         # Query the database - get all players regardless of format since we store both
         players, last_updated = DatabaseManager.get_players_from_db(
             league_format)
@@ -463,14 +484,23 @@ def get_rankings():
         players_data = filter_players_by_format(
             players, league_format, tep_level)
 
-        return jsonify({
+        payload = {
             'timestamp': last_updated.isoformat() if last_updated else None,
             'is_redraft': is_redraft,
             'league_format': league_format,
             'tep_level': tep_level,
             'count': len(players_data),
             'players': players_data
-        })
+        }
+        json_bytes = set_cached_rankings_json(
+            is_redraft, league_format, tep_level, payload
+        )
+        resp = make_response(json_bytes)
+        resp.mimetype = 'application/json'
+        resp.headers['Cache-Control'] = (
+            'public, max-age=3600, stale-while-revalidate=86400'
+        )
+        return resp
 
     except Exception as e:
         logger.error("Error retrieving rankings: %s", e)

@@ -5,6 +5,7 @@ from managers import DatabaseManager
 from utils import setup_logging
 from scrapers import scrape_and_save_all_ktc_data
 from routes.helpers import with_error_handling
+from routes.ktc.rankings_cache import invalidate_rankings_cache
 
 ktc_bulk_bp = Blueprint('ktc_bulk', __name__, url_prefix='/api/ktc')
 logger = setup_logging()
@@ -104,6 +105,9 @@ def refresh_ktc_all():
             "Starting comprehensive KTC refresh for all formats and TEP levels...")
 
         results = scrape_and_save_all_ktc_data(KTCScraper, DatabaseManager)
+
+        # All rankings variants may have changed
+        invalidate_rankings_cache()
 
         # Return results
         if results['overall_status'] == 'error':
