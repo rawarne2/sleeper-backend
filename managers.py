@@ -43,8 +43,9 @@ class PlayerMerger:
         """
         try:
             from scrapers import SleeperScraper
+            from data_types import normalize_name_for_matching
+            from utils import create_player_match_key
 
-            # Filter KTC players to only include valid positions
             valid_ktc_players = []
             for ktc_player in ktc_players:
                 position = ktc_player.get(POSITION_KEY, '').upper()
@@ -57,9 +58,14 @@ class PlayerMerger:
             logger.info("Filtered KTC players: %s valid out of %s total",
                         len(valid_ktc_players), len(ktc_players))
 
-            # Create lookup dictionary for Sleeper players using search_full_name
+            log_unmatched = (
+                os.getenv('LOG_UNMATCHED_KTC_MERGE', '').lower() == 'true'
+                or os.getenv('IS_DEV', '').lower() == 'true'
+            )
+
             sleeper_lookup = {}
-            sleeper_name_fallback = {}  # Fallback using normalized KTC names
+            sleeper_name_fallback = {}
+            sleeper_name_only_fallback: Dict[str, List[Dict[str, Any]]] = {} if log_unmatched else {}
 
             for sleeper_player in sleeper_players:
                 position = sleeper_player.get('position', '').upper()
@@ -69,15 +75,18 @@ class PlayerMerger:
 
                 search_full_name = sleeper_player.get('search_full_name', '')
 
-                # Create match key using search_full_name (already normalized by Sleeper)
                 if search_full_name:
-                    match_key = f"{search_full_name.lower()}-{position}"
+                    match_key = create_player_match_key(search_full_name, position)
                     sleeper_lookup[match_key] = sleeper_player
 
-                # Also create fallback lookup using full_name normalization
                 full_name = sleeper_player.get('full_name', '')
                 if full_name:
-                    from utils import create_player_match_key
+                    if log_unmatched:
+                        normalized_full_name = normalize_name_for_matching(full_name)
+                        if normalized_full_name:
+                            if normalized_full_name not in sleeper_name_only_fallback:
+                                sleeper_name_only_fallback[normalized_full_name] = []
+                            sleeper_name_only_fallback[normalized_full_name].append(sleeper_player)
                     fallback_key = create_player_match_key(full_name, position)
                     if fallback_key not in sleeper_name_fallback:
                         sleeper_name_fallback[fallback_key] = []
@@ -86,51 +95,74 @@ class PlayerMerger:
             logger.info("Created Sleeper lookup with %s search_full_name keys and %s fallback keys",
                         len(sleeper_lookup), len(sleeper_name_fallback))
 
-            # Merge data
             merged_players = []
             matched_count = 0
-            duplicate_prevention = set()  # Track processed players to prevent duplicates
+            duplicate_prevention = set()
+
+            seen_ktc_by_duplicate_key: Dict[str, Dict[str, Any]] = {}
+            unmatched_ktc_players: List[Dict[str, Any]] = []
+            duplicate_key_collisions: List[Dict[str, Any]] = []
 
             for ktc_player in valid_ktc_players:
                 player_name = ktc_player.get(PLAYER_NAME_KEY, '')
                 position = ktc_player.get(POSITION_KEY, '').upper()
 
-                # Create duplicate prevention key using centralized function
-                from utils import create_player_match_key
                 duplicate_key = create_player_match_key(player_name, position)
                 if duplicate_key in duplicate_prevention:
-                    logger.debug(
-                        "Skipping duplicate KTC player: %s (%s)", player_name, position)
+                    if log_unmatched:
+                        previous = seen_ktc_by_duplicate_key.get(duplicate_key, {})
+                        duplicate_key_collisions.append({
+                            'duplicate_key': duplicate_key,
+                            'position': position,
+                            'previous_ktc_player_name': previous.get(PLAYER_NAME_KEY),
+                            'previous_ktc_player_id': previous.get('ktc_player_id'),
+                            'skipped_ktc_player_name': player_name,
+                            'skipped_ktc_player_id': ktc_player.get('ktc_player_id'),
+                        })
                     continue
                 duplicate_prevention.add(duplicate_key)
+                if log_unmatched:
+                    seen_ktc_by_duplicate_key[duplicate_key] = ktc_player
 
-                # Try to find matching Sleeper player using centralized match key
                 sleeper_match = None
                 search_key = create_player_match_key(player_name, position)
 
                 if search_key in sleeper_lookup:
                     sleeper_match = sleeper_lookup[search_key]
                 elif search_key in sleeper_name_fallback:
-                    # Use fallback matching
                     candidates = sleeper_name_fallback[search_key]
                     if len(candidates) == 1:
                         sleeper_match = candidates[0]
                     else:
-                        # Multiple candidates - log for manual review
                         logger.warning("Multiple Sleeper matches for %s (%s): %s candidates",
                                        player_name, position, len(candidates))
                         sleeper_match = candidates[0]  # Take first match
 
-                # Create merged player data
+                if not sleeper_match:
+                    if log_unmatched:
+                        ktc_normalized_name = normalize_name_for_matching(player_name)
+                        unmatched_ktc_players.append({
+                            'ktc_player_name': player_name,
+                            'ktc_player_id': ktc_player.get('ktc_player_id'),
+                            'position': position,
+                            'ktc_match_key': search_key,
+                            'ktc_normalized_name': ktc_normalized_name,
+                            'potential_sleeper_matches_any_position': [
+                                {
+                                    'sleeper_player_id': p.get('player_id'),
+                                    'full_name': p.get('full_name'),
+                                    'position': p.get('position'),
+                                }
+                                for p in (sleeper_name_only_fallback.get(ktc_normalized_name, []) or [])[:5]
+                            ],
+                        })
+
                 merged_player = ktc_player.copy()
 
                 if sleeper_match:
-                    # Map Sleeper data to merged player
-                    # Note: Sleeper API uses 'player_id' as the key, we need to map it to 'sleeper_player_id'
                     merged_player['sleeper_player_id'] = sleeper_match.get(
                         'player_id')
 
-                    # Add Sleeper data fields, but prefer KTC age if available
                     sleeper_keys = [
                         'birth_date', 'height', 'weight', 'college',
                         'years_exp', 'number', 'depth_chart_order',
@@ -148,12 +180,9 @@ class PlayerMerger:
 
                     for key in sleeper_keys:
                         if key in sleeper_match:
-                            # Special handling for age - prefer KTC's more precise age
                             if key == 'age' and merged_player.get(AGE_KEY) is not None:
-                                # Keep KTC age (more precise with decimals)
                                 continue
 
-                            # Special handling for fantasy_positions - ensure it's a JSON string
                             if key == 'fantasy_positions':
                                 fantasy_positions = sleeper_match[key]
                                 if isinstance(fantasy_positions, list):
@@ -164,12 +193,10 @@ class PlayerMerger:
                             else:
                                 merged_player[key] = sleeper_match[key]
 
-                    # Extract rookie_year from metadata if available
                     metadata = sleeper_match.get('metadata', {})
                     if isinstance(metadata, dict) and metadata.get('rookie_year'):
                         merged_player['rookie_year'] = metadata['rookie_year']
 
-                    # Store the complete metadata as JSON string
                     if metadata:
                         merged_player['player_metadata'] = json.dumps(metadata)
 
@@ -179,6 +206,39 @@ class PlayerMerger:
 
             logger.info("Successfully merged %s KTC players with %s Sleeper matches (filtered for valid positions)",
                         len(valid_ktc_players), matched_count)
+
+            if log_unmatched and (unmatched_ktc_players or duplicate_key_collisions):
+                logger.warning(
+                    "KTC->Sleeper merge report: %s unmatched (no Sleeper match) out of %s, %s duplicate match_key collisions",
+                    len(unmatched_ktc_players), len(valid_ktc_players), len(duplicate_key_collisions)
+                )
+
+                for entry in unmatched_ktc_players[:20]:
+                    logger.warning("UNMATCHED_KTC_PLAYER %s", json.dumps(entry, default=str))
+                if len(unmatched_ktc_players) > 20:
+                    logger.warning("UNMATCHED_KTC_PLAYER ... plus %s more",
+                                   len(unmatched_ktc_players) - 20)
+
+                for entry in duplicate_key_collisions[:20]:
+                    logger.warning("KTC_DUPLICATE_MATCH_KEY_COLLISION %s", json.dumps(entry, default=str))
+                if len(duplicate_key_collisions) > 20:
+                    logger.warning("KTC_DUPLICATE_MATCH_KEY_COLLISION ... plus %s more",
+                                   len(duplicate_key_collisions) - 20)
+
+                if os.getenv('IS_DEV', '').lower() == 'true':
+                    try:
+                        report = {
+                            'generated_at': datetime.now(UTC).isoformat(),
+                            'ktc_players_total': len(valid_ktc_players),
+                            'sleeper_players_total': len(sleeper_players),
+                            'unmatched_ktc_players': unmatched_ktc_players,
+                            'duplicate_key_collisions': duplicate_key_collisions,
+                        }
+                        filename = f"ktc_unmatched_merge_report_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json"
+                        FileManager.save_json_to_file(report, filename)
+                    except Exception as report_error:
+                        logger.warning("Failed to write unmatched merge report: %s", report_error)
+
             return merged_players
 
         except Exception as e:

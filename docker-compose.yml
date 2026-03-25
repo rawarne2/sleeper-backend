@@ -16,11 +16,27 @@ services:
       timeout: 5s
       retries: 5
 
+  # Local Redis for rankings cache. Comment out this service if you only use a hosted URL.
+  # In .env for Compose, use: REDIS_URL=redis://redis:6379/0  (NOT localhost — that is wrong inside the app container)
+  # If you remove this service, also delete the sleeper-backend depends_on.redis block below.
+  redis:
+    image: redis:8-alpine
+    container_name: sleeper-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   sleeper-backend:
     build: .
     container_name: sleeper-backend
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "5001:5001"
@@ -35,6 +51,7 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - REMOTE_DEBUG=${REMOTE_DEBUG:-0}
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:password@postgres:5432/sleeper_db?sslmode=disable}
+      - REDIS_URL=${REDIS_URL}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}

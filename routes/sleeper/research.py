@@ -272,8 +272,17 @@ def refresh_research_data(season: str):
     ).delete()
 
     # Save new records
+    raw_rd = research_data.get('research_data')
+    if not isinstance(raw_rd, dict):
+        return jsonify({
+            'status': 'error',
+            'error': 'Unexpected research payload shape from Sleeper',
+            'details': f'expected dict, got {type(raw_rd).__name__}',
+            'season': season
+        }), 400
+
     saved_count = 0
-    for player_id, player_data in research_data.get('research_data', {}).items():
+    for player_id, player_data in raw_rd.items():
         try:
             new_record = SleeperWeeklyData(
                 season=season,

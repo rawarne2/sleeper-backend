@@ -470,25 +470,51 @@ def refresh_league_data(league_id: str):
 
         if league_data.get('success'):
             save_result = DatabaseManager.save_league_data(league_data)
-            results['league_data'] = {
-                'status': 'success',
-                'save_result': save_result
-            }
-            logger.info(
-                "Successfully refreshed league data for league_id: %s", league_id)
+            if save_result.get('status') == 'success':
+                results['league_data'] = {
+                    'status': 'success',
+                    'save_result': save_result
+                }
+                results['users_data'] = {
+                    'status': 'success',
+                    'users_saved': save_result.get('users_saved'),
+                    'users_updated': save_result.get('users_updated'),
+                }
+                results['rosters_data'] = {
+                    'status': 'success',
+                    'rosters_saved': save_result.get('rosters_saved'),
+                    'rosters_updated': save_result.get('rosters_updated'),
+                }
+                logger.info(
+                    "Successfully refreshed league data for league_id: %s", league_id)
+            else:
+                results['league_data'] = {
+                    'status': 'error',
+                    'save_result': save_result
+                }
+                results['errors'].append({
+                    'type': 'league_save',
+                    'error': save_result.get('error', 'save failed'),
+                })
+                results['users_data'] = {
+                    'status': 'error',
+                    'message': save_result.get('error', 'save failed'),
+                }
+                results['rosters_data'] = {
+                    'status': 'error',
+                    'message': save_result.get('error', 'save failed'),
+                }
         else:
             results['errors'].append({
                 'type': 'league_data',
                 'error': league_data.get('error')
             })
             results['league_data'] = {'status': 'error'}
+            results['users_data'] = {'status': 'skipped'}
+            results['rosters_data'] = {'status': 'skipped'}
 
         logger.info(
             "League data refresh completed for league_id: %s", league_id)
-        results['users_data'] = {'status': 'not_implemented',
-                                 'message': 'Users refresh not yet implemented'}
-        results['rosters_data'] = {
-            'status': 'not_implemented', 'message': 'Rosters refresh not yet implemented'}
 
     except Exception as e:
         logger.error("Error refreshing data for league %s: %s", league_id, e)

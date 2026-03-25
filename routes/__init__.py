@@ -11,6 +11,8 @@ from .sleeper.players import sleeper_players_bp
 from .sleeper.leagues import sleeper_leagues_bp
 from .sleeper.research import sleeper_research_bp
 from .sleeper.stats import sleeper_stats_bp
+from .maintenance import maintenance_bp
+from .dashboard.league import dashboard_bp
 
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -35,6 +37,8 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(sleeper_leagues_bp)
     app.register_blueprint(sleeper_research_bp)
     app.register_blueprint(sleeper_stats_bp)
+    app.register_blueprint(maintenance_bp)
+    app.register_blueprint(dashboard_bp)
 
 
 # Export the main registration function

@@ -1,5 +1,7 @@
 import json
 import re
+import os
+import time
 from datetime import datetime, UTC
 from typing import Dict, List, Optional, Any
 
@@ -586,12 +588,33 @@ class KTCScraper:
     def fetch_ktc_page(url: str) -> Optional[requests.Response]:
         """Fetch a page from KTC website with error handling."""
         try:
-            response = requests.get(url, timeout=60)
-            response.raise_for_status()
-            return response
-        except requests.RequestException as e:
-            logger.error("Failed to fetch page %s: %s", url, e)
-            return None
+            timeout_s = float(os.getenv('KTC_FETCH_TIMEOUT_SECONDS', '120'))
+            retries = int(os.getenv('KTC_FETCH_RETRIES', '2'))
+        except (ValueError, TypeError) as e:
+            logger.error("Invalid KTC env config: %s — using defaults", e)
+            timeout_s = 120.0
+            retries = 2
+
+        last_error: Optional[Exception] = None
+        for attempt in range(retries + 1):
+            try:
+                response = requests.get(url, timeout=timeout_s)
+                response.raise_for_status()
+                return response
+            except requests.RequestException as e:
+                last_error = e
+                if attempt >= retries:
+                    break
+                backoff_s = min(30, 2 ** attempt)
+                logger.warning(
+                    "KTC fetch failed (attempt %s/%s) for %s: %s. Retrying in %ss...",
+                    attempt + 1, retries + 1, url, e, backoff_s
+                )
+                time.sleep(backoff_s)
+
+        if last_error:
+            logger.error("Failed to fetch page %s: %s", url, last_error)
+        return None
 
     @staticmethod
     def extract_players_array(html_content: str) -> List[Dict[str, Any]]:
@@ -872,7 +895,13 @@ class KTCScraper:
             return []
 
 
-def scrape_and_process_data(ktc_scraper, league_format: str, is_redraft: bool, tep_level: Optional[str]) -> tuple[List[Dict[str, Any]], Optional[str]]:
+def scrape_and_process_data(
+    ktc_scraper,
+    league_format: str,
+    is_redraft: bool,
+    tep_level: Optional[str],
+    sleeper_players: Optional[List[Dict[str, Any]]] = None
+) -> tuple[List[Dict[str, Any]], Optional[str]]:
     """
     Scrape data from KTC and merge with existing Sleeper data from database.
 
@@ -897,36 +926,33 @@ def scrape_and_process_data(ktc_scraper, league_format: str, is_redraft: bool, t
         if not ktc_players:
             return [], 'KTC scraping returned empty results - check network connectivity or site availability'
 
-        # Import here to avoid circular imports
-        from managers import PlayerMerger, DatabaseManager
+        from managers import PlayerMerger
 
-        # Get existing Sleeper data from database instead of scraping fresh data
-        logger.info("Fetching existing Sleeper player data from database...")
-        try:
-            # Get all Sleeper players from database (regardless of league format/redraft status)
-            from models import Player
-            sleeper_players_db = Player.query.filter(
-                Player.sleeper_player_id.isnot(None)
-            ).all()
+        if sleeper_players is None:
+            logger.info("Fetching existing Sleeper player data from database...")
+            try:
+                from models import Player
+                sleeper_players_db = Player.query.filter(
+                    Player.sleeper_player_id.isnot(None)
+                ).all()
 
-            # Convert to the format expected by PlayerMerger using to_dict() method
-            sleeper_players = []
-            for player in sleeper_players_db:
-                # Use to_dict() method for consistent structure
-                sleeper_data = player.to_dict()
-                # PlayerMerger expects 'player_id' key instead of 'sleeper_player_id'
-                sleeper_data['player_id'] = sleeper_data['sleeper_player_id']
-                sleeper_players.append(sleeper_data)
+                sleeper_players = []
+                for player in sleeper_players_db:
+                    sleeper_data = player.to_dict()
+                    sleeper_data['player_id'] = sleeper_data['sleeper_player_id']
+                    sleeper_players.append(sleeper_data)
 
-            logger.info("Retrieved %s Sleeper players from database",
+                logger.info("Retrieved %s Sleeper players from database",
+                            len(sleeper_players))
+
+            except Exception as db_error:
+                logger.warning(
+                    "Failed to get Sleeper data from database: %s. Will use KTC data only.", db_error)
+                sleeper_players = []
+        else:
+            logger.info("Using provided Sleeper players for merge (%s records)",
                         len(sleeper_players))
 
-        except Exception as db_error:
-            logger.warning(
-                "Failed to get Sleeper data from database: %s. Will use KTC data only.", db_error)
-            sleeper_players = []
-
-        # Merge KTC and Sleeper data
         if sleeper_players:
             logger.info("Merging KTC and existing Sleeper player data...")
             merged_players = PlayerMerger.merge_player_data(
@@ -938,8 +964,6 @@ def scrape_and_process_data(ktc_scraper, league_format: str, is_redraft: bool, t
                 "No Sleeper data available from database, using KTC data only")
             merged_players = ktc_players
 
-        # Sort players by appropriate rank based on league format
-        # Use the correct rank key for sorting
         def get_sort_key(player):
             if league_format == '1qb':
                 oneqb_values = player.get('oneqb_values', {})
@@ -980,13 +1004,29 @@ def scrape_and_save_all_ktc_data(ktc_scraper, database_manager) -> Dict[str, Any
     }
 
     try:
-        # Import here to avoid circular imports
         from utils import save_and_verify_database
 
-        # Scrape and save dynasty data (contains all formats and TEP levels)
+        sleeper_players = []
+        try:
+            from models import Player
+            sleeper_players_db = Player.query.filter(
+                Player.sleeper_player_id.isnot(None)
+            ).all()
+            for player in sleeper_players_db:
+                sleeper_data = player.to_dict()
+                sleeper_data['player_id'] = sleeper_data['sleeper_player_id']
+                sleeper_players.append(sleeper_data)
+            logger.info("Retrieved %s Sleeper players from database (bulk refresh)",
+                        len(sleeper_players))
+        except Exception as db_error:
+            logger.warning(
+                "Failed to get Sleeper data from database for bulk refresh: %s. Will use KTC data only.",
+                db_error
+            )
+
         logger.info("Scraping comprehensive dynasty data from KTC...")
         dynasty_players, dynasty_error = scrape_and_process_data(
-            ktc_scraper, '1qb', False, None)  # Parameters are ignored by core parsing
+            ktc_scraper, '1qb', False, None, sleeper_players)
 
         if dynasty_error:
             results['dynasty']['status'] = 'error'
@@ -1003,10 +1043,9 @@ def scrape_and_save_all_ktc_data(ktc_scraper, database_manager) -> Dict[str, Any
                 results['dynasty']['players_count'] = len(dynasty_players)
                 results['dynasty']['db_count'] = dynasty_count
 
-        # Scrape and save redraft data (contains all formats and TEP levels)
         logger.info("Scraping comprehensive redraft data from KTC...")
         redraft_players, redraft_error = scrape_and_process_data(
-            ktc_scraper, '1qb', True, None)  # Parameters are ignored by core parsing
+            ktc_scraper, '1qb', True, None, sleeper_players)
 
         if redraft_error:
             results['redraft']['status'] = 'error'
@@ -1023,7 +1062,6 @@ def scrape_and_save_all_ktc_data(ktc_scraper, database_manager) -> Dict[str, Any
                 results['redraft']['players_count'] = len(redraft_players)
                 results['redraft']['db_count'] = redraft_count
 
-        # Set overall status
         if results['dynasty']['status'] == 'error' and results['redraft']['status'] == 'error':
             results['overall_status'] = 'error'
         elif results['dynasty']['status'] == 'error' or results['redraft']['status'] == 'error':

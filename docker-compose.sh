@@ -20,12 +20,18 @@ show_help() {
     echo "  logs        Show application logs"
     echo "  status      Show container status"
     echo "  clean       Stop and remove containers"
+    echo "  redis-cli   Open redis-cli in the redis container (pass args, e.g. KEYS '*')"
+    echo "  redis-keys  List KTC rankings cache keys (local redis service only)"
+    echo "  warm-cache  Hit KTC rankings API so Redis/in-memory cache fills (needs data in DB)"
     echo "  help        Show this help message"
     echo ""
     echo "The application will be available at http://localhost:5001"
     echo "📖 Interactive API documentation: http://localhost:5001/docs/"
     echo "📄 OpenAPI specification: http://localhost:5001/openapi.json"
     echo "🏥 Health check endpoint: http://localhost:5001/api/ktc/health"
+    echo ""
+    echo "Redis: rankings cache keys look like ktc:rankings:v1:... — populated on GET /api/ktc/rankings,"
+    echo "       not by a separate seed step. Use warm-cache after KTC data exists in Postgres."
 }
 
 case "$1" in
@@ -53,6 +59,25 @@ case "$1" in
         $DOCKER_COMPOSE down -v
         docker system prune -f
         echo "✅ Cleanup complete"
+        ;;
+    redis-cli)
+        shift
+        if [ $# -eq 0 ]; then
+            $DOCKER_COMPOSE exec -it redis redis-cli
+        else
+            $DOCKER_COMPOSE exec -T redis redis-cli "$@"
+        fi
+        ;;
+    redis-keys)
+        echo "KTC cache key prefix (empty list until warm-cache or dashboard hit rankings):"
+        $DOCKER_COMPOSE exec redis redis-cli KEYS 'ktc:rankings*'
+        ;;
+    warm-cache)
+        echo "GET /api/ktc/rankings (superflex dynasty tep) — fills Redis if REDIS_URL is set..."
+        curl -sS -o /dev/null -w "HTTP %{http_code}\n" \
+            "http://localhost:5001/api/ktc/rankings?tep_level=tep&is_redraft=false&league_format=superflex" \
+            || true
+        echo "If 404, populate DB first (e.g. POST /api/ktc/refresh or refresh/all). Then run this again."
         ;;
     help|--help|-h)
         show_help

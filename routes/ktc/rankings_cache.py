@@ -10,13 +10,19 @@ GET was still slow because every request:
 Caching the serialized JSON avoids repeating that work. TTL bounds staleness;
 refresh/cleanup endpoints invalidate so updates are visible immediately.
 
-For serverless/multi-worker, each instance has its own cache; pair with
-Cache-Control headers so CDN/browser can cache too.
+For serverless/multi-worker, each instance has its own cache; set REDIS_URL to
+share serialized payloads across workers. Cache-Control headers help CDN/browser.
 """
 import json
 import threading
 import time
 from typing import Optional, Tuple
+
+from cache.redis_rankings import (
+    redis_get_rankings_bytes,
+    redis_invalidate_rankings,
+    redis_set_rankings_bytes,
+)
 
 # Default TTL: repeat hits skip DB+filter work. Refresh/cleanup/bulk clear
 # the cache, so a longer TTL is safe and improves initial load on warm workers.
@@ -39,13 +45,20 @@ def get_cached_rankings_json(
     now = time.monotonic()
     with _lock:
         entry = _cache.get(key)
-        if not entry:
-            return None
-        expires_at, payload = entry
-        if now >= expires_at:
-            del _cache[key]
-            return None
-        return payload
+        if entry:
+            expires_at, payload = entry
+            if now >= expires_at:
+                del _cache[key]
+            else:
+                return payload
+
+    redis_payload = redis_get_rankings_bytes(is_redraft, league_format, tep_level)
+    if redis_payload is not None:
+        expires_at = time.monotonic() + _DEFAULT_TTL_SECONDS
+        with _lock:
+            _cache[key] = (expires_at, redis_payload)
+        return redis_payload
+    return None
 
 
 def set_cached_rankings_json(
@@ -61,6 +74,7 @@ def set_cached_rankings_json(
     expires_at = time.monotonic() + ttl_seconds
     with _lock:
         _cache[key] = (expires_at, json_bytes)
+    redis_set_rankings_bytes(is_redraft, league_format, tep_level, json_bytes)
     return json_bytes
 
 
@@ -73,23 +87,24 @@ def invalidate_rankings_cache(
     Invalidate cache entries. If all args None, clear entire cache.
     Otherwise remove keys matching the given dimensions (None = wildcard).
     """
+    tep_norm = tep_level if tep_level is not None else None
     with _lock:
         if is_redraft is None and league_format is None and tep_level is None:
             _cache.clear()
-            return
-        tep_norm = tep_level if tep_level is not None else None
-        keys_to_delete = []
-        for key in _cache:
-            ir, lf, tl = key
-            if is_redraft is not None and ir != is_redraft:
-                continue
-            if league_format is not None and lf != league_format:
-                continue
-            if tep_norm is not None and tl != (tep_norm or ""):
-                continue
-            keys_to_delete.append(key)
-        for k in keys_to_delete:
-            _cache.pop(k, None)
+        else:
+            keys_to_delete = []
+            for key in _cache:
+                ir, lf, tl = key
+                if is_redraft is not None and ir != is_redraft:
+                    continue
+                if league_format is not None and lf != league_format:
+                    continue
+                if tep_norm is not None and tl != (tep_norm or ""):
+                    continue
+                keys_to_delete.append(key)
+            for k in keys_to_delete:
+                _cache.pop(k, None)
+    redis_invalidate_rankings(is_redraft, league_format, tep_norm)
 
 
 def cache_stats() -> Tuple[int, int]:

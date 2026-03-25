@@ -2,7 +2,7 @@
 Data types and interfaces for Sleeper and KTC data to prevent confusion.
 """
 
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import date
 
@@ -306,39 +306,32 @@ def normalize_name_for_matching(name: str) -> str:
     if not name:
         return ''
 
-    # First, decode any Unicode escape sequences (like \u0027 for apostrophe)
+    import re
+
+    # First, decode any Unicode escape sequences (like \u0027 for apostrophe).
     try:
-        # Handle Unicode escape sequences in the string
         normalized = name.encode().decode('unicode_escape')
     except (UnicodeDecodeError, UnicodeEncodeError):
-        # If there's an issue with Unicode decoding, use the original string
         normalized = name
 
-    # Convert to lowercase
     normalized = normalized.lower()
 
-    # Remove common special characters and spaces
-    # This includes regular apostrophes, Unicode apostrophes, and other punctuation
-    chars_to_remove = [
-        ' ', "'", '"', '.', '-', '_',
-        'jr', 'sr', 'ii', 'iii', 'iv',
-        ''', ''',  # Unicode left and right single quotes
-        '"', '"',  # Unicode left and right double quotes
-        '`',       # Backtick
-        '´',       # Acute accent
-        '′',       # Prime symbol (sometimes used as apostrophe)
-        "'"        # Apostrophe
-    ]
+    # Convert punctuation/etc into spaces so "Walker III" and "WalkerIII"
+    # normalize consistently.
+    normalized = re.sub(r'[^0-9a-z]+', ' ', normalized)
+    normalized = normalized.strip()
+    if not normalized:
+        return ''
 
-    for char in chars_to_remove:
-        normalized = normalized.replace(char, '')
+    # Remove common suffix tokens at the end (JR/SR/II/III/IV) without doing
+    # substring replacement (prevents "iii" -> "i" bugs).
+    roman_suffixes = ('jr', 'sr', 'ii', 'iii', 'iv')
 
-    # Also remove any remaining non-alphanumeric characters except spaces
-    # This catches any other Unicode punctuation we might have missed
-    import re
-    normalized = re.sub(r'[^\w\s]', '', normalized)
+    tokens = [t for t in re.split(r'\s+', normalized) if t]
+    out_tokens: List[str] = []
+    for token in tokens:
+        token = re.sub(rf'(?:{"|".join(roman_suffixes)})$', '', token)
+        if token:
+            out_tokens.append(token)
 
-    # Remove any remaining spaces
-    normalized = normalized.replace(' ', '')
-
-    return normalized
+    return ''.join(out_tokens)
