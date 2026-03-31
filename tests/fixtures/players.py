@@ -3,7 +3,8 @@ Player test fixtures and sample data.
 """
 import pytest
 import json
-from models import Player as PlayerModel, db
+from models.entities import Player as PlayerModel
+from models.extensions import db
 
 
 @pytest.fixture

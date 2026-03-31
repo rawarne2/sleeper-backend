@@ -10,17 +10,24 @@ Examples:
 - Other similar name variations
 
 Usage:
-    python manual_player_merge.py
+    python scripts/manual_player_merge.py
 """
 
 import logging
+import os
+import sys
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime, UTC
 
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
 from app import app
-from models import db, Player, PlayerKTCOneQBValues, PlayerKTCSuperflexValues
-from utils import create_player_match_key
-from data_types import normalize_name_for_matching
+from models.entities import Player, PlayerKTCOneQBValues, PlayerKTCSuperflexValues
+from models.extensions import db
+from utils.helpers import create_player_match_key
+from data_types.normalization import normalize_name_for_matching
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

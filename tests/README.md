@@ -1,21 +1,23 @@
-# Test Organization
+# Tests
 
-This directory contains all tests for the Sleeper Backend API, organized by type and functionality.
+Pytest layout for the Sleeper backend API.
 
-## 📁 Directory Structure
+## Layout
 
 ```
 tests/
-├── conftest.py              # Pytest configuration and shared fixtures
-├── fixtures/                # Shared test fixtures and utilities
-│   ├── database.py          # Database fixtures (client, app_context)
-│   └── players.py           # Player data fixtures
-├── api/                     # API endpoint tests
-│   ├── test_health.py       # Health check endpoint tests
-│   ├── ktc/                 # KTC API tests
-│   │   ├── test_rankings.py # KTC rankings endpoint tests
-│   │   └── test_bulk.py     # KTC bulk operations tests
-│   └── sleeper/             # Sleeper API tests
+├── conftest.py
+├── fixtures/
+│   ├── database.py
+│   └── players.py
+├── api/
+│   ├── test_health.py
+│   ├── dashboard/
+│   │   └── test_dashboard_league.py
+│   ├── ktc/
+│   │   ├── test_rankings.py
+│   │   └── test_bulk.py
+│   └── sleeper/
 │       ├── test_players.py  # Sleeper player endpoint tests
 │       ├── test_leagues.py  # Sleeper league endpoint tests
 │       ├── test_research.py # Sleeper research endpoint tests
@@ -209,12 +211,6 @@ pytest -v -s tests/api/test_health.py
 pytest --pdb tests/api/test_health.py
 ```
 
-## 📋 Test Coverage
+## Coverage
 
-The test suite provides comprehensive coverage across all API endpoints and core functionality:
-
-- **API Tests**: All 13 endpoints tested with various scenarios
-- **Unit Tests**: Model validation and business logic  
-- **Integration Tests**: End-to-end workflows and data operations
-
-All functionality is thoroughly tested while maintaining good organization and maintainability.
+API tests cover health, KTC, Sleeper, dashboard bundle, and related routes; unit tests cover models, scrapers, and helpers; integration tests cover data-save and weekly-stats flows.

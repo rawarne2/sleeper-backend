@@ -49,32 +49,62 @@ This API provides comprehensive fantasy football data by combining:
   • League management (rosters, users, settings)
   • Research data and projections
 
-## 📚 Available Endpoints (13 total)
+## Route groups
 
-### 🏥 System Health
+### System health
+
+```
+GET /api/ktc/health
+GET /api/maintenance/health
+```
+
+### Dashboard bundle (read-only, DB + optional Redis)
+
+```
+GET /api/dashboard/league/{league_id}
+```
+
+Single JSON payload for the dashboard UI (league, rosters, merged players, research meta). Query params: `is_redraft`, `league_format`, `tep_level` (same semantics as rankings), plus `season` when needed for research. With `REDIS_URL`, identical requests may be served from Redis briefly (see server logs for cache hit/miss); there is no client cache header on this route today.
+
+### Maintenance (server-side secrets only)
+
+```
+GET|POST /api/maintenance/nightly-sync
+POST /api/maintenance/daily-refresh
+```
+
+- **nightly-sync:** `Authorization: Bearer <CRON_SECRET>` for `POST` (and documented `GET` where enabled).
+- **daily-refresh:** `X-Daily-Refresh-Secret` when `DAILY_REFRESH_SECRET` is set.  
+  Pipeline: KTC formats → leagues → research (no full NFL Sleeper player export).
+
+### KTC health (detail)
 
 ```
 GET /api/ktc/health
 ```
 
-Check API and database health status.
+KTC/database-oriented health check.
 
 ### 🏈 KTC Player Rankings
 
 ```
 POST /api/ktc/refresh
 PUT /api/ktc/refresh
+GET /api/ktc/refresh/status/{job_id}
 GET /api/ktc/rankings
 POST /api/ktc/cleanup
 ```
 
-**POST /api/ktc/refresh** - Create/populate KTC rankings for specific configuration
-**PUT /api/ktc/refresh** - Update KTC rankings for specific configuration
+**POST /api/ktc/refresh** - Enqueue KTC scrape + DB save (default **HTTP 202** with `job_id`); refetch dashboard or poll status until complete
+**PUT /api/ktc/refresh** - Same as POST
 
 - Query Parameters:
   - `is_redraft`: "true" or "false" (default: "false")
   - `league_format`: "1qb" or "superflex" (default: "1qb")
   - `tep_level`: "", "tep", "tepp", or "teppp" (default: "")
+  - `sync`: "1" / "true" for blocking run (full JSON in response; can exceed one minute)
+
+**GET /api/ktc/refresh/status/{job_id}** - Poll a job returned from 202 (fields: `status`, `error`, `summary`)
 
 **GET /api/ktc/rankings** - Retrieve stored rankings with filtering
 
@@ -272,19 +302,22 @@ curl "http://localhost:5001/api/sleeper/players/research/2024?week=10&league_typ
 
 ### **Response Time Guidelines**
 
-- **First refresh call**: 30-60 seconds (fetching from external APIs)
+- **POST /api/ktc/refresh (default)**: A few seconds (ack + background work)
+- **POST /api/ktc/refresh?sync=1**: Often over a minute (full scrape + DB in-request)
 - **Cached data retrieval**: < 1 second (from local database)
 - **Health checks**: < 100ms (database connection test)
 
 ### **Best Practices for Performance**
 
 ```bash
-# ❌ Don't call update/refresh endpoints repeatedly
-curl -X PUT /api/ktc/refresh   # Takes 30-60 seconds
-curl -X POST /api/ktc/refresh   # Takes 30-60 seconds
+# Default: fast ack — poll status or refetch dashboard until ktcLastUpdated moves
+curl -X POST "/api/ktc/refresh?league_format=superflex&is_redraft=false&tep_level=tep"
+# curl "/api/ktc/refresh/status/<job_id>"
 
-# ✅ Call update/refresh once, then use cached data
-curl -X PUT /api/ktc/refresh   # One-time setup
+# Blocking (scripts / tests only when needed)
+curl -X POST "/api/ktc/refresh?...&sync=1"
+
+# ✅ After refresh completes, reads stay fast
 curl /api/ktc/rankings          # Fast cached responses
 
 # ✅ Use database-first endpoints for speed

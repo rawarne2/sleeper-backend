@@ -9,12 +9,13 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import sqlalchemy.exc
 
 # Import our modules
-from models import db
-from utils import setup_logging
-from swagger_config import setup_swagger, add_documentation_routes
+from models.extensions import db
+import models.entities  # noqa: F401 — register ORM mappers
+from utils.helpers import setup_logging
+from routes.swagger_config import setup_swagger, add_documentation_routes
 
 # Import routes after db is available to avoid circular imports
-from routes import register_blueprints
+from routes.registry import register_blueprints
 
 # Load environment variables
 load_dotenv()

@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/maintenance/nightly-sync",
-      "schedule": "0 9 * * *"
+      "schedule": "0 3 * * *"
     }
   ],
   "builds": [

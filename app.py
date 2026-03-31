@@ -2,13 +2,16 @@ import os
 import re
 from dotenv import load_dotenv
 from flask import Flask, request
+from flask_compress import Compress
 from flask_cors import CORS
 
 # Import our modules
-from models import db
-from routes import register_blueprints
-from utils import DATABASE_URI, setup_logging
-from swagger_config import setup_swagger, add_documentation_routes
+from models.extensions import db
+import models.entities  # noqa: F401 — register ORM mappers
+from routes.registry import register_blueprints
+from utils.constants import DATABASE_URI
+from utils.helpers import setup_logging
+from routes.swagger_config import setup_swagger, add_documentation_routes
 
 # Load environment variables from .env file
 load_dotenv()
@@ -42,6 +45,8 @@ app.config.update({
 
 # Initialize database with app
 db.init_app(app)
+
+Compress(app)
 
 # Configure CORS to allow requests from frontend
 CORS(app, resources={
@@ -109,6 +114,25 @@ register_blueprints(app)
 
 # Add documentation routes
 add_documentation_routes(app, logger)
+
+# Flask-DebugToolbar: opt-in via ENABLE_DEBUG_TOOLBAR=1; requires SECRET_KEY. Vercel uses vercel_app.
+if not os.getenv("VERCEL") and os.getenv("ENABLE_DEBUG_TOOLBAR", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+):
+    secret = os.getenv("SECRET_KEY", "").strip()
+    if secret:
+        app.config["SECRET_KEY"] = secret
+        app.config["DEBUG_TB_ENABLED"] = True
+        app.config["DEBUG_TB_INTERCEPT_REDIRECTS"] = False
+        from flask_debugtoolbar import DebugToolbarExtension
+
+        DebugToolbarExtension(app)
+    else:
+        logger.warning(
+            "ENABLE_DEBUG_TOOLBAR is set but SECRET_KEY is missing; Flask-DebugToolbar not loaded"
+        )
 
 
 def initialize_database():

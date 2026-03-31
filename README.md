@@ -13,6 +13,11 @@ A Flask-based API for scraping and serving fantasy football player rankings from
 - **[OPENAPI_README.md](OPENAPI_README.md)** -- How the interactive Swagger UI and OpenAPI spec are set up, plus instructions for accessing `/docs` and `/openapi.json`.
 - **[tests/README.md](tests/README.md)** -- Test directory layout and instructions for running tests locally and in Docker.
 
+## Pending changes (not committed)
+
+- **Packages:** `models/`, `managers/`, `data_types/`, `scrapers/`, `routes/` (blueprints via `routes/registry.py`; dashboard: `routes/dashboard_league.py`), `cache/` (Redis rankings + dashboard league TTL from `cache/settings.py`), `services/` (async KTC refresh among others), `utils/`, `scripts/` (CLI tools moved from repo root).
+- **Invalid players:** `scripts/cleanup_invalid_players.py` — dry run by default; `--execute` deletes in batches (ORM, cascades related rows). Loads `.env` and unsets `TEST_DATABASE_URI` when `DATABASE_URL` is set so cleanup targets the same DB as the app, not pytest SQLite.
+
 ## 🚀 Features
 
 - **KTC Integration**: Player rankings and trade values from KeepTradeCut
@@ -24,71 +29,9 @@ A Flask-based API for scraping and serving fantasy football player rankings from
 - **Season Averages**: Calculate player averages (weeks 1-16)
 - **Database Caching**: Fast response times with persistent storage
 
-## 📊 Weekly Stats
+## Weekly stats
 
-The project now includes weekly fantasy football stats functionality that fetches data from Sleeper league matchups. This allows you to:
-
-- **Track weekly performance**: Get fantasy points for all players each week
-- **Calculate season averages**: Compute player averages across weeks 1-16 (regular season)
-- **Monitor roster changes**: Track which players started vs. sat each week
-- **Historical analysis**: Store and query data across multiple seasons
-
-### Weekly Stats Endpoints
-
-```bash
-# Seed league information (run once per league)
-POST /api/sleeper/league/{league_id}/stats/seed
-
-# Refresh weekly stats for a specific week
-POST /api/sleeper/league/{league_id}/stats/week/{week}
-
-# Get weekly stats for a specific week
-GET /api/sleeper/league/{league_id}/stats/week/{week}
-
-# Get season averages (weeks 1-16 only)
-GET /api/sleeper/league/{league_id}/stats/week/{week}?average=true
-```
-
-### Example Usage
-
-```bash
-# 1. First, seed Sleeper player data (foundation - takes 30-60 seconds)
-curl -X POST "http://localhost:5001/api/sleeper/refresh"
-
-# 2. Then, merge KTC rankings into existing Sleeper players (fast - takes 5-10 seconds)
-curl -X POST "http://localhost:5001/api/ktc/refresh/all"
-
-# 3. Seed your league (replace with your league ID, league name, and season)
-curl -X POST "http://localhost:5001/api/sleeper/league/1050831680350568448/stats/seed" \
-  -H "Content-Type: application/json" \
-  -d '{"league_name": "My League", "season": "2024", "league_type": "dynasty"}'
-
-# 4. Refresh week 1 stats
-curl -X POST "http://localhost:5001/api/sleeper/league/1050831680350568448/stats/week/1?season=2024&league_type=dynasty"
-
-# 5. Get week 1 stats
-curl "http://localhost:5001/api/sleeper/league/1050831680350568448/stats/week/1?season=2024&league_type=dynasty"
-
-# 6. Get season averages
-curl "http://localhost:5001/api/sleeper/league/1050831680350568448/stats/week/1?season=2024&league_type=dynasty&average=true"
-```
-
-### Data Structure
-
-Weekly stats include:
-
-- **Player ID**: Sleeper player identifier
-- **Fantasy Points**: Decimal points scored (e.g., 26.08)
-- **Roster ID**: Which team the player belongs to
-- **Starter Status**: Whether the player was in the starting lineup
-- **Week & Season**: Temporal context for the data
-
-### Notes
-
-- **Weeks 1-16**: Only regular season weeks are used for average calculations
-- **Data Persistence**: All stats are stored in the database for fast retrieval
-- **League Setup**: Run the seed endpoint once per league before fetching stats
-- **Cron Jobs**: Future implementation will include automated weekly updates
+Sleeper matchup data per week; season averages use regular-season weeks 1–16. Flow: seed `/api/sleeper/league/{id}/stats/seed`, then `GET` / `POST` / `PUT` on `/api/sleeper/league/{id}/stats/week/{week}`. Examples: [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
 
 ## Quick Start
 
@@ -155,78 +98,26 @@ To develop locally while connecting to the production Vercel/Supabase database (
 
 The app reads `DATABASE_URL` from the environment and connects directly to Supabase -- no Docker or local Postgres needed.
 
-## Database Strategy
+## Database
 
-This application uses a **dual-database approach** for optimal development and deployment:
+SQLAlchemy supports **SQLite** (default local/tests) and **PostgreSQL** (Docker/Vercel). Set `DATABASE_URL` in `.env` for remote Postgres; see `.env.example`.
 
-| Database | Used For | Benefits |
-|----------|----------|----------|
-| **SQLite** | • Local development<br>• Unit tests<br>• CI/CD testing | • Zero setup required<br>• Fast test execution<br>• File-based (easy backup/sharing) |
-| **PostgreSQL** | • Production (Vercel)<br>• Docker containers<br>• Team development | • Better concurrency<br>• Production scalability<br>• Advanced features for future AI |
+## API quick try
 
-**Key Points:**
-
-- Code is **database-agnostic** using SQLAlchemy ORM
-- Tests automatically use SQLite in-memory for speed
-- Production deployments (Vercel) require PostgreSQL
-- Local development can use SQLite, local PostgreSQL, or connect directly to the Vercel/Supabase database by setting `DATABASE_URL` in `.env` (see `.env.example`)
-
-## Interactive API Documentation
-
-The application now includes **built-in interactive API documentation** powered by Swagger/OpenAPI:
-
-- **📖 Interactive Documentation**: Visit `http://localhost:5001/docs/` to explore and test all API endpoints directly in your browser
-- **🏠 Auto-redirect**: The root URL `http://localhost:5001/` automatically redirects to the documentation
-- **📄 OpenAPI Spec**: Machine-readable specification available at `http://localhost:5001/openapi.json`
-
-**Benefits of Interactive Documentation:**
-
-- ✅ Test all endpoints directly from the web interface
-- ✅ View detailed request/response schemas
-- ✅ No need to remember curl syntax
-- ✅ Real-time API validation and examples
-
-## Using the API
-
-You can use the API in two ways:
-
-### Option 1: Interactive Documentation (Recommended)
-
-Visit `http://localhost:5001/docs/` in your browser to test endpoints interactively.
-
-### Option 2: Command Line (Advanced Users)
-
-#### 1. Check Health
+- **Docs:** `http://localhost:5001/docs/` (root redirects); **OpenAPI:** `/openapi.json`.
+- **KTC refresh:** `POST`/`PUT /api/ktc/refresh` usually returns **202** (background job); add `sync=1` to block, or poll `GET /api/ktc/refresh/status/{job_id}`.
 
 ```bash
 curl http://localhost:5001/api/ktc/health
+curl -X POST "http://localhost:5001/api/ktc/refresh?league_format=superflex&is_redraft=false&tep_level=tep"
+curl "http://localhost:5001/api/ktc/rankings?league_format=superflex&is_redraft=false&tep_level=tep"
 ```
 
-#### 2. Load Rankings Data
+## Available scripts
 
-```bash
-# Superflex redraft rankings
-curl -X PUT "http://localhost:5001/api/ktc/refresh?league_format=superflex&is_redraft=true&tep_level=tep"
-
-curl -X POST "http://localhost:5001/api/ktc/refresh?league_format=superflex&is_redraft=true&tep_level=tep"
-
-# 1QB dynasty rankings
-curl -X PUT "http://localhost:5001/api/ktc/refresh?league_format=1qb&is_redraft=false&tep_level=tep"
-
-curl -X POST "http://localhost:5001/api/ktc/refresh?league_format=1qb&is_redraft=false&tep_level=tep"
-```
-
-#### 3. Get Rankings
-
-```bash
-# Get the rankings you just loaded (same for both PUT and POST)
-curl "http://localhost:5001/api/ktc/rankings?league_format=superflex&is_redraft=true&tep_level=tep"
-```
-
-## Available Scripts
-
-| Script | Purpose |
-|--------|---------|
-| `docker-compose.sh` | Manage Docker containers with PostgreSQL (up, down, logs, status, clean) |
-| `startup.sh` | Start Flask application locally with SQLite |
-| `run_tests.sh`
+| Path | Purpose |
+|------|---------|
+| `docker-compose.sh` | PostgreSQL + app containers (up, down, logs, status, clean) |
+| `startup.sh` | Local Flask (SQLite by default) |
+| `run_tests.sh` | Pytest via Docker (see [tests/README.md](tests/README.md)) |
+| `scripts/` | DB setup/reset, `ktc-scrape.py`, `manual_player_merge.py`, `cleanup_invalid_players.py`, etc. (run from repo root with venv active) |

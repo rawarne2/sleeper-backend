@@ -2,7 +2,8 @@
 Sleeper models unit tests.
 """
 from datetime import datetime, UTC
-from models import SleeperLeague, SleeperRoster, SleeperUser, db
+from models.entities import SleeperLeague, SleeperRoster, SleeperUser
+from models.extensions import db
 from tests.fixtures.database import app_context
 
 

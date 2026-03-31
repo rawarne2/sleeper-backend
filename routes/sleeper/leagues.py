@@ -1,8 +1,9 @@
 from datetime import datetime, UTC
 from flask import Blueprint, jsonify
-from scrapers import SleeperScraper
-from managers import DatabaseManager
-from utils import setup_logging
+from scrapers.sleeper_scraper import SleeperScraper
+from cache.redis_dashboard import invalidate_dashboard_league
+from managers.database_manager import DatabaseManager
+from utils.helpers import setup_logging
 from routes.helpers import with_error_handling
 
 sleeper_leagues_bp = Blueprint(
@@ -471,6 +472,7 @@ def refresh_league_data(league_id: str):
         if league_data.get('success'):
             save_result = DatabaseManager.save_league_data(league_data)
             if save_result.get('status') == 'success':
+                invalidate_dashboard_league(league_id)
                 results['league_data'] = {
                     'status': 'success',
                     'save_result': save_result

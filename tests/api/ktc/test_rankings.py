@@ -2,16 +2,18 @@
 KTC Rankings API endpoint tests.
 """
 import json
-from models import Player as PlayerModel
+
+from models.entities import Player as PlayerModel
 import routes.ktc.rankings as rankings_module
+import services.ktc_refresh_async as ktc_refresh_async
 
 
 def test_refresh_endpoint_exists(client):
     """Test that the refresh endpoint exists and accepts POST requests"""
     response = client.post(
         '/api/ktc/refresh?league_format=superflex&tep_level=tep')
-    # Either success, invalid params, or scraping error (expected in test environment)
-    assert response.status_code in [200, 400, 500]
+    # 202 = async accepted; 200/400/500 for sync path or errors
+    assert response.status_code in [200, 202, 400, 500]
 
 
 def test_refresh_endpoint_validation(client):
@@ -32,7 +34,8 @@ def test_refresh_endpoint_validation(client):
 def test_refresh_stores_data(client):
     """Test that refresh endpoint stores data in the database"""
     response = client.post(
-        '/api/ktc/refresh?is_redraft=false&league_format=superflex&tep_level=tep')
+        '/api/ktc/refresh?is_redraft=false&league_format=superflex&tep_level=tep'
+        '&sync=1')
 
     # May fail due to scraping issues in test environment
     if response.status_code == 200:
@@ -87,27 +90,28 @@ def test_refresh_formats_scraper_players_in_response(client, monkeypatch):
     ]
 
     monkeypatch.setattr(
-        rankings_module.DatabaseManager,
+        ktc_refresh_async.DatabaseManager,
         'verify_database_connection',
         staticmethod(lambda: True)
     )
     monkeypatch.setattr(
-        rankings_module,
+        ktc_refresh_async,
         'scrape_and_process_data',
         lambda *args, **kwargs: (players, None)
     )
     monkeypatch.setattr(
-        rankings_module,
+        ktc_refresh_async,
         'save_and_verify_database',
         lambda *args, **kwargs: (1, None)
     )
     monkeypatch.setattr(
-        rankings_module,
+        ktc_refresh_async,
         'perform_file_operations',
         lambda *args, **kwargs: (False, False)
     )
 
-    response = client.post('/api/ktc/refresh?league_format=superflex&tep_level=tep')
+    response = client.post(
+        '/api/ktc/refresh?league_format=superflex&tep_level=tep&sync=1')
     assert response.status_code == 200
 
     data = json.loads(response.data)
@@ -116,6 +120,78 @@ def test_refresh_formats_scraper_players_in_response(client, monkeypatch):
     assert data['players'][0]['playerName'] == 'Josh Allen'
     assert data['players'][0]['ktc']['oneQBValues'] is None
     assert data['players'][0]['ktc']['superflexValues']['value'] == 9600
+
+
+def test_refresh_async_returns_202(client, monkeypatch):
+    monkeypatch.setattr(
+        ktc_refresh_async,
+        'execute_ktc_refresh_pipeline',
+        lambda *a, **k: ktc_refresh_async.KTCRefreshOutcome(
+            True,
+            200,
+            {
+                'operations_summary': {
+                    'players_count': 0,
+                    'database_saved_count': 0,
+                    'file_saved': False,
+                    's3_uploaded': False,
+                }
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        ktc_refresh_async.DatabaseManager,
+        'verify_database_connection',
+        staticmethod(lambda: True)
+    )
+    response = client.post(
+        '/api/ktc/refresh?league_format=superflex&tep_level=tep')
+    assert response.status_code == 202
+    data = json.loads(response.data)
+    assert data.get('accepted') is True
+    assert data.get('job_id')
+    assert '/api/ktc/refresh/status/' in data.get('poll_url', '')
+
+
+def test_refresh_job_status_unknown(client):
+    r = client.get('/api/ktc/refresh/status/00000000-0000-0000-0000-000000000099')
+    assert r.status_code == 404
+
+
+def test_refresh_job_status_after_enqueue(client, monkeypatch):
+    def _fast_pipeline(league_format, is_redraft, tep_level):
+        return ktc_refresh_async.KTCRefreshOutcome(
+            True,
+            200,
+            {
+                'operations_summary': {
+                    'players_count': 0,
+                    'database_saved_count': 0,
+                    'file_saved': False,
+                    's3_uploaded': False,
+                }
+            },
+        )
+
+    monkeypatch.setattr(
+        ktc_refresh_async,
+        'execute_ktc_refresh_pipeline',
+        _fast_pipeline,
+    )
+    monkeypatch.setattr(
+        ktc_refresh_async.DatabaseManager,
+        'verify_database_connection',
+        staticmethod(lambda: True)
+    )
+    post = client.post(
+        '/api/ktc/refresh?league_format=1qb&is_redraft=false&tep_level=')
+    assert post.status_code == 202
+    job_id = json.loads(post.data)['job_id']
+    get = client.get(f'/api/ktc/refresh/status/{job_id}')
+    assert get.status_code == 200
+    body = json.loads(get.data)
+    assert body['job_id'] == job_id
+    assert body['status'] in ('queued', 'running', 'succeeded', 'failed')
 
 
 def test_rankings_endpoint_exists(client):

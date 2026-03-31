@@ -1,8 +1,8 @@
 from datetime import datetime, UTC
 from flask import Blueprint, jsonify
-from scrapers import SleeperScraper
-from managers import DatabaseManager
-from utils import setup_logging
+from scrapers.sleeper_scraper import SleeperScraper
+from managers.database_manager import DatabaseManager
+from utils.helpers import setup_logging
 
 sleeper_players_bp = Blueprint(
     'sleeper_players', __name__, url_prefix='/api/sleeper')

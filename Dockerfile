@@ -1,33 +1,30 @@
-FROM python:3.13.2-alpine3.21@sha256:323a717dc4a010fee21e3f1aac738ee10bb485de4e7593ce242b36ee48d6b352
+# Debian slim (glibc): manylinux wheels for rpds-py, psycopg2-binary, greenlet, etc.
+# work reliably on linux/amd64 and linux/arm64 (Apple Silicon). Alpine/musl often forces
+# source builds for Rust extensions like rpds-py.
+FROM python:3.13.2-slim-bookworm
 WORKDIR /app
 
-# Make Python output unbuffered so print statements appear immediately
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Install system dependencies including PostgreSQL development packages
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    postgresql-dev \
     gcc \
-    musl-dev \
-    libffi-dev
+    libpq-dev \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create and activate virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
 COPY . .
 
-# Make startup script executable
 RUN chmod +x startup.sh
 
-# Expose port 5001 for Flask
 EXPOSE 5001
 
 CMD ["./startup.sh"]

@@ -1,5 +1,5 @@
-import scrapers
-from scrapers import SleeperScraper
+import scrapers.sleeper_scraper as scrapers_mod
+from scrapers.sleeper_scraper import SleeperScraper
 
 
 def test_fetch_players_research_normalizes_string_league_type(monkeypatch):
@@ -16,7 +16,7 @@ def test_fetch_players_research_normalizes_string_league_type(monkeypatch):
         requested_urls.append(url)
         return MockResponse()
 
-    monkeypatch.setattr(scrapers.requests, 'get', mock_get)
+    monkeypatch.setattr(scrapers_mod.requests, 'get', mock_get)
 
     result = SleeperScraper.fetch_players_research(
         '2024', week=1, league_type='dynasty')

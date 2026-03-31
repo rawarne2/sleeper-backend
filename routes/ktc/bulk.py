@@ -1,9 +1,9 @@
 from datetime import datetime, UTC
 from flask import Blueprint, jsonify
-from scrapers import KTCScraper
-from managers import DatabaseManager
-from utils import setup_logging
-from scrapers import scrape_and_save_all_ktc_data
+from scrapers.ktc_scraper import KTCScraper
+from managers.database_manager import DatabaseManager
+from utils.helpers import setup_logging
+from scrapers.pipelines import scrape_and_save_all_ktc_data
 from routes.helpers import with_error_handling
 from routes.ktc.rankings_cache import invalidate_rankings_cache
 

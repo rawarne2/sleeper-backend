@@ -1,13 +1,16 @@
 import json
 from datetime import datetime, UTC
 from typing import Dict, Any
-from flask_sqlalchemy import SQLAlchemy
 
-from utils import (PLAYER_NAME_KEY, POSITION_KEY,
-                   TEAM_KEY, AGE_KEY, ROOKIE_KEY)
+from utils.constants import (
+    PLAYER_NAME_KEY,
+    POSITION_KEY,
+    TEAM_KEY,
+    AGE_KEY,
+    ROOKIE_KEY,
+)
 
-# This will be initialized in app.py
-db = SQLAlchemy()
+from models.extensions import db
 
 
 class Player(db.Model):
@@ -36,7 +39,7 @@ class Player(db.Model):
     rookie = db.Column(db.String(5))  # Yes or No
 
     # Sleeper API data
-    sleeper_player_id = db.Column(db.String(20))
+    sleeper_player_id = db.Column(db.String(20), index=True)
     birth_date = db.Column(db.Date)
     height = db.Column(db.String(10))
     weight = db.Column(db.String(10))
@@ -304,6 +307,9 @@ class SleeperRoster(db.Model):
     reserve = db.Column(db.Text)  # JSON string of reserve player IDs
     taxi = db.Column(db.Text)  # JSON string of taxi squad player IDs
 
+    # Sleeper roster.metadata (JSON) — not SQLAlchemy MetaData; avoids misnamed column bugs
+    roster_metadata = db.Column(db.Text)
+
     # Roster settings
     settings = db.Column(db.Text)  # JSON string of roster settings
 
@@ -326,6 +332,9 @@ class SleeperRoster(db.Model):
             'starters': json.loads(self.starters) if self.starters else [],
             'reserve': json.loads(self.reserve) if self.reserve else [],
             'taxi': json.loads(self.taxi) if self.taxi else [],
+            'roster_metadata': json.loads(self.roster_metadata)
+            if self.roster_metadata
+            else {},
             'settings': json.loads(self.settings) if self.settings else {},
             'last_updated': self.last_updated.isoformat() if self.last_updated else None
         }
@@ -351,10 +360,10 @@ class SleeperUser(db.Model):
     username = db.Column(db.String(100))
     display_name = db.Column(db.String(100))
 
-    # User profile
+    # User profile (team_name duplicated Sleeper metadata.team_name historically; prefer user_metadata)
     avatar = db.Column(db.String(100))
     team_name = db.Column(db.String(100))
-    user_metadata = db.Column(db.Text)  # JSON string for additional user data
+    user_metadata = db.Column(db.Text)  # JSON string; canonical source for team_name from API
 
     # Metadata
     last_updated = db.Column(db.DateTime, nullable=False,
@@ -366,6 +375,15 @@ class SleeperUser(db.Model):
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert user object to dictionary for API responses."""
+        meta: Dict[str, Any] = {}
+        if self.user_metadata:
+            try:
+                loaded = json.loads(self.user_metadata)
+                if isinstance(loaded, dict):
+                    meta = loaded
+            except json.JSONDecodeError:
+                meta = {}
+        team_from_meta = meta.get('team_name') if isinstance(meta.get('team_name'), str) else None
         return {
             'id': self.id,
             'league_id': self.league_id,
@@ -373,8 +391,8 @@ class SleeperUser(db.Model):
             'username': self.username,
             'display_name': self.display_name,
             'avatar': self.avatar,
-            'team_name': self.team_name,
-            'user_metadata': json.loads(self.user_metadata) if self.user_metadata else {},
+            'team_name': team_from_meta or self.team_name,
+            'user_metadata': meta,
             'last_updated': self.last_updated.isoformat() if self.last_updated else None
         }
 
@@ -452,8 +470,12 @@ class SleeperWeeklyData(db.Model):
                              default=lambda: datetime.now(UTC))
 
     # Unique constraint for season + week + league_type + player_id
-    __table_args__ = (db.UniqueConstraint('season', 'week',
-                      'league_type', 'player_id', name='_weekly_data_unique_uc'),)
+    __table_args__ = (
+        db.UniqueConstraint(
+            'season', 'week', 'league_type', 'player_id', name='_weekly_data_unique_uc'
+        ),
+        db.Index('ix_sleeper_weekly_season_lt_week', 'season', 'league_type', 'week'),
+    )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert weekly data object to dictionary for API responses."""

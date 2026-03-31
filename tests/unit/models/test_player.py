@@ -2,7 +2,8 @@
 Player model unit tests.
 """
 from datetime import datetime, UTC
-from models import Player as PlayerModel, db
+from models.entities import Player as PlayerModel
+from models.extensions import db
 from tests.fixtures.database import app_context
 
 

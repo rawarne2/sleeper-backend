@@ -1,9 +1,10 @@
 from datetime import datetime, UTC
 from flask import Blueprint, jsonify, request
 import json
-from scrapers import SleeperScraper
-from models import SleeperWeeklyData, db
-from utils import setup_logging
+from scrapers.sleeper_scraper import SleeperScraper
+from models.entities import SleeperWeeklyData
+from models.extensions import db
+from utils.helpers import setup_logging
 from routes.helpers import with_error_handling
 
 sleeper_research_bp = Blueprint(

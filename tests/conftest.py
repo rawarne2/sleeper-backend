@@ -6,10 +6,10 @@ This file provides shared fixtures and configuration for all test modules.
 import os
 
 os.environ.setdefault('TEST_DATABASE_URI', 'sqlite:///:memory:')
-
 from tests.fixtures.players import sample_player_data, sample_player, sample_ktc_player_data
 from tests.fixtures.database import client, app_context
-from models import db, Player as PlayerModel
+from models.extensions import db
+from models.entities import Player as PlayerModel
 from app import app
 import pytest
 import json

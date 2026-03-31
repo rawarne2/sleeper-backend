@@ -6,8 +6,9 @@ and merged with existing KTC data.
 """
 import json
 from datetime import datetime, UTC
-from models import db, Player
-from managers import DatabaseManager
+from models.entities import Player
+from models.extensions import db
+from managers.database_manager import DatabaseManager
 from tests.fixtures.database import app_context
 
 

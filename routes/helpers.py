@@ -2,7 +2,7 @@ from copy import copy as shallow_copy
 from datetime import datetime, UTC
 from flask import jsonify
 from functools import wraps
-from utils import setup_logging
+from utils.helpers import setup_logging
 
 logger = setup_logging()
 

@@ -2,9 +2,9 @@
 
 This project now includes comprehensive OpenAPI 3.1 documentation with interactive Swagger UI interface.
 
-## 📚 Documentation Features
+## Documentation features
 
-- **Complete API Coverage**: All 13 endpoints documented with detailed schemas
+- **Coverage:** OpenAPI/Swagger describe the main route groups (KTC, Sleeper, dashboard, maintenance, health)
 - **Interactive Testing**: Test endpoints directly from the browser interface
 - **Comprehensive Examples**: Request/response examples for all endpoints
 - **Performance Notes**: Clear guidance on caching behavior and response times
@@ -52,8 +52,9 @@ Access the OpenAPI spec at: **<http://localhost:5001/openapi.json>**
 
 #### 🏈 KTC Player Rankings  
 
-- `POST /api/ktc/refresh` - Create/populate KTC rankings
-- `PUT /api/ktc/refresh` - Update KTC rankings
+- `POST /api/ktc/refresh` - Enqueue KTC scrape + DB save (HTTP **202** by default); `sync=1` for blocking run
+- `PUT /api/ktc/refresh` - Same as POST
+- `GET /api/ktc/refresh/status/{job_id}` - Poll background job from 202 body
 - `GET /api/ktc/rankings` - Retrieve stored rankings
 - `POST /api/ktc/cleanup` - Clean up data
 - `POST /api/ktc/refresh/all` - Comprehensive refresh
@@ -75,6 +76,15 @@ Access the OpenAPI spec at: **<http://localhost:5001/openapi.json>**
 - `GET /api/sleeper/players/research/{season}` - Get research data
 - `POST /api/sleeper/players/research/{season}` - Refresh research
 - `PUT /api/sleeper/players/research/{season}` - Update research
+
+#### 📱 Dashboard
+
+- `GET /api/dashboard/league/{league_id}` - League bundle for the dashboard client
+
+#### 🔧 Maintenance
+
+- `GET|POST /api/maintenance/nightly-sync` - Scheduled pipeline (Bearer `CRON_SECRET` on POST)
+- `POST /api/maintenance/daily-refresh` - Manual pipeline (`X-Daily-Refresh-Secret` when configured)
 
 ## 🔧 Key Features
 
@@ -134,7 +144,7 @@ curl "http://localhost:5001/api/sleeper/league/1210364682523656192"
 
 - `openapi.yaml` - OpenAPI 3.1 specification
 - `app.py` - Local Flask app entrypoint
-- `swagger_config.py` - Shared Swagger and OpenAPI route configuration
+- `routes/swagger_config.py` - Shared Swagger and OpenAPI route configuration
 - `startup.sh` - Local startup script
 - `OPENAPI_README.md` - This documentation guide
 
@@ -152,7 +162,7 @@ When adding new endpoints or modifying existing ones:
 ### Getting Started
 
 1. **Check Health**: Always start with `/api/ktc/health`
-2. **Load Data**: Use `/api/ktc/refresh` (PUT or POST) to populate initial data
+2. **Load Data**: Use `/api/ktc/refresh` (PUT or POST) — default **202** ack; poll status or refetch dashboard until data appears; use `sync=1` only when you need the full JSON in one response
 3. **Query Data**: Use `/api/ktc/rankings` (GET) for fast cached responses
 
 ### Parameter Usage
@@ -163,9 +173,10 @@ When adding new endpoints or modifying existing ones:
 
 ### Performance Optimization
 
-- **First Call**: Update/refresh endpoints take 30-60 seconds
-- **Subsequent Calls**: Cached data returns in < 1 second
-- **Bulk Operations**: Use `/api/ktc/refresh/all` for scheduled tasks
+- **`/api/ktc/refresh` (default)**: Returns in seconds (validation + DB ping + enqueue). Scrape + DB write runs in a background thread (Gunicorn/Docker). Refetch `GET /api/dashboard/league/...` or poll `GET /api/ktc/refresh/status/{job_id}` until `ktcLastUpdated` or `status=succeeded`.
+- **`sync=1`**: Full pipeline in the request (often over a minute); use for scripts/tests or when background work is not viable.
+- **Subsequent reads**: `GET /api/ktc/rankings` stays DB/cache-first, typically sub-second.
+- **Bulk**: `/api/ktc/refresh/all` remains operator/scheduled; still long-running.
 
 ## 🛠️ Development
 

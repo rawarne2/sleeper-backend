@@ -1,5 +1,5 @@
 """
-Orchestration for daily / scheduled data refresh (Sleeper + KTC + leagues + research).
+Orchestration for daily / scheduled data refresh (KTC + leagues + research).
 
 Kept separate from route handlers so it can be called from Flask or a CLI later.
 """
@@ -9,18 +9,27 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
-from managers import DatabaseManager
-from models import SleeperWeeklyData, db
-from scrapers import KTCScraper, SleeperScraper, scrape_and_save_all_ktc_data
-from utils import setup_logging
+from cache.redis_dashboard import invalidate_dashboard_league
+from managers.database_manager import DatabaseManager
+from models.entities import SleeperWeeklyData
+from models.extensions import db
+from scrapers.ktc_scraper import KTCScraper
+from scrapers.pipelines import scrape_and_save_all_ktc_data
+from scrapers.sleeper_scraper import SleeperScraper
+from services.types import DailyRefreshSummary
+from utils.helpers import setup_logging
 
 logger = setup_logging()
 
 
-def _default_league_ids() -> List[str]:
-    raw = (os.getenv("DAILY_REFRESH_LEAGUE_IDS") or "").strip()
-    if raw:
-        return [x.strip() for x in raw.split(",") if x.strip()]
+def _league_ids_for_refresh() -> List[str]:
+    """All leagues persisted in the DB; if none yet, fall back to built-in defaults."""
+    from models.entities import SleeperLeague
+
+    rows = SleeperLeague.query.with_entities(SleeperLeague.league_id).all()
+    out = [r[0] for r in rows if r and r[0]]
+    if out:
+        return out
     return [
         "1333945997071515648",
         "1210364682523656192",
@@ -28,46 +37,9 @@ def _default_league_ids() -> List[str]:
     ]
 
 
-def _resolve_league_ids() -> List[str]:
-    flag = (os.getenv("NIGHTLY_SYNC_ALL_DB_LEAGUES") or "").strip().lower()
-    if flag in ("1", "true", "yes"):
-        from models import SleeperLeague
-
-        rows = SleeperLeague.query.with_entities(SleeperLeague.league_id).all()
-        out = [r[0] for r in rows if r and r[0]]
-        if out:
-            return out
-    return _default_league_ids()
-
-
-def _default_seasons() -> List[str]:
-    raw = (os.getenv("DAILY_REFRESH_SEASONS") or "").strip()
-    if raw:
-        return [x.strip() for x in raw.split(",") if x.strip()]
-    return ["2024", "2025", "2026"]
-
-
-def refresh_sleeper_master_players() -> Dict[str, Any]:
-    """Fetch NFL players from Sleeper and merge into DB (same as POST /api/sleeper/refresh)."""
-    if not DatabaseManager.verify_database_connection():
-        return {"status": "error", "error": "Database connection failed"}
-    sleeper_players = SleeperScraper.scrape_sleeper_data()
-    if not sleeper_players:
-        return {
-            "status": "error",
-            "error": "No Sleeper players returned",
-        }
-    merge_result = DatabaseManager.save_sleeper_data_to_db(sleeper_players)
-    if merge_result.get("status") == "error":
-        return {
-            "status": "error",
-            "error": merge_result.get("error", "merge failed"),
-        }
-    return {"status": "success", "count": len(sleeper_players), "merge": merge_result}
-
-
 def refresh_leagues(league_ids: List[str]) -> Dict[str, Any]:
-    out: Dict[str, Any] = {"leagues": {}, "errors": []}
+    out: Dict[str, Any] = {"leagues": {}, "errors": [], "seasons": []}
+    seasons_seen: set[str] = set()
     for lid in league_ids:
         try:
             league_data = SleeperScraper.scrape_league_data(lid)
@@ -77,12 +49,18 @@ def refresh_leagues(league_ids: List[str]) -> Dict[str, Any]:
                 )
                 out["leagues"][lid] = {"status": "error"}
                 continue
+            season = league_data.get("league_info", {}).get("season")
+            if season:
+                seasons_seen.add(str(season))
             save_result = DatabaseManager.save_league_data(league_data)
+            if save_result.get("status") == "success":
+                invalidate_dashboard_league(lid)
             out["leagues"][lid] = save_result
         except Exception as e:
             logger.exception("League refresh failed for %s", lid)
             out["errors"].append({"league_id": lid, "error": str(e)})
             out["leagues"][lid] = {"status": "error", "error": str(e)}
+    out["seasons"] = sorted(seasons_seen)
     return out
 
 
@@ -139,36 +117,35 @@ def run_daily_refresh(
     league_ids: Optional[List[str]] = None,
     seasons: Optional[List[str]] = None,
     research_week: Optional[int] = None,
-    skip_sleeper_players: bool = False,
     skip_ktc: bool = False,
     skip_leagues: bool = False,
     skip_research: bool = False,
-) -> Dict[str, Any]:
+) -> DailyRefreshSummary:
     """
     Run the full pipeline used for once-per-day updates.
 
-    Order: Sleeper NFL players → KTC all formats → configured leagues → research per season.
+    Order: KTC all formats -> configured leagues -> research per season.
+
+    NFL player ingest (POST /api/sleeper/refresh) is intentionally excluded;
+    it calls the slow Sleeper /v1/players/nfl endpoint and should only be
+    triggered manually on rare occasions.
+
+    When ``seasons`` is omitted, research seasons are derived from
+    ``refresh_leagues`` results (each league's API response contains a
+    ``season`` field). If ``skip_leagues`` is true and ``seasons`` is not
+    provided, research is skipped and a warning is logged.
     """
-    lids = league_ids if league_ids is not None else _resolve_league_ids()
-    seas = seasons if seasons is not None else _default_seasons()
+    lids = league_ids if league_ids is not None else _league_ids_for_refresh()
     week = research_week if research_week is not None else int(
         os.getenv("DAILY_REFRESH_RESEARCH_WEEK", "1")
     )
 
-    summary: Dict[str, Any] = {
-        "sleeper_players": None,
+    summary: DailyRefreshSummary = {
         "ktc": None,
         "leagues": None,
         "research": [],
         "errors": [],
     }
-
-    if not skip_sleeper_players:
-        summary["sleeper_players"] = refresh_sleeper_master_players()
-        if summary["sleeper_players"].get("status") == "error":
-            summary["errors"].append(
-                {"step": "sleeper_players", "error": summary["sleeper_players"].get("error")}
-            )
 
     if not skip_ktc:
         if not DatabaseManager.verify_database_connection():
@@ -181,13 +158,21 @@ def run_daily_refresh(
                     {"step": "ktc", "error": summary["ktc"].get("error", "KTC refresh failed")}
                 )
 
+    league_seasons: List[str] = []
     if not skip_leagues and lids:
         summary["leagues"] = refresh_leagues(lids)
+        league_seasons = summary["leagues"].get("seasons", [])
         summary["errors"].extend(
             {**e, "step": "league"} for e in summary["leagues"].get("errors", [])
         )
 
     if not skip_research:
+        seas = seasons if seasons is not None else league_seasons
+        if not seas:
+            logger.warning(
+                "No seasons available for research refresh; pass seasons explicitly "
+                "or ensure skip_leagues is false so seasons are derived from league data"
+            )
         for s in seas:
             for lt in ("dynasty", "redraft"):
                 try:

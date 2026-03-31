@@ -1,454 +1,50 @@
 import json
 import os
-import tempfile
 from datetime import datetime, UTC
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional, Set
 
-import boto3
-from botocore.exceptions import NoCredentialsError, ClientError
 from sqlalchemy import text
+from sqlalchemy.orm import joinedload
 
-from models import db, Player, PlayerKTCOneQBValues, PlayerKTCSuperflexValues, SleeperWeeklyData, SleeperLeagueStats
-from utils import (normalize_tep_level, PLAYER_NAME_KEY, POSITION_KEY, TEAM_KEY,
-                   AGE_KEY, ROOKIE_KEY, setup_logging)
+from models.entities import (
+    db,
+    Player,
+    PlayerKTCOneQBValues,
+    PlayerKTCSuperflexValues,
+    SleeperWeeklyData,
+    SleeperLeagueStats,
+)
+from utils.constants import (
+    PLAYER_NAME_KEY,
+    POSITION_KEY,
+    TEAM_KEY,
+    AGE_KEY,
+    ROOKIE_KEY,
+    SLEEPER_POSITION_RDP,
+)
+from utils.helpers import create_player_match_key, normalize_tep_level, setup_logging
 
 logger = setup_logging()
 
 
-class PlayerMerger:
-    """
-    Handles merging KTC and Sleeper player data.
-
-    Matches players by name, using birth date and position to distinguish
-    players with the same name.
-    """
-
-    @staticmethod
-    def merge_player_data(ktc_players: List[Dict[str, Any]], sleeper_players: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Merge KTC and Sleeper player data using improved matching logic.
-
-        Uses search_full_name for better player matching to avoid duplicates like
-        "Ja'Marr Chase" vs "Ja\u0027Marr" creating separate entries.
-
-        Filters players to only include those in valid fantasy positions.
-        Prefers KTC's age value over Sleeper's since KTC includes decimals.
-
-        Args:
-            ktc_players: List of KTC player data
-            sleeper_players: List of Sleeper player data
-
-        Returns:
-            List of merged player data (filtered for valid positions)
-        """
-        try:
-            from scrapers import SleeperScraper
-            from data_types import normalize_name_for_matching
-            from utils import create_player_match_key
-
-            valid_ktc_players = []
-            for ktc_player in ktc_players:
-                position = ktc_player.get(POSITION_KEY, '').upper()
-                if position in SleeperScraper.VALID_POSITIONS:
-                    valid_ktc_players.append(ktc_player)
-                else:
-                    logger.debug("Filtering out KTC player %s with invalid position: %s",
-                                 ktc_player.get(PLAYER_NAME_KEY, 'Unknown'), position)
-
-            logger.info("Filtered KTC players: %s valid out of %s total",
-                        len(valid_ktc_players), len(ktc_players))
-
-            log_unmatched = (
-                os.getenv('LOG_UNMATCHED_KTC_MERGE', '').lower() == 'true'
-                or os.getenv('IS_DEV', '').lower() == 'true'
-            )
-
-            sleeper_lookup = {}
-            sleeper_name_fallback = {}
-            sleeper_name_only_fallback: Dict[str, List[Dict[str, Any]]] = {} if log_unmatched else {}
-
-            for sleeper_player in sleeper_players:
-                position = sleeper_player.get('position', '').upper()
-
-                if position not in SleeperScraper.VALID_POSITIONS:
-                    continue
-
-                search_full_name = sleeper_player.get('search_full_name', '')
-
-                if search_full_name:
-                    match_key = create_player_match_key(search_full_name, position)
-                    sleeper_lookup[match_key] = sleeper_player
-
-                full_name = sleeper_player.get('full_name', '')
-                if full_name:
-                    if log_unmatched:
-                        normalized_full_name = normalize_name_for_matching(full_name)
-                        if normalized_full_name:
-                            if normalized_full_name not in sleeper_name_only_fallback:
-                                sleeper_name_only_fallback[normalized_full_name] = []
-                            sleeper_name_only_fallback[normalized_full_name].append(sleeper_player)
-                    fallback_key = create_player_match_key(full_name, position)
-                    if fallback_key not in sleeper_name_fallback:
-                        sleeper_name_fallback[fallback_key] = []
-                    sleeper_name_fallback[fallback_key].append(sleeper_player)
-
-            logger.info("Created Sleeper lookup with %s search_full_name keys and %s fallback keys",
-                        len(sleeper_lookup), len(sleeper_name_fallback))
-
-            merged_players = []
-            matched_count = 0
-            duplicate_prevention = set()
-
-            seen_ktc_by_duplicate_key: Dict[str, Dict[str, Any]] = {}
-            unmatched_ktc_players: List[Dict[str, Any]] = []
-            duplicate_key_collisions: List[Dict[str, Any]] = []
-
-            for ktc_player in valid_ktc_players:
-                player_name = ktc_player.get(PLAYER_NAME_KEY, '')
-                position = ktc_player.get(POSITION_KEY, '').upper()
-
-                duplicate_key = create_player_match_key(player_name, position)
-                if duplicate_key in duplicate_prevention:
-                    if log_unmatched:
-                        previous = seen_ktc_by_duplicate_key.get(duplicate_key, {})
-                        duplicate_key_collisions.append({
-                            'duplicate_key': duplicate_key,
-                            'position': position,
-                            'previous_ktc_player_name': previous.get(PLAYER_NAME_KEY),
-                            'previous_ktc_player_id': previous.get('ktc_player_id'),
-                            'skipped_ktc_player_name': player_name,
-                            'skipped_ktc_player_id': ktc_player.get('ktc_player_id'),
-                        })
-                    continue
-                duplicate_prevention.add(duplicate_key)
-                if log_unmatched:
-                    seen_ktc_by_duplicate_key[duplicate_key] = ktc_player
-
-                sleeper_match = None
-                search_key = create_player_match_key(player_name, position)
-
-                if search_key in sleeper_lookup:
-                    sleeper_match = sleeper_lookup[search_key]
-                elif search_key in sleeper_name_fallback:
-                    candidates = sleeper_name_fallback[search_key]
-                    if len(candidates) == 1:
-                        sleeper_match = candidates[0]
-                    else:
-                        logger.warning("Multiple Sleeper matches for %s (%s): %s candidates",
-                                       player_name, position, len(candidates))
-                        sleeper_match = candidates[0]  # Take first match
-
-                if not sleeper_match:
-                    if log_unmatched:
-                        ktc_normalized_name = normalize_name_for_matching(player_name)
-                        unmatched_ktc_players.append({
-                            'ktc_player_name': player_name,
-                            'ktc_player_id': ktc_player.get('ktc_player_id'),
-                            'position': position,
-                            'ktc_match_key': search_key,
-                            'ktc_normalized_name': ktc_normalized_name,
-                            'potential_sleeper_matches_any_position': [
-                                {
-                                    'sleeper_player_id': p.get('player_id'),
-                                    'full_name': p.get('full_name'),
-                                    'position': p.get('position'),
-                                }
-                                for p in (sleeper_name_only_fallback.get(ktc_normalized_name, []) or [])[:5]
-                            ],
-                        })
-
-                merged_player = ktc_player.copy()
-
-                if sleeper_match:
-                    merged_player['sleeper_player_id'] = sleeper_match.get(
-                        'player_id')
-
-                    sleeper_keys = [
-                        'birth_date', 'height', 'weight', 'college',
-                        'years_exp', 'number', 'depth_chart_order',
-                        'depth_chart_position', 'fantasy_positions', 'hashtag',
-                        'search_rank', 'high_school', 'injury_status', 'injury_start_date',
-                        'full_name', 'status', 'team_abbr', 'competitions', 'injury_body_part',
-                        'injury_notes', 'team_changed_at', 'practice_participation',
-                        'search_first_name', 'birth_state', 'oddsjam_id',
-                        'practice_description', 'opta_id', 'search_full_name',
-                        'espn_id', 'search_last_name', 'sportradar_id', 'swish_id',
-                        'birth_country', 'gsis_id', 'pandascore_id', 'yahoo_id',
-                        'fantasy_data_id', 'stats_id', 'news_updated', 'birth_city',
-                        'rotoworld_id', 'rotowire_id'
-                    ]
-
-                    for key in sleeper_keys:
-                        if key in sleeper_match:
-                            if key == 'age' and merged_player.get(AGE_KEY) is not None:
-                                continue
-
-                            if key == 'fantasy_positions':
-                                fantasy_positions = sleeper_match[key]
-                                if isinstance(fantasy_positions, list):
-                                    merged_player[key] = json.dumps(
-                                        fantasy_positions)
-                                else:
-                                    merged_player[key] = fantasy_positions
-                            else:
-                                merged_player[key] = sleeper_match[key]
-
-                    metadata = sleeper_match.get('metadata', {})
-                    if isinstance(metadata, dict) and metadata.get('rookie_year'):
-                        merged_player['rookie_year'] = metadata['rookie_year']
-
-                    if metadata:
-                        merged_player['player_metadata'] = json.dumps(metadata)
-
-                    matched_count += 1
-
-                merged_players.append(merged_player)
-
-            logger.info("Successfully merged %s KTC players with %s Sleeper matches (filtered for valid positions)",
-                        len(valid_ktc_players), matched_count)
-
-            if log_unmatched and (unmatched_ktc_players or duplicate_key_collisions):
-                logger.warning(
-                    "KTC->Sleeper merge report: %s unmatched (no Sleeper match) out of %s, %s duplicate match_key collisions",
-                    len(unmatched_ktc_players), len(valid_ktc_players), len(duplicate_key_collisions)
-                )
-
-                for entry in unmatched_ktc_players[:20]:
-                    logger.warning("UNMATCHED_KTC_PLAYER %s", json.dumps(entry, default=str))
-                if len(unmatched_ktc_players) > 20:
-                    logger.warning("UNMATCHED_KTC_PLAYER ... plus %s more",
-                                   len(unmatched_ktc_players) - 20)
-
-                for entry in duplicate_key_collisions[:20]:
-                    logger.warning("KTC_DUPLICATE_MATCH_KEY_COLLISION %s", json.dumps(entry, default=str))
-                if len(duplicate_key_collisions) > 20:
-                    logger.warning("KTC_DUPLICATE_MATCH_KEY_COLLISION ... plus %s more",
-                                   len(duplicate_key_collisions) - 20)
-
-                if os.getenv('IS_DEV', '').lower() == 'true':
-                    try:
-                        report = {
-                            'generated_at': datetime.now(UTC).isoformat(),
-                            'ktc_players_total': len(valid_ktc_players),
-                            'sleeper_players_total': len(sleeper_players),
-                            'unmatched_ktc_players': unmatched_ktc_players,
-                            'duplicate_key_collisions': duplicate_key_collisions,
-                        }
-                        filename = f"ktc_unmatched_merge_report_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json"
-                        FileManager.save_json_to_file(report, filename)
-                    except Exception as report_error:
-                        logger.warning("Failed to write unmatched merge report: %s", report_error)
-
-            return merged_players
-
-        except Exception as e:
-            logger.error("Error merging player data: %s", e)
-            return ktc_players  # Return original KTC data if merge fails
-
-
-class FileManager:
-    """Handles file operations for JSON data storage and S3 uploads."""
-
-    @staticmethod
-    def get_data_directory() -> str:
-        """Get the appropriate data directory path based on environment."""
-        return '/app/data-files' if os.path.exists('/app') else './data-files'
-
-    @staticmethod
-    def create_json_filename(league_format: str, is_redraft: bool, tep_level: Optional[str], prefix: str = "ktc") -> str:
-        """
-        Create standardized JSON filename with improved accuracy and descriptiveness.
-
-        Args:
-            league_format: '1qb' or 'superflex'
-            is_redraft: Whether this is redraft data
-            tep_level: TEP configuration level
-            prefix: Filename prefix
-
-        Returns:
-            Standardized filename string with timestamp and descriptive naming
-        """
-        # Get current timestamp for unique identification
-        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-
-        # More descriptive format type
-        format_type = 'redraft' if is_redraft else 'dynasty'
-
-        # More descriptive league format
-        league_desc = 'superflex' if league_format == 'superflex' else '1qb'
-
-        # Use raw TEP level
-        tep_suffix = tep_level if tep_level else "no_tep"
-
-        # Create descriptive filename
-        filename = f"{prefix}_{league_desc}_{format_type}_{tep_suffix}_{timestamp}.json"
-
-        return filename
-
-    @staticmethod
-    def create_descriptive_filename(league_format: str, is_redraft: bool, tep_level: Optional[str],
-                                    operation_type: str = "refresh", include_timestamp: bool = True) -> str:
-        """
-        Create a more descriptive filename with additional context and options.
-
-        Args:
-            league_format: '1qb' or 'superflex'
-            is_redraft: Whether this is redraft data
-            tep_level: TEP configuration level
-            operation_type: Type of operation ('refresh', 'export', 'backup', etc.)
-            include_timestamp: Whether to include timestamp in filename
-
-        Returns:
-            Descriptive filename string
-        """
-        # Get current timestamp if requested
-        timestamp = datetime.now(UTC).strftime(
-            "%Y%m%d_%H%M%S") if include_timestamp else ""
-
-        # More descriptive format type
-        format_type = 'redraft' if is_redraft else 'dynasty'
-
-        # More descriptive league format
-        league_desc = 'superflex' if league_format == 'superflex' else '1qb'
-
-        # Use raw TEP level
-        tep_desc = tep_level if tep_level else "no_tep"
-
-        # Build filename components
-        components = ['ktc', operation_type,
-                      league_desc, format_type, tep_desc]
-
-        # Add timestamp if requested
-        if timestamp:
-            components.append(timestamp)
-
-        # Create filename
-        filename = f"{'_'.join(components)}.json"
-
-        return filename
-
-    @staticmethod
-    def create_human_readable_filename(league_format: str, is_redraft: bool, tep_level: Optional[str],
-                                       operation_type: str = "refresh") -> str:
-        """
-        Create a human-readable filename with spaces and proper formatting.
-
-        Args:
-            league_format: '1qb' or 'superflex'
-            is_redraft: Whether this is redraft data
-            tep_level: TEP configuration level
-            operation_type: Type of operation ('refresh', 'export', 'backup', etc.)
-
-        Returns:
-            Human-readable filename string
-        """
-        # Get current timestamp
-        timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H-%M-%S")
-
-        # Human-readable format type
-        format_type = 'Redraft' if is_redraft else 'Dynasty'
-
-        # Human-readable league format
-        league_desc = 'Superflex' if league_format == 'superflex' else '1QB'
-
-        # Use raw TEP level
-        tep_desc = tep_level if tep_level else "No TEP"
-
-        # Create human-readable filename
-        filename = f"KTC {operation_type.title()} - {league_desc} {format_type} {tep_desc} - {timestamp}.json"
-
-        return filename
-
-    @staticmethod
-    def save_json_to_file(json_data: Dict[str, Any], filename: str) -> bool:
-        """
-        Save JSON data to a local file in the data-files directory.
-        Only saves files if IS_DEV environment variable is set to 'true'.
-
-        Args:
-            json_data: Data to save as JSON
-            filename: Target filename
-
-        Returns:
-            True if successful or skipped (not dev mode), False on error
-        """
-        # Check if we're in development mode
-        is_dev = os.getenv('IS_DEV', '').lower() == 'true'
-
-        if not is_dev:
-            logger.info(
-                "Skipping file save to data-files (not in dev mode): %s", filename)
-            return True  # Return True since this is expected behavior in production
-
-        try:
-            data_dir = FileManager.get_data_directory()
-            os.makedirs(data_dir, exist_ok=True)
-            file_path = os.path.join(data_dir, filename)
-
-            logger.info("Saving JSON data to %s...", file_path)
-            with open(file_path, 'w') as json_file:
-                json.dump(json_data, json_file, indent=2, default=str)
-
-            logger.info("Successfully saved JSON data to %s", file_path)
-            return True
-        except Exception as e:
-            logger.error("Error saving JSON to file: %s", e)
-            return False
-
-    @staticmethod
-    def upload_json_to_s3(json_data: Dict[str, Any], bucket_name: str, object_key: str) -> bool:
-        """
-        Upload JSON data to an S3 bucket or access point.
-
-        Args:
-            json_data: Data to upload as JSON
-            bucket_name: S3 bucket name or access point alias
-            object_key: S3 object key (filename)
-
-        Returns:
-            True if successful, False otherwise
-        """
-        temp_file_path = None
-        try:
-            s3_client = boto3.client('s3')
-
-            # Create temporary file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
-                json.dump(json_data, temp_file, indent=2, default=str)
-                temp_file_path = temp_file.name
-
-            logger.info(
-                f"Uploading JSON to s3://{bucket_name}/{object_key}...")
-
-            # Upload to S3
-            s3_client.upload_file(temp_file_path, bucket_name, object_key)
-            logger.info(
-                f"Successfully uploaded JSON to s3://{bucket_name}/{object_key}")
-
-            return True
-
-        except NoCredentialsError:
-            logger.error(
-                "AWS credentials not found. Make sure you've configured your AWS credentials.")
-            return False
-        except ClientError as e:
-            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
-            error_message = e.response.get(
-                'Error', {}).get('Message', 'Unknown error')
-            logger.error(
-                f"S3 ClientError - Code: {error_code}, Message: {error_message}")
-            return False
-        except Exception as e:
-            logger.error("Unexpected error uploading to S3: %s", e)
-            return False
-        finally:
-            # Clean up temporary file
-            if temp_file_path and os.path.exists(temp_file_path):
-                try:
-                    os.unlink(temp_file_path)
-                except Exception as cleanup_error:
-                    logger.warning(
-                        f"Failed to cleanup temp file {temp_file_path}: {cleanup_error}")
+def _parse_date(value: Any):
+    """Parse a YYYY-MM-DD string to a date, returning None on failure."""
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value), '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_int(value: Any):
+    """Coerce a value to int, returning None on failure."""
+    if not value:
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
 
 
 class DatabaseManager:
@@ -511,27 +107,43 @@ class DatabaseManager:
         return filtered_players, last_updated
 
     @staticmethod
-    def _validate_save_inputs(players: List[Dict[str, Any]], league_format: str, tep_level: Optional[str]) -> Optional[str]:
+    def get_players_for_sleeper_ids(
+        league_format: str, sleeper_ids: Set[str]
+    ) -> tuple[List[Player], Optional[datetime]]:
         """
-        Validate inputs for save operation.
+        Load Player rows (with KTC join for format) for a bounded set of Sleeper IDs.
 
-        Args:
-            players: List of player data
-            league_format: League format string
-            tep_level: TEP level string
-
-        Returns:
-            Normalized TEP level string
-
-        Raises:
-            ValueError: If validation fails
+        Used by the dashboard league bundle to avoid full-table scans and large JSON parses.
         """
-        if not players:
-            raise ValueError("No players provided to save")
-        if not league_format:
-            raise ValueError("League format is required")
+        if not sleeper_ids:
+            return [], None
+        id_list = [x for x in sleeper_ids if x]
+        if not id_list:
+            return [], None
 
-        return normalize_tep_level(tep_level)
+        if league_format == '1qb':
+            q = (
+                Player.query.join(PlayerKTCOneQBValues)
+                .filter(Player.sleeper_player_id.in_(id_list))
+                .order_by(PlayerKTCOneQBValues.rank.asc())
+            )
+        else:
+            q = (
+                Player.query.join(PlayerKTCSuperflexValues)
+                .filter(Player.sleeper_player_id.in_(id_list))
+                .order_by(PlayerKTCSuperflexValues.rank.asc())
+            )
+        players = q.all()
+        filtered: List[Player] = []
+        for player in players:
+            if league_format == '1qb' and player.oneqb_values:
+                filtered.append(player)
+            elif league_format == 'superflex' and player.superflex_values:
+                filtered.append(player)
+        last_updated = (
+            max(p.last_updated for p in filtered) if filtered else None
+        )
+        return filtered, last_updated
 
     @staticmethod
     def save_players_to_db(players: List[Dict[str, Any]], league_format: str, is_redraft: bool) -> int:
@@ -562,6 +174,8 @@ class DatabaseManager:
         processed_count = 0
         skipped_count = 0
 
+        from utils.player_eligibility import merged_player_row_should_save
+
         try:
             # Verify database connection
             if not DatabaseManager.verify_database_connection():
@@ -590,9 +204,16 @@ class DatabaseManager:
                     elif league_format == 'superflex' and player_data.get('superflex_values'):
                         has_values = True
 
-                    if not has_values:
+                    if (
+                        not has_values
+                        and (position or "").strip().upper() != SLEEPER_POSITION_RDP
+                    ):
                         logger.debug(
                             "Skipping player %s - no %s values", player_name, league_format)
+                        skipped_count += 1
+                        continue
+
+                    if not merged_player_row_should_save(player_data):
                         skipped_count += 1
                         continue
 
@@ -609,37 +230,21 @@ class DatabaseManager:
 
                     # If no sleeper_id match, use efficient match_key lookup
                     if not existing_player:
-                        from utils import create_player_match_key
-
-                        # Create match key for KTC player
-                        match_key = create_player_match_key(
-                            player_name, position)
-
-                        # Single efficient database query using indexed match_key
-                        existing_player = Player.query.filter_by(
-                            match_key=match_key).first()
+                        match_key = create_player_match_key(player_name, position)
+                        existing_player = Player.query.filter_by(match_key=match_key).first()
 
                     if existing_player:
-                        # Update existing player and ensure match_key is set
                         DatabaseManager._update_existing_player_with_merged_data(
                             existing_player, player_data)
-                        # Ensure match_key is set for efficient future lookups
                         if not existing_player.match_key:
-                            from utils import create_player_match_key
                             existing_player.match_key = create_player_match_key(
                                 player_name, position)
-                        logger.debug(
-                            "Updated existing player: %s", player_name)
+                        logger.debug("Updated existing player: %s", player_name)
                     else:
-                        # Create new non-sleeper player (rare)
                         new_player = DatabaseManager._create_player_with_merged_data(
                             player_data, league_format, is_redraft)
-                        # Set match_key for efficient future lookups
-                        from utils import create_player_match_key
-                        new_player.match_key = create_player_match_key(
-                            player_name, position)
-                        logger.debug(
-                            "Created new non-sleeper player: %s", player_name)
+                        new_player.match_key = create_player_match_key(player_name, position)
+                        logger.debug("Created new non-sleeper player: %s", player_name)
 
                     processed_count += 1
 
@@ -1110,8 +715,15 @@ class DatabaseManager:
         and then merge any existing KTC data into these Sleeper-based records.
         """
         try:
+            from utils.player_eligibility import sleeper_api_dict_should_persist
+
+            sleeper_players = [
+                p for p in sleeper_players if sleeper_api_dict_should_persist(p)
+            ]
             logger.info(
-                "Starting Sleeper data save with %s players...", len(sleeper_players))
+                "Starting Sleeper data save with %s eligible players (after filter)...",
+                len(sleeper_players),
+            )
 
             existing_sleeper_count = Player.query.filter(
                 Player.sleeper_player_id.isnot(None)).count()
@@ -1132,6 +744,28 @@ class DatabaseManager:
 
                 db.session.commit()
 
+            pruned_stale = 0
+            if sleeper_players:
+                keep_ids = {
+                    str(p.get("sleeper_player_id"))
+                    for p in sleeper_players
+                    if p.get("sleeper_player_id")
+                }
+                if keep_ids:
+                    stale = Player.query.filter(
+                        Player.sleeper_player_id.isnot(None),
+                        ~Player.sleeper_player_id.in_(keep_ids),
+                    ).all()
+                    for p in stale:
+                        db.session.delete(p)
+                    pruned_stale = len(stale)
+                    if pruned_stale:
+                        db.session.commit()
+                        logger.info(
+                            "Pruned %s Sleeper-linked players not in current active export",
+                            pruned_stale,
+                        )
+
             logger.info("Sleeper data save completed: %s updates, %s new records, %s failures",
                         updates_made, new_records_created, match_failures)
 
@@ -1142,7 +776,8 @@ class DatabaseManager:
                 'updates_made': updates_made,
                 'new_records_created': new_records_created,
                 'match_failures': match_failures,
-                'total_processed': updates_made + new_records_created
+                'total_processed': updates_made + new_records_created,
+                'pruned_stale_players': pruned_stale,
             }
 
         except Exception as e:
@@ -1194,10 +829,7 @@ class DatabaseManager:
     @staticmethod
     def _upsert_record(model_class, filter_criteria: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
         # TODO: finish implementing this and logic like it to reduce duplicate code
-        # - add type in args model_class: Type[BaseModel]
-        # """Generic upsert helper to reduce duplicate code."""
-        # from models import BaseModel
-        # from typing import Type, Any, Dict
+        # (e.g. type model_class as a concrete declarative base / entity type).
 
         existing = model_class.query.filter_by(**filter_criteria).first()
 
@@ -1216,7 +848,7 @@ class DatabaseManager:
     @staticmethod
     def _save_league_info(league_info: Dict[str, Any]) -> Dict[str, Any]:
         """Save league information to database."""
-        from models import SleeperLeague
+        from models.entities import SleeperLeague
 
         league_id = league_info['league_id']
         data = {
@@ -1239,7 +871,7 @@ class DatabaseManager:
     @staticmethod
     def _save_league_rosters(league_id: str, rosters_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Save league rosters to database using upsert."""
-        from models import SleeperRoster
+        from models.entities import SleeperRoster
 
         saved_count = 0
         updated_count = 0
@@ -1253,7 +885,7 @@ class DatabaseManager:
                 'starters': json.dumps(roster_data.get('starters', [])),
                 'reserve': json.dumps(roster_data.get('reserve', [])),
                 'taxi': json.dumps(roster_data.get('taxi', [])),
-                'metadata': json.dumps(roster_data.get('metadata', {})),
+                'roster_metadata': json.dumps(roster_data.get('metadata', {})),
                 'settings': json.dumps(roster_data.get('settings', {}))
             }
 
@@ -1274,20 +906,22 @@ class DatabaseManager:
     @staticmethod
     def _save_league_users(league_id: str, users_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Save league users to database using upsert."""
-        from models import SleeperUser
+        from models.entities import SleeperUser
 
         saved_count = 0
         updated_count = 0
 
         for user_data in users_data:
+            meta = user_data.get('metadata') or {}
             data = {
                 'league_id': league_id,
                 'user_id': user_data.get('user_id'),
                 'username': user_data.get('username'),
                 'display_name': user_data.get('display_name'),
                 'avatar': user_data.get('avatar'),
-                'team_name': user_data.get('metadata', {}).get('team_name'),
-                'user_metadata': json.dumps(user_data.get('metadata'))
+                # Single source: JSON metadata; column left null for new rows (to_dict resolves team_name)
+                'team_name': None,
+                'user_metadata': json.dumps(meta),
             }
 
             result = DatabaseManager._upsert_record(
@@ -1315,21 +949,24 @@ class DatabaseManager:
             Dictionary containing league data or error
         """
         try:
-            from models import SleeperLeague, SleeperRoster, SleeperUser
+            from models.entities import SleeperLeague, SleeperRoster, SleeperUser
 
-            # Get league info
-            league = SleeperLeague.query.filter_by(league_id=league_id).first()
+            league = (
+                SleeperLeague.query.options(
+                    joinedload(SleeperLeague.rosters),
+                    joinedload(SleeperLeague.users),
+                )
+                .filter_by(league_id=league_id)
+                .first()
+            )
             if not league:
                 return {
                     'status': 'error',
                     'error': 'League not found in database'
                 }
 
-            # Get rosters
-            rosters = SleeperRoster.query.filter_by(league_id=league_id).all()
-
-            # Get users
-            users = SleeperUser.query.filter_by(league_id=league_id).all()
+            rosters = list(league.rosters)
+            users = list(league.users)
 
             return {
                 'status': 'success',
@@ -1480,8 +1117,12 @@ class DatabaseManager:
         new_records = 0
         match_failures = 0
 
+        from utils.player_eligibility import sleeper_api_dict_should_persist
+
         for sleeper_player in sleeper_batch:
             try:
+                if not sleeper_api_dict_should_persist(sleeper_player):
+                    continue
                 # Check if we already have a record with this sleeper_player_id
                 existing_player = Player.query.filter_by(
                     sleeper_player_id=sleeper_player.get('sleeper_player_id')
@@ -1519,31 +1160,18 @@ class DatabaseManager:
             existing_player: Existing player record
             sleeper_data: Fresh Sleeper player data
         """
-        # Parse birth date if available
-        birth_date = None
-        if sleeper_data.get('birth_date'):
-            try:
-                birth_date = datetime.strptime(
-                    str(sleeper_data['birth_date']), '%Y-%m-%d').date()
-            except (ValueError, TypeError):
-                birth_date = None
+        from utils.player_eligibility import sleeper_api_dict_should_persist
 
-        # Parse injury start date if available
-        injury_start_date = None
-        if sleeper_data.get('injury_start_date'):
-            try:
-                injury_start_date = datetime.strptime(
-                    str(sleeper_data['injury_start_date']), '%Y-%m-%d').date()
-            except (ValueError, TypeError):
-                injury_start_date = None
+        if not sleeper_api_dict_should_persist(sleeper_data):
+            logger.debug(
+                "Skipping Sleeper update for ineligible row %s",
+                sleeper_data.get("sleeper_player_id"),
+            )
+            return
 
-        # Parse numeric fields safely
-        number = None
-        if sleeper_data.get('number'):
-            try:
-                number = int(sleeper_data['number'])
-            except (ValueError, TypeError):
-                number = None
+        birth_date = _parse_date(sleeper_data.get('birth_date'))
+        injury_start_date = _parse_date(sleeper_data.get('injury_start_date'))
+        number = _parse_int(sleeper_data.get('number'))
 
         # Update Sleeper fields while preserving KTC data
         existing_player.player_name = sleeper_data.get(
@@ -1607,6 +1235,12 @@ class DatabaseManager:
         existing_player.status = sleeper_data.get('status')
         existing_player.player_metadata = sleeper_data.get('player_metadata')
 
+        if not existing_player.match_key:
+            existing_player.match_key = create_player_match_key(
+                existing_player.player_name or "",
+                existing_player.position or "",
+            )
+
         # Update timestamp
         existing_player.last_updated = datetime.now(UTC)
 
@@ -1621,39 +1255,31 @@ class DatabaseManager:
         Args:
             sleeper_data: Sleeper player data
         """
-        # Parse birth date if available
-        birth_date = None
-        if sleeper_data.get('birth_date'):
-            try:
-                birth_date = datetime.strptime(
-                    str(sleeper_data['birth_date']), '%Y-%m-%d').date()
-            except (ValueError, TypeError):
-                birth_date = None
+        from utils.player_eligibility import sleeper_api_dict_should_persist
 
-        # Parse injury start date if available
-        injury_start_date = None
-        if sleeper_data.get('injury_start_date'):
-            try:
-                injury_start_date = datetime.strptime(
-                    sleeper_data['injury_start_date'], '%Y-%m-%d').date()
-            except (ValueError, TypeError):
-                injury_start_date = None
+        if not sleeper_api_dict_should_persist(sleeper_data):
+            logger.warning(
+                "Refusing create for ineligible Sleeper row %s",
+                sleeper_data.get("sleeper_player_id"),
+            )
+            return
 
-        # Parse numeric fields safely
-        number = None
-        if sleeper_data.get('number'):
-            try:
-                number = int(sleeper_data['number'])
-            except (ValueError, TypeError):
-                number = None
+        birth_date = _parse_date(sleeper_data.get('birth_date'))
+        injury_start_date = _parse_date(sleeper_data.get('injury_start_date'))
+        number = _parse_int(sleeper_data.get('number'))
+
+        pname = sleeper_data.get('full_name', '') or ''
+        pos = sleeper_data.get('position', '') or ''
+        match_key = create_player_match_key(pname, pos)
 
         # Create comprehensive player record with all available Sleeper data
         new_player = Player(
-            player_name=sleeper_data.get('full_name', ''),
-            position=sleeper_data.get('position', ''),
+            player_name=pname,
+            position=pos,
             team=sleeper_data.get('team', ''),
             age=None,  # Will be calculated from birth_date if needed
             rookie="No",  # Default, can be updated later
+            match_key=match_key,
 
             # Sleeper identification and core data
             sleeper_player_id=sleeper_data.get('sleeper_player_id'),
@@ -1713,82 +1339,6 @@ class DatabaseManager:
                     sleeper_data.get('full_name', 'Unknown'), sleeper_data.get('position', 'Unknown'))
 
     @staticmethod
-    def _process_ktc_players_with_sleeper_merge(players: List[Dict[str, Any]], league_format: str,
-                                                is_redraft: bool) -> tuple[int, int, List[str]]:
-        """
-        Process KTC players with Sleeper data merge for database insertion.
-
-        This function handles the core logic of merging KTC data into existing Sleeper-based records
-        or creating new records with both KTC and Sleeper data.
-
-        Args:
-            players: List of merged player data (KTC + Sleeper)
-            league_format: League format
-            is_redraft: Whether this is redraft data
-
-        Returns:
-            Tuple of (processed_count, skipped_count, validation_errors)
-        """
-        processed_count = 0
-        skipped_count = 0
-        validation_errors = []
-
-        for i, player in enumerate(players):
-            try:
-                # Validate required fields
-                player_name = player.get(PLAYER_NAME_KEY)
-                position = player.get(POSITION_KEY)
-
-                if not player_name or not position:
-                    error_msg = f"Player #{i+1} missing required fields: name='{player_name}', position='{position}'"
-                    logger.warning(error_msg)
-                    validation_errors.append(error_msg)
-                    skipped_count += 1
-                    continue
-
-                # Check if we have KTC values for this league format
-                has_values = False
-                if league_format == '1qb' and player.get('oneqb_values'):
-                    has_values = True
-                elif league_format == 'superflex' and player.get('superflex_values'):
-                    has_values = True
-
-                if not has_values:
-                    logger.debug(
-                        f"Skipping player {player_name} - no {league_format} values")
-                    skipped_count += 1
-                    continue
-
-                # Look for existing player by name and position
-                # Note: KTC API responses don't contain sleeper_player_id, so we match by name/position
-                existing_player = Player.query.filter_by(
-                    player_name=player_name,
-                    position=position,
-                    league_format=league_format,
-                    is_redraft=is_redraft
-                ).first()
-
-                if existing_player:
-                    # Update existing player with merged data
-                    DatabaseManager._update_existing_player_with_merged_data(
-                        existing_player, player)
-                    processed_count += 1
-                else:
-                    # Create new player with merged data
-                    DatabaseManager._create_player_with_merged_data(
-                        player, league_format, is_redraft)
-                    processed_count += 1
-
-            except Exception as player_error:
-                error_msg = f"Error processing player #{i+1} ({player.get(PLAYER_NAME_KEY, 'Unknown')}): {player_error}"
-                logger.error(error_msg)
-                validation_errors.append(error_msg)
-                skipped_count += 1
-                continue
-
-        return processed_count, skipped_count, validation_errors
-
-    @staticmethod
     def _update_existing_player_with_merged_data(existing_player: Player, merged_data: Dict[str, Any]) -> None:
         """
         Update existing player with merged KTC and Sleeper data.
@@ -1797,30 +1347,9 @@ class DatabaseManager:
             existing_player: Existing player record
             merged_data: Merged KTC and Sleeper data
         """
-        # Parse dates
-        birth_date = None
-        if merged_data.get('birth_date'):
-            try:
-                birth_date = datetime.strptime(
-                    str(merged_data['birth_date']), '%Y-%m-%d').date()
-            except (ValueError, TypeError):
-                birth_date = None
-
-        injury_start_date = None
-        if merged_data.get('injury_start_date'):
-            try:
-                injury_start_date = datetime.strptime(
-                    str(merged_data['injury_start_date']), '%Y-%m-%d').date()
-            except (ValueError, TypeError):
-                injury_start_date = None
-
-        # Parse numeric fields
-        number = None
-        if merged_data.get('number'):
-            try:
-                number = int(merged_data['number'])
-            except (ValueError, TypeError):
-                number = None
+        birth_date = _parse_date(merged_data.get('birth_date'))
+        injury_start_date = _parse_date(merged_data.get('injury_start_date'))
+        number = _parse_int(merged_data.get('number'))
 
         # Update core fields (always preserve Sleeper name if available, don't overwrite with KTC data)
         if merged_data.get('full_name'):
@@ -1940,30 +1469,9 @@ class DatabaseManager:
             league_format: League format
             is_redraft: Whether this is redraft data
         """
-        # Parse dates
-        birth_date = None
-        if merged_data.get('birth_date'):
-            try:
-                birth_date = datetime.strptime(
-                    str(merged_data['birth_date']), '%Y-%m-%d').date()
-            except (ValueError, TypeError):
-                birth_date = None
-
-        injury_start_date = None
-        if merged_data.get('injury_start_date'):
-            try:
-                injury_start_date = datetime.strptime(
-                    str(merged_data['injury_start_date']), '%Y-%m-%d').date()
-            except (ValueError, TypeError):
-                injury_start_date = None
-
-        # Parse numeric fields
-        number = None
-        if merged_data.get('number'):
-            try:
-                number = int(merged_data['number'])
-            except (ValueError, TypeError):
-                number = None
+        birth_date = _parse_date(merged_data.get('birth_date'))
+        injury_start_date = _parse_date(merged_data.get('injury_start_date'))
+        number = _parse_int(merged_data.get('number'))
 
         # Create new player with merged data
         new_player = Player(

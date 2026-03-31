@@ -1,7 +1,7 @@
 from datetime import datetime, UTC
 from flask import Blueprint, jsonify
-from managers import DatabaseManager
-from utils import setup_logging
+from managers.database_manager import DatabaseManager
+from utils.helpers import setup_logging
 
 health_bp = Blueprint('health', __name__, url_prefix='/api')
 logger = setup_logging()

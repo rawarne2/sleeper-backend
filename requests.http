@@ -31,18 +31,14 @@ GET {{BASE_URL}}/api/maintenance/health
 GET {{BASE_URL}}/api/maintenance/nightly-sync
 Authorization: Bearer {{CRON_SECRET}}
 
-### Daily refresh — operators only; not for dashboard clients (404 = wrong BASE_URL or deploy)
+### Daily refresh — optional X-Daily-Refresh-Secret when DAILY_REFRESH_SECRET is set on server
 POST {{BASE_URL}}/api/maintenance/daily-refresh
 Content-Type: application/json
+Accept: application/json
 
 {}
 
-# With shared secret (when DAILY_REFRESH_SECRET is set on the server):
-# POST {{BASE_URL}}/api/maintenance/daily-refresh
-# Content-Type: application/json
-# X-Daily-Refresh-Secret: your-secret
-#
-# {}
+# X-Daily-Refresh-Secret: {{DAILY_REFRESH_SECRET}}
 
 ### ============================================================================
 ### Health
@@ -51,7 +47,7 @@ Content-Type: application/json
 GET {{BASE_URL}}/api/ktc/health
 
 ### ============================================================================
-### Sleeper — NFL players (run early; merges into KTC rows)
+### Sleeper — NFL players (RARE: takes 60s+, run manually ~1x/year)
 ### ============================================================================
 
 POST {{BASE_URL}}/api/sleeper/refresh
@@ -101,11 +97,14 @@ GET {{BASE_URL}}/api/sleeper/league/{{LEAGUE_ID}}/stats/week/{{WEEK}}?season={{S
 
 ### ============================================================================
 ### KTC — refresh (POST and PUT both supported on /api/ktc/refresh)
+### Default: HTTP 202 + job_id (fast ack). Blocking scrape+DB: add &sync=1
 ### ============================================================================
 
 POST {{BASE_URL}}/api/ktc/refresh/all
 
 POST {{BASE_URL}}/api/ktc/refresh?{{KTC_QS_SUPERFLEX_DYN_TEP}}
+# GET {{BASE_URL}}/api/ktc/refresh/status/<job_id from 202 body>
+# POST {{BASE_URL}}/api/ktc/refresh?{{KTC_QS_SUPERFLEX_DYN_TEP}}&sync=1
 POST {{BASE_URL}}/api/ktc/refresh?{{KTC_QS_1QB_DYN_TEP}}
 POST {{BASE_URL}}/api/ktc/refresh?{{KTC_QS_SUPERFLEX_REDRAFT}}
 
@@ -114,9 +113,9 @@ POST {{BASE_URL}}/api/ktc/refresh?{{KTC_QS_SUPERFLEX_REDRAFT}}
 ### ============================================================================
 
 GET {{BASE_URL}}/api/ktc/rankings?{{KTC_QS_SUPERFLEX_DYN_TEP}}
-GET {{BASE_URL}}/api/ktc/rankings?{{KTC_QS_1QB_DYN_TEP}}
-GET {{BASE_URL}}/api/ktc/rankings?{{KTC_QS_SUPERFLEX_REDRAFT}}
-GET {{BASE_URL}}/api/ktc/rankings?tep_level=&is_redraft=false&league_format=1qb
+# GET {{BASE_URL}}/api/ktc/rankings?{{KTC_QS_1QB_DYN_TEP}}
+# GET {{BASE_URL}}/api/ktc/rankings?{{KTC_QS_SUPERFLEX_REDRAFT}}
+# GET {{BASE_URL}}/api/ktc/rankings?tep_level=&is_redraft=false&league_format=1qb
 
 ### ============================================================================
 ### KTC — cleanup (destructive; narrow QS to one configuration)

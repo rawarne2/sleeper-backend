@@ -2,12 +2,13 @@
 Maintenance and batch operations (daily refresh, etc.).
 """
 import os
+
 from flask import Blueprint, jsonify, request
 
 from routes.helpers import with_error_handling
 from services.daily_refresh import run_daily_refresh
 from routes.ktc.rankings_cache import invalidate_rankings_cache
-from utils import setup_logging
+from utils.helpers import setup_logging
 
 maintenance_bp = Blueprint("maintenance", __name__, url_prefix="/api/maintenance")
 logger = setup_logging()
@@ -59,10 +60,15 @@ def nightly_sync():
     """
     Full ingest pipeline for scheduled jobs (Vercel Cron uses GET + CRON_SECRET).
 
-    Schedule in vercel.json (UTC): e.g. 0 9 * * * ≈ 4:00 AM Eastern Standard Time;
+    Schedule in vercel.json (UTC): e.g. 0 9 * * * = 4:00 AM Eastern Standard Time;
     same expression is 5:00 AM local during Eastern Daylight Time.
 
-    Optional JSON body (POST only): same shape as /daily-refresh.
+    Pipeline: KTC all formats -> leagues -> research per season.
+    NFL player ingest is NOT included; use POST /api/sleeper/refresh separately (rare).
+
+    Optional JSON body (POST only):
+      { "league_ids": ["..."], "seasons": ["2025"], "research_week": 1,
+        "skip_ktc": false, "skip_leagues": false, "skip_research": false }
     """
     if not _cron_authorized():
         return jsonify(
@@ -84,7 +90,6 @@ def nightly_sync():
         league_ids=league_ids,
         seasons=seasons,
         research_week=int(research_week) if research_week is not None else None,
-        skip_sleeper_players=bool(payload.get("skip_sleeper_players")),
         skip_ktc=bool(payload.get("skip_ktc")),
         skip_leagues=bool(payload.get("skip_leagues")),
         skip_research=bool(payload.get("skip_research")),
@@ -99,15 +104,19 @@ def nightly_sync():
 @with_error_handling
 def daily_refresh():
     """
-    Run Sleeper player merge, full KTC scrape, league snapshots, and research refresh.
+    Run full KTC scrape, league snapshots, and research refresh.
+
+    Pipeline: KTC all formats -> leagues -> research per season.
+    NFL player ingest is NOT included; use POST /api/sleeper/refresh separately (rare).
+
+    League IDs default to every league row in the database (or built-in fallbacks).
+    Seasons are derived from the league refresh step; pass explicitly when skip_leagues is true.
 
     Optional JSON body:
       { "league_ids": ["..."], "seasons": ["2025"], "research_week": 1,
-        "skip_sleeper_players": false, "skip_ktc": false, "skip_leagues": false,
-        "skip_research": false }
+        "skip_ktc": false, "skip_leagues": false, "skip_research": false }
 
     If DAILY_REFRESH_SECRET is set, send header X-Daily-Refresh-Secret matching it.
-
     Prefer /nightly-sync on a schedule; do not call this from public dashboard clients.
     """
     if not _authorized():
@@ -126,7 +135,6 @@ def daily_refresh():
         league_ids=league_ids,
         seasons=seasons,
         research_week=int(research_week) if research_week is not None else None,
-        skip_sleeper_players=bool(payload.get("skip_sleeper_players")),
         skip_ktc=bool(payload.get("skip_ktc")),
         skip_leagues=bool(payload.get("skip_leagues")),
         skip_research=bool(payload.get("skip_research")),

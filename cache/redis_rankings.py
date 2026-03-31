@@ -11,6 +11,9 @@ import os
 import threading
 import time
 from typing import Optional
+from urllib.parse import urlparse
+
+from cache.settings import ktc_rankings_redis_ttl_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +22,20 @@ _RETRY_AFTER_SECONDS = 60
 
 # None = not attempted yet; float = retry-after monotonic timestamp; else client
 _redis_holder: list = [None]
+_connect_log_done = False
+
+
+def _redis_url_safe_summary(url: str) -> str:
+    """Host/scheme/db for logs — never include password."""
+    try:
+        p = urlparse(url)
+        host = p.hostname or ""
+        port = f":{p.port}" if p.port else ""
+        db = (p.path or "").lstrip("/") or "0"
+        tls = p.scheme in ("rediss", "https")
+        return f"scheme={p.scheme} host={host}{port} db_index={db} tls={tls}"
+    except Exception:
+        return "scheme=(unparsed)"
 
 
 def _invalidate_after_command_error(exc: BaseException) -> None:
@@ -51,7 +68,7 @@ def _invalidate_after_command_error(exc: BaseException) -> None:
 
 
 def _redis_ttl_seconds() -> int:
-    return int(os.getenv("KTC_RANKINGS_REDIS_TTL_SECONDS", "86400"))
+    return ktc_rankings_redis_ttl_seconds()
 
 
 def _redis_key(is_redraft: bool, league_format: str, tep_level: str) -> str:
@@ -61,6 +78,7 @@ def _redis_key(is_redraft: bool, league_format: str, tep_level: str) -> str:
 
 def get_redis_client():
     """Return a redis client or None if Redis should not be used."""
+    global _connect_log_done
     with _redis_lock:
         cached = _redis_holder[0]
         if cached is not None:
@@ -77,6 +95,7 @@ def get_redis_client():
         try:
             import redis
 
+            t0 = time.perf_counter()
             client = redis.from_url(
                 url,
                 decode_responses=False,
@@ -85,9 +104,20 @@ def get_redis_client():
             )
             client.ping()
             _redis_holder[0] = client
+            if not _connect_log_done:
+                _connect_log_done = True
+                logger.info(
+                    "Redis connected %s connect_ms=%.1f",
+                    _redis_url_safe_summary(url),
+                    (time.perf_counter() - t0) * 1000,
+                )
             return client
         except Exception as exc:
-            logger.warning("Redis connect failed, retrying in %ss: %s", _RETRY_AFTER_SECONDS, exc)
+            logger.warning(
+                "Redis connect failed, retrying in %ss: %s",
+                _RETRY_AFTER_SECONDS,
+                exc,
+            )
             _redis_holder[0] = time.monotonic() + _RETRY_AFTER_SECONDS
             return None
 
@@ -98,8 +128,19 @@ def redis_get_rankings_bytes(
     r = get_redis_client()
     if not r:
         return None
+    key = _redis_key(is_redraft, league_format, tep_level)
     try:
-        return r.get(_redis_key(is_redraft, league_format, tep_level))
+        t0 = time.perf_counter()
+        raw = r.get(key)
+        ms = (time.perf_counter() - t0) * 1000
+        if raw is None:
+            logger.info("redis_rankings_get miss key=%s ms=%.1f", key, ms)
+        else:
+            n = len(raw) if isinstance(raw, (bytes, memoryview)) else 0
+            logger.info(
+                "redis_rankings_get hit key=%s bytes=%s ms=%.1f", key, n, ms
+            )
+        return raw
     except Exception as exc:
         _invalidate_after_command_error(exc)
         return None
@@ -115,9 +156,19 @@ def redis_set_rankings_bytes(
     r = get_redis_client()
     if not r:
         return
+    key = _redis_key(is_redraft, league_format, tep_level)
     ttl = ttl_seconds if ttl_seconds is not None else _redis_ttl_seconds()
     try:
-        r.setex(_redis_key(is_redraft, league_format, tep_level), ttl, payload)
+        t0 = time.perf_counter()
+        r.setex(key, ttl, payload)
+        ms = (time.perf_counter() - t0) * 1000
+        logger.info(
+            "redis_rankings_set key=%s bytes=%s ttl_s=%s ms=%.1f",
+            key,
+            len(payload),
+            ttl,
+            ms,
+        )
     except Exception as exc:
         _invalidate_after_command_error(exc)
 
@@ -136,6 +187,7 @@ def redis_invalidate_rankings(
         and league_format is None
         and tep_level is None
     )
+    deleted = 0
     try:
         for key in r.scan_iter(match=f"{prefix}*", count=200):
             ks = key.decode() if isinstance(key, bytes) else key
@@ -154,5 +206,8 @@ def redis_invalidate_rankings(
                 if tep_level is not None and tl_stored != (tep_level or ""):
                     continue
             r.delete(key)
+            deleted += 1
+        if deleted:
+            logger.info("redis_rankings_invalidate deleted_keys=%s", deleted)
     except Exception as exc:
         _invalidate_after_command_error(exc)
