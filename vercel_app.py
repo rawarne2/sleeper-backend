@@ -81,6 +81,7 @@ if not database_uri.startswith('sqlite://'):
         'connect_args': {
             'sslmode': 'require',  # Supabase requires SSL
             'connect_timeout': 10,
+            'options': '-c timezone=UTC',
         }
     }
 

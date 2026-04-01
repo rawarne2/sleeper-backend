@@ -34,7 +34,8 @@ if not database_uri.startswith('sqlite://'):
         'pool_pre_ping': True,
         'pool_recycle': 3600,
         'pool_size': 10,
-        'max_overflow': 20
+        'max_overflow': 20,
+        'connect_args': {'options': '-c timezone=UTC'},
     }
 
 app.config.update({
@@ -105,6 +106,7 @@ def _cors_after_request(response):
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept"
     return response
+
 
 # Configure Swagger/OpenAPI documentation
 swagger = setup_swagger(app, host="localhost:5001", schemes=["http", "https"])
