@@ -18,6 +18,7 @@ from managers.database_manager import DatabaseManager
 from models.entities import SleeperWeeklyData
 from models.extensions import db
 from routes.helpers import filter_players_by_format, with_error_handling
+from utils.datetime_serialization import format_instant_rfc3339_utc
 from utils.helpers import validate_parameters
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/api/dashboard")
@@ -120,7 +121,7 @@ def _load_ownership_and_meta(
             last_ts = row.last_updated
 
     if last_ts is not None:
-        meta["last_updated"] = last_ts.isoformat()
+        meta["last_updated"] = format_instant_rfc3339_utc(last_ts)
     return ownership, meta
 
 
@@ -137,7 +138,7 @@ def _ktc_players_for_roster(
         return [], None
 
     players_data = filter_players_by_format(players, league_format, tep_level or "")
-    ts = last_updated.isoformat() if last_updated else None
+    ts = format_instant_rfc3339_utc(last_updated)
     return players_data, ts
 
 

@@ -1,7 +1,7 @@
-from datetime import datetime, UTC
 from flask import Blueprint, current_app, jsonify, make_response, request
 from managers.database_manager import DatabaseManager
 from routes.helpers import filter_players_by_format
+from utils.datetime_serialization import format_instant_rfc3339_utc, utc_now_rfc3339
 from utils.helpers import validate_parameters, setup_logging
 from routes.ktc.rankings_cache import (
     get_cached_rankings_json,
@@ -371,7 +371,7 @@ def cleanup_database():
         invalidate_rankings_cache()
         return jsonify({
             'message': 'Database cleanup completed',
-            'timestamp': datetime.now(UTC).isoformat(),
+            'timestamp': utc_now_rfc3339(),
             'cleanup_result': cleanup_result
         })
 
@@ -545,7 +545,7 @@ def get_rankings():
             players, league_format, tep_level)
 
         payload = {
-            'timestamp': last_updated.isoformat() if last_updated else None,
+            'timestamp': format_instant_rfc3339_utc(last_updated),
             'is_redraft': is_redraft,
             'league_format': league_format,
             'tep_level': tep_level,

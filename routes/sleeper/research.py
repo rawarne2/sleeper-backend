@@ -1,9 +1,9 @@
-from datetime import datetime, UTC
 from flask import Blueprint, jsonify, request
 import json
 from scrapers.sleeper_scraper import SleeperScraper
 from models.entities import SleeperWeeklyData
 from models.extensions import db
+from utils.datetime_serialization import utc_now_rfc3339
 from utils.helpers import setup_logging
 from routes.helpers import with_error_handling
 
@@ -133,7 +133,7 @@ def get_research_data(season: str):
             'data': [record.to_dict() for record in research_records],
             'source': 'database',
             'database_saved': True,
-            'timestamp': datetime.now(UTC).isoformat()
+            'timestamp': utc_now_rfc3339(),
         })
 
     # If not in database, try to fetch from Sleeper API
@@ -155,7 +155,7 @@ def get_research_data(season: str):
         'data': research_data.get('research_data', []),
         'source': 'sleeper_api',
         'database_saved': False,
-        'timestamp': datetime.now(UTC).isoformat()
+        'timestamp': utc_now_rfc3339(),
     })
 
 
@@ -314,5 +314,5 @@ def refresh_research_data(season: str):
         'data': research_data.get('research_data', []),
         'source': 'database',
         'database_saved': True,
-        'timestamp': datetime.now(UTC).isoformat()
+        'timestamp': utc_now_rfc3339(),
     })

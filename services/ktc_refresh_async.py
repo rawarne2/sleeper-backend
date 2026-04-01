@@ -20,6 +20,7 @@ from routes.helpers import filter_players_by_format
 from routes.ktc.rankings_cache import invalidate_rankings_cache
 from scrapers.ktc_scraper import KTCScraper
 from scrapers.pipelines import load_sleeper_players_for_merge_from_db, scrape_and_process_data
+from utils.datetime_serialization import utc_now_rfc3339
 from utils.helpers import (
     perform_file_operations,
     save_and_verify_database,
@@ -155,7 +156,7 @@ def execute_ktc_refresh_pipeline(
         200,
         {
             "message": "Rankings updated successfully",
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": utc_now_rfc3339(),
             "database_success": True,
             "file_saved": file_saved,
             "s3_uploaded": s3_uploaded,
@@ -209,7 +210,7 @@ def _worker(
                 j = _jobs.get(job_id)
                 if j:
                     j["status"] = "succeeded" if outcome.ok else "failed"
-                    j["finished_at"] = datetime.now(UTC).isoformat()
+                    j["finished_at"] = utc_now_rfc3339()
                     j["http_status"] = outcome.status_code
                     if outcome.ok:
                         j["error"] = None
@@ -237,7 +238,7 @@ def _worker(
             j = _jobs.get(job_id)
             if j:
                 j["status"] = "failed"
-                j["finished_at"] = datetime.now(UTC).isoformat()
+                j["finished_at"] = utc_now_rfc3339()
                 j["error"] = str(e)
                 j["summary"] = None
     finally:
@@ -273,7 +274,7 @@ def try_begin_async_job(
                 return existing_id, True
 
         job_id = str(uuid.uuid4())
-        now = datetime.now(UTC).isoformat()
+        now = utc_now_rfc3339()
         _jobs[job_id] = {
             "job_id": job_id,
             "status": "queued",

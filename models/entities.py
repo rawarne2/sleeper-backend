@@ -2,6 +2,7 @@ import json
 from datetime import datetime, UTC
 from typing import Dict, Any
 
+from utils.datetime_serialization import format_instant_rfc3339_utc
 from utils.constants import (
     PLAYER_NAME_KEY,
     POSITION_KEY,
@@ -151,7 +152,7 @@ class Player(db.Model):
             'competitions': self._safe_json_loads(self.competitions),
             'injury_body_part': self.injury_body_part,
             'injury_notes': self.injury_notes,
-            'team_changed_at': self.team_changed_at.isoformat() if self.team_changed_at else None,
+            'team_changed_at': format_instant_rfc3339_utc(self.team_changed_at),
             'practice_participation': self.practice_participation,
             'search_first_name': self.search_first_name,
             'birth_state': self.birth_state,
@@ -176,7 +177,7 @@ class Player(db.Model):
             'rotowire_id': self.rotowire_id,
             'full_name': self.full_name,
             'status': self.status,
-            'last_updated': self.last_updated.isoformat() if self.last_updated else None
+            'last_updated': format_instant_rfc3339_utc(self.last_updated),
         }
 
         # KTC data nested in ktc object
@@ -277,8 +278,8 @@ class SleeperLeague(db.Model):
             'status': self.status,
             'draft_id': self.draft_id,
             'avatar': self.avatar,
-            'last_updated': self.last_updated.isoformat() if self.last_updated else None,
-            'last_refreshed': self.last_refreshed.isoformat() if self.last_refreshed else None
+            'last_updated': format_instant_rfc3339_utc(self.last_updated),
+            'last_refreshed': format_instant_rfc3339_utc(self.last_refreshed),
         }
 
 
@@ -336,7 +337,7 @@ class SleeperRoster(db.Model):
             if self.roster_metadata
             else {},
             'settings': json.loads(self.settings) if self.settings else {},
-            'last_updated': self.last_updated.isoformat() if self.last_updated else None
+            'last_updated': format_instant_rfc3339_utc(self.last_updated),
         }
 
 
@@ -393,7 +394,7 @@ class SleeperUser(db.Model):
             'avatar': self.avatar,
             'team_name': team_from_meta or self.team_name,
             'user_metadata': meta,
-            'last_updated': self.last_updated.isoformat() if self.last_updated else None
+            'last_updated': format_instant_rfc3339_utc(self.last_updated),
         }
 
 
@@ -512,7 +513,7 @@ class SleeperWeeklyData(db.Model):
             'injury_status': self.injury_status,
             'practice_status': self.practice_status,
             'research_data': self._safe_json_loads(self.research_data),
-            'last_updated': self.last_updated.isoformat() if self.last_updated else None
+            'last_updated': format_instant_rfc3339_utc(self.last_updated),
         }
 
     def _safe_json_loads(self, json_str):
@@ -568,7 +569,7 @@ class SleeperLeagueStats(db.Model):
             'scoring_settings': json.loads(self.scoring_settings) if self.scoring_settings else {},
             'last_week_updated': self.last_week_updated,
             'total_weeks_available': self.total_weeks_available,
-            'last_updated': self.last_updated.isoformat() if self.last_updated else None
+            'last_updated': format_instant_rfc3339_utc(self.last_updated),
         }
 
 

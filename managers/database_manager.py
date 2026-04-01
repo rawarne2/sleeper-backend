@@ -22,6 +22,7 @@ from utils.constants import (
     ROOKIE_KEY,
     SLEEPER_POSITION_RDP,
 )
+from utils.datetime_serialization import format_instant_rfc3339_utc, utc_now_rfc3339
 from utils.helpers import create_player_match_key, normalize_tep_level, setup_logging
 
 logger = setup_logging()
@@ -973,7 +974,7 @@ class DatabaseManager:
                 'league': league.to_dict(),
                 'rosters': [roster.to_dict() for roster in rosters],
                 'users': [user.to_dict() for user in users],
-                'last_updated': league.last_updated.isoformat() if league.last_updated else None
+                'last_updated': format_instant_rfc3339_utc(league.last_updated),
             }
 
         except Exception as e:
@@ -1038,7 +1039,7 @@ class DatabaseManager:
                 'week': week,
                 'league_type': league_type,
                 'players_saved': saved_count,
-                'timestamp': datetime.now(UTC).isoformat()
+                'timestamp': utc_now_rfc3339(),
             }
 
         except Exception as e:
@@ -1089,7 +1090,9 @@ class DatabaseManager:
                 'league_type': league_type,
                 'research_data': research_data,
                 'players_count': len(research_records),
-                'last_updated': max(record.last_updated for record in research_records).isoformat()
+                'last_updated': format_instant_rfc3339_utc(
+                    max(record.last_updated for record in research_records)
+                ),
             }
 
         except Exception as e:
