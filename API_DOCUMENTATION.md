@@ -29,10 +29,13 @@ A comprehensive fantasy football API that aggregates data from **KeepTradeCut (K
    # 2. Then, merge KTC rankings into existing Sleeper players (fast - takes 5-10 seconds)
    curl -X POST "http://localhost:5001/api/ktc/refresh/all"
    
-   # 3. Finally, seed your league for weekly stats (optional)
+   # 3. Seed your league for weekly stats (first time — POST with required fields)
    curl -X POST "http://localhost:5001/api/sleeper/league/YOUR_LEAGUE_ID/stats/seed" \
      -H "Content-Type: application/json" \
      -d '{"league_name": "My League", "season": "2024", "league_type": "dynasty"}'
+
+   # 4. Refresh weekly stats for a specific week (PUT; season/league_type read from DB)
+   curl -X PUT "http://localhost:5001/api/sleeper/league/YOUR_LEAGUE_ID/stats/week/1"
    ```
 
 ## 📋 API Overview
@@ -58,22 +61,23 @@ GET /api/ktc/health
 GET /api/maintenance/health
 ```
 
-### Dashboard bundle (read-only, DB + optional Redis)
+### Dashboard bundle (read-only, DB + Redis in production)
 
 ```
 GET /api/dashboard/league/{league_id}
 ```
 
-Single JSON payload for the dashboard UI (league, rosters, merged players, research meta). Query params: `is_redraft`, `league_format`, `tep_level` (same semantics as rankings), plus `season` when needed for research. With `REDIS_URL`, identical requests may be served from Redis briefly (see server logs for cache hit/miss); there is no client cache header on this route today.
+League bundle for the dashboard (rosters, merged players, research meta; optional per-player `stats` for weeks **1–17**). Params: `is_redraft`, `league_format`, `tep_level`, `season`. Vercel production: `REDIS_URL` required; responses include `X-Dashboard-League-Cache` and `Cache-Control`. Local: Redis optional.
 
 ### Maintenance (server-side secrets only)
 
 ```
 GET|POST /api/maintenance/nightly-sync
+GET /api/maintenance/prewarm
 POST /api/maintenance/daily-refresh
 ```
 
-- **nightly-sync:** `Authorization: Bearer <CRON_SECRET>` for `POST` (and documented `GET` where enabled).
+- **nightly-sync, prewarm:** `Authorization: Bearer <CRON_SECRET>`. On Vercel **production** (`VERCEL_ENV=production`), `CRON_SECRET` must be set (requests without a valid Bearer token are rejected).
 - **daily-refresh:** `X-Daily-Refresh-Secret` when `DAILY_REFRESH_SECRET` is set.  
   Pipeline: KTC formats → leagues → research (no full NFL Sleeper player export).
 
@@ -141,30 +145,30 @@ PUT /api/sleeper/league/{league_id}
 ### 📊 Sleeper Weekly Stats
 
 ```
-GET /api/sleeper/league/{league_id}/stats/week/{week}
-POST /api/sleeper/league/{league_id}/stats/week/{week}
-PUT /api/sleeper/league/{league_id}/stats/week/{week}
-POST /api/sleeper/league/{league_id}/stats/seed
+GET  /api/sleeper/league/{league_id}/stats/week/{week}
+PUT  /api/sleeper/league/{league_id}/stats/week/{week}
+POST /api/sleeper/league/{league_id}/stats/seed   ← first time only
+PUT  /api/sleeper/league/{league_id}/stats/seed   ← subsequent updates
 ```
 
-**GET /api/sleeper/league/{league_id}/stats/week/{week}** - Get weekly stats for a specific week
+**GET /api/sleeper/league/{league_id}/stats/week/{week}** — Read weekly stats
 
-- Query Parameters:
-  - `season`: NFL season year (default: "2024")
-  - `league_type`: `dynasty` or `redraft` (default: `dynasty`)
-  - `average`: "true" to return season averages (weeks 1-16 only)
+- Optional query params: `season`, `league_type` (looked up from DB if omitted), `average=true` for season averages over **weeks 1–17** (week 18 excluded so end-of-season rests/tanking skew averages less)
 
-**POST /api/sleeper/league/{league_id}/stats/week/{week}** - Refresh weekly stats from Sleeper API
-**PUT /api/sleeper/league/{league_id}/stats/week/{week}** - Update weekly stats from Sleeper API
+**PUT /api/sleeper/league/{league_id}/stats/week/{week}** — Refresh weekly stats from Sleeper API
 
-- Same query parameters as GET endpoint
+- `season` and `league_type` are read from the DB automatically; pass as query params to override.
 
-**POST /api/sleeper/league/{league_id}/stats/seed** - Seed league information
+**POST /api/sleeper/league/{league_id}/stats/seed** — Create league stats record (first time)
 
-- Request Body (JSON):
-  - `league_name`: League name (default: "Fantasy League")
-  - `season`: NFL season year (required)
-  - `scoring_settings`: League scoring settings object
+- Required body fields: `league_name`, `season`
+- Optional: `league_type` (default `dynasty`), `scoring_settings`
+- After upserting the record, automatically fetches all remaining weeks (from `last_week_updated + 1` through 18) from Sleeper and stores the scoring data. Response includes `last_week_updated` and a `weekly_stats` summary.
+
+**PUT /api/sleeper/league/{league_id}/stats/seed** — Update existing league stats record
+
+- All body fields optional; stored values are used for anything not provided.
+- Same auto-fetch behavior as POST: fills in any weeks past `last_week_updated`.
 
 ### 🔬 Sleeper Research Data
 
@@ -177,13 +181,13 @@ PUT /api/sleeper/players/research/{season}
 **GET /api/sleeper/players/research/{season}** - Get research data
 
 - Query Parameters:
-  - `week`: Week number (default: 1)
+  - `week`: Week number (default: 1), or `all` for weeks 1-18
   - `league_type`: `dynasty` or `redraft` (default: `dynasty`)
 
 **POST /api/sleeper/players/research/{season}** - Refresh research
 **PUT /api/sleeper/players/research/{season}** - Update research
 
-- Same query parameters as GET endpoint
+- Same query parameters as GET endpoint. `week=all` refreshes and saves weeks 1-18.
 
 ## 🎮 How to Use
 

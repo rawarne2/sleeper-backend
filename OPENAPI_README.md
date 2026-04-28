@@ -83,7 +83,8 @@ Access the OpenAPI spec at: **<http://localhost:5001/openapi.json>**
 
 #### 🔧 Maintenance
 
-- `GET|POST /api/maintenance/nightly-sync` - Scheduled pipeline (Bearer `CRON_SECRET` on POST)
+- `GET|POST /api/maintenance/nightly-sync` - Scheduled pipeline (Bearer `CRON_SECRET`; required on Vercel production)
+- `GET /api/maintenance/prewarm` - Warm dashboard Redis (same auth as nightly-sync)
 - `POST /api/maintenance/daily-refresh` - Manual pipeline (`X-Daily-Refresh-Secret` when configured)
 
 ## 🔧 Key Features

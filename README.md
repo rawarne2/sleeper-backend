@@ -26,12 +26,12 @@ A Flask-based API for scraping and serving fantasy football player rankings from
 - **Multiple Formats**: 1QB and Superflex league support
 - **Dynasty & Redraft**: Both ranking types supported
 - **Weekly Stats**: Fantasy points and roster data from Sleeper matchups
-- **Season Averages**: Calculate player averages (weeks 1-16)
+- **Season Averages**: Calculate player averages (weeks 1–17; week 18 excluded)
 - **Database Caching**: Fast response times with persistent storage
 
 ## Weekly stats
 
-Sleeper matchup data per week; season averages use regular-season weeks 1–16. Flow: seed `/api/sleeper/league/{id}/stats/seed`, then `GET` / `POST` / `PUT` on `/api/sleeper/league/{id}/stats/week/{week}`. Examples: [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
+Sleeper matchup data per week; season averages and dashboard per-player `stats` use weeks 1–17 (week 18 excluded). Flow: seed `/api/sleeper/league/{id}/stats/seed`, then `GET` / `POST` / `PUT` on `/api/sleeper/league/{id}/stats/week/{week}`. Examples: [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
 
 ## Quick Start
 
