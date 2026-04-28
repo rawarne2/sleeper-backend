@@ -4,6 +4,10 @@
     {
       "path": "/api/maintenance/nightly-sync",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/maintenance/prewarm",
+      "schedule": "*/50 * * * *"
     }
   ],
   "builds": [

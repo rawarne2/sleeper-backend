@@ -2,8 +2,10 @@
 Maintenance and batch operations (daily refresh, etc.).
 """
 import os
+import time
+from typing import Any, Dict, List
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from routes.helpers import with_error_handling
 from services.daily_refresh import run_daily_refresh
@@ -14,13 +16,102 @@ maintenance_bp = Blueprint("maintenance", __name__, url_prefix="/api/maintenance
 logger = setup_logging()
 
 
+_PREWARM_LEAGUES = [
+    ("1333945997071515648", "2026"),
+    ("1210364682523656192", "2025"),
+    ("1050831680350568448", "2024"),
+]
+
+
+def _prewarm_dashboard_caches() -> Dict[str, Any]:
+    """Hit the dashboard endpoint for the example leagues so Redis is warm.
+
+    Returns a summary dict with per-league status and a flag indicating whether
+    every prewarm request succeeded.
+    """
+    client = current_app.test_client()
+    results: List[Dict[str, Any]] = []
+    failed = 0
+    for league_id, season in _PREWARM_LEAGUES:
+        t0 = time.perf_counter()
+        resp = client.get(
+            f"/api/dashboard/league/{league_id}",
+            query_string={
+                "season": season,
+                "league_format": "superflex",
+                "is_redraft": "false",
+                "tep_level": "tep",
+            },
+        )
+        ms = (time.perf_counter() - t0) * 1000
+        entry: Dict[str, Any] = {
+            "league_id": league_id,
+            "season": season,
+            "ms": round(ms, 1),
+            "status": resp.status_code,
+            "cache": resp.headers.get("X-Dashboard-League-Cache"),
+        }
+        if resp.status_code != 200:
+            failed += 1
+            try:
+                body = resp.get_json(force=True) or {}
+            except Exception:
+                body = {}
+            detail = body.get("details") or body.get("error") or f"HTTP {resp.status_code}"
+            entry["error"] = detail
+            logger.error(
+                "prewarm failed league_id=%s season=%s status=%s error=%s",
+                league_id,
+                season,
+                resp.status_code,
+                detail,
+            )
+        results.append(entry)
+    return {"results": results, "failed": failed, "total": len(results)}
+
+
 def _cron_authorized() -> bool:
+    """
+    Authorize a request from Vercel Cron.
+
+    Vercel Cron sends ``Authorization: Bearer <CRON_SECRET>`` and ``x-vercel-cron: 1``.
+    Production (``VERCEL_ENV=production``) requires ``CRON_SECRET`` to be set; the
+    header alone is not sufficient (headers are spoofable).
+
+    Non-production: if ``CRON_SECRET`` is unset, allow requests that include
+    ``x-vercel-cron`` for local/preview testing only.
+    """
     secret = (os.getenv("CRON_SECRET") or "").strip()
-    if not secret:
-        return False
+    vercel_env = (os.getenv("VERCEL_ENV") or "").strip().lower()
     auth = (request.headers.get("Authorization") or "").strip()
-    if len(auth) >= 7 and auth[:7].lower() == "bearer ":
-        return auth[7:].strip() == secret
+    is_vercel_cron = bool(request.headers.get("x-vercel-cron"))
+
+    if vercel_env == "production" and not secret:
+        logger.warning(
+            "cron auth failed: CRON_SECRET is required when VERCEL_ENV=production"
+        )
+        return False
+
+    if secret:
+        if len(auth) >= 7 and auth[:7].lower() == "bearer ":
+            if auth[7:].strip() == secret:
+                return True
+        logger.warning(
+            "cron auth failed: bearer token missing or mismatch (vercel_cron=%s, has_auth=%s)",
+            is_vercel_cron,
+            bool(auth),
+        )
+        return False
+
+    if is_vercel_cron:
+        logger.warning(
+            "cron auth: CRON_SECRET unset; allowing because x-vercel-cron header is present"
+        )
+        return True
+
+    logger.warning(
+        "cron auth failed: CRON_SECRET unset and request lacks x-vercel-cron header"
+    )
     return False
 
 
@@ -97,6 +188,13 @@ def nightly_sync():
 
     invalidate_rankings_cache()
 
+    if not bool(payload.get("skip_prewarm")):
+        try:
+            summary["prewarm"] = _prewarm_dashboard_caches()
+        except Exception as e:
+            logger.exception("nightly-sync prewarm failed")
+            summary.setdefault("errors", []).append({"step": "prewarm", "error": str(e)})
+
     return jsonify({"status": "success", "summary": summary})
 
 
@@ -143,3 +241,20 @@ def daily_refresh():
     invalidate_rankings_cache()
 
     return jsonify({"status": "success", "summary": summary})
+
+
+@maintenance_bp.route("/prewarm", methods=["GET"])
+@with_error_handling
+def prewarm():
+    """Hit dashboard endpoint for known leagues to keep Redis + CDN caches warm."""
+    if not _cron_authorized():
+        return jsonify({"status": "error", "error": "Unauthorized"}), 401
+
+    summary = _prewarm_dashboard_caches()
+    if summary["failed"]:
+        return jsonify({
+            "status": "error",
+            "error": f"{summary['failed']} of {summary['total']} prewarm requests failed",
+            "results": summary["results"],
+        }), 500
+    return jsonify({"status": "success", "results": summary["results"]})
