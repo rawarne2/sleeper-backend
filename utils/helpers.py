@@ -109,6 +109,18 @@ def ktc_export_json_and_s3_enabled() -> bool:
     )
 
 
+def ktc_write_unmatched_merge_report_enabled() -> bool:
+    """
+    When false (default), do not write ``ktc_unmatched_merge_report_*.json`` under
+    data-files from the KTC/Sleeper merge (logs still emit; IS_DEV is not used for this).
+    """
+    return os.getenv("KTC_WRITE_UNMATCHED_MERGE_REPORT", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 def perform_file_operations(file_manager, players_sorted: List[Dict[str, Any]], added_count: int,
                             league_format: str, is_redraft: bool, tep_level: Optional[str]) -> tuple[bool, bool]:
     """Perform file and S3 operations."""

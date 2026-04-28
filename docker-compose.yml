@@ -42,6 +42,9 @@ services:
       - "5001:5001"
       - "5678:5678" # debugpy - set REMOTE_DEBUG=1 to enable
     volumes:
+      # Binds host repo over the image's /app so container runs your working tree (live edits, no rebuild).
+      # Remove this line if you want the image alone to define code (stricter prod-like runs).
+      - ./:/app
       # Mount local data-files directory for JSON exports
       - ./data-files:/app/data-files
       # Optional: Mount AWS credentials (uncomment if you prefer this approach)
