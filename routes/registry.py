@@ -1,19 +1,15 @@
-"""
-Blueprint registration for the Flask app (formerly root-level routes.py wiring).
-"""
-from flask import Blueprint, Flask
+"""Blueprint registration for the Flask app."""
+from flask import Flask
 
+from .dashboard_league import dashboard_bp
 from .health import health_bp
-from .ktc.rankings import ktc_rankings_bp
 from .ktc.bulk import ktc_bulk_bp
-from .sleeper.players import sleeper_players_bp
+from .ktc.rankings import ktc_rankings_bp
+from .maintenance import maintenance_bp
 from .sleeper.leagues import sleeper_leagues_bp
+from .sleeper.players import sleeper_players_bp
 from .sleeper.research import sleeper_research_bp
 from .sleeper.stats import sleeper_stats_bp
-from .maintenance import maintenance_bp
-from .dashboard_league import dashboard_bp
-
-api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 
 def register_blueprints(app: Flask) -> None:

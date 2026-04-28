@@ -1,120 +1,49 @@
 import os
-import re
+
 from dotenv import load_dotenv
-from flask import Flask, request
+from flask import Flask
 from flask_compress import Compress
-from flask_cors import CORS
 
-# Import our modules
-from models.extensions import db
 import models.entities  # noqa: F401 — register ORM mappers
+from models.extensions import db
 from routes.registry import register_blueprints
+from routes.swagger_config import add_documentation_routes, setup_swagger
 from utils.constants import DATABASE_URI
+from utils.cors import configure_cors
 from utils.helpers import setup_logging
-from routes.swagger_config import setup_swagger, add_documentation_routes
 
-# Load environment variables from .env file
 load_dotenv()
-
-# Configure logging using utils function
 logger = setup_logging()
 
-# Flask App Configuration
 app = Flask(__name__)
 
-# Use environment variable or default to PostgreSQL
-# Test fixtures will override this after app creation
-database_uri = os.getenv('TEST_DATABASE_URI', DATABASE_URI)
+database_uri = os.getenv("TEST_DATABASE_URI", DATABASE_URI)
 
-# Configure engine options based on database type
-engine_options = {}
-if not database_uri.startswith('sqlite://'):
-    # Only set PostgreSQL-specific options for non-SQLite databases
+engine_options: dict = {}
+if not database_uri.startswith("sqlite://"):
     engine_options = {
-        'pool_pre_ping': True,
-        'pool_recycle': 3600,
-        'pool_size': 10,
-        'max_overflow': 20,
-        'connect_args': {'options': '-c timezone=UTC'},
+        "pool_pre_ping": True,
+        "pool_recycle": 3600,
+        "pool_size": 10,
+        "max_overflow": 20,
+        "connect_args": {"options": "-c timezone=UTC"},
     }
 
-app.config.update({
-    'SQLALCHEMY_DATABASE_URI': database_uri,
-    'SQLALCHEMY_TRACK_MODIFICATIONS': False,
-    'SQLALCHEMY_ENGINE_OPTIONS': engine_options
-})
-
-# Initialize database with app
-db.init_app(app)
-
-Compress(app)
-
-# Configure CORS to allow requests from frontend
-CORS(app, resources={
-    r"/api/*": {
-        "origins": [
-            "http://localhost:3000",
-            "http://localhost:3001",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:3001",
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "https://sleeper-dashboard-xi.vercel.app",
-            r"https://sleeper-dashboard-xi.*\.vercel\.app",
-            r"https://.*\.vercel\.app"
-        ],
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-        "supports_credentials": True
+app.config.update(
+    {
+        "SQLALCHEMY_DATABASE_URI": database_uri,
+        "SQLALCHEMY_TRACK_MODIFICATIONS": False,
+        "SQLALCHEMY_ENGINE_OPTIONS": engine_options,
     }
-})
-
-# Explicit CORS for local network (mobile/tablet with Vite --host). Flask-CORS regex
-# can be unreliable, so we set headers ourselves for any origin matching these patterns.
-CORS_EXPLICIT_ORIGINS = {
-    "http://localhost:3000", "http://localhost:3001",
-    "http://127.0.0.1:3000", "http://127.0.0.1:3001",
-    "http://localhost:5173", "http://127.0.0.1:5173",
-    "https://sleeper-dashboard-xi.vercel.app",
-}
-CORS_LOCAL_NETWORK_REGEX = re.compile(
-    r"^http://(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$"
 )
-CORS_VERCEL_REGEX = re.compile(r"^https://.*\.vercel\.app$")
 
+db.init_app(app)
+Compress(app)
+configure_cors(app)
 
-def _is_allowed_cors_origin(origin):
-    if not origin:
-        return False
-    if origin in CORS_EXPLICIT_ORIGINS:
-        return True
-    if CORS_LOCAL_NETWORK_REGEX.match(origin):
-        return True
-    if CORS_VERCEL_REGEX.match(origin):
-        return True
-    return False
-
-
-@app.after_request
-def _cors_after_request(response):
-    origin = request.headers.get("Origin")
-    if not origin or not request.path.startswith("/api/"):
-        return response
-    if _is_allowed_cors_origin(origin):
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept"
-    return response
-
-
-# Configure Swagger/OpenAPI documentation
 swagger = setup_swagger(app, host="localhost:5001", schemes=["http", "https"])
 
-# Register all blueprints from the modular routes structure
 register_blueprints(app)
-
-# Add documentation routes
 add_documentation_routes(app, logger)
 
 # Flask-DebugToolbar: opt-in via ENABLE_DEBUG_TOOLBAR=1; requires SECRET_KEY. Vercel uses vercel_app.
@@ -137,15 +66,15 @@ if not os.getenv("VERCEL") and os.getenv("ENABLE_DEBUG_TOOLBAR", "").strip().low
         )
 
 
-def initialize_database():
+def initialize_database() -> bool:
     """Initialize the database tables with proper error handling."""
     try:
         with app.app_context():
             db.create_all()
             logger.info("Database tables initialized successfully")
 
-            # Print table info for debugging
             from sqlalchemy import inspect
+
             inspector = inspect(db.engine)
             tables = inspector.get_table_names()
             logger.info("Available tables: %s", tables)
@@ -172,4 +101,4 @@ def create_tables():
 
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    app.run(host="0.0.0.0", port=5001, debug=True)
