@@ -152,12 +152,9 @@ class KTCScraper:
             'team': player_obj.get('team', ''),
             'age': player_obj.get('age'),
             'rookie': "Yes" if player_obj.get('rookie', False) else "No",
-            # Additional KTC fields
             'ktc_player_id': player_obj.get('playerID'),
             'slug': player_obj.get('slug'),
             'positionID': player_obj.get('positionID'),
-            'heightFeet': player_obj.get('heightFeet'),
-            'heightInches': player_obj.get('heightInches'),
             'weight': player_obj.get('weight'),
             'seasonsExperience': player_obj.get('seasonsExperience'),
             'pickRound': player_obj.get('pickRound'),
@@ -169,11 +166,10 @@ class KTCScraper:
             'isDevyYearDecrement': player_obj.get('isDevyYearDecrement'),
             'ktc_number': player_obj.get('number'),
             'teamLongName': player_obj.get('teamLongName'),
-            'birthday': player_obj.get('birthday'),
             'draftYear': player_obj.get('draftYear'),
             'byeWeek': player_obj.get('byeWeek'),
             'injury': json.dumps(player_obj.get('injury', {})) if player_obj.get('injury') else None,
-            'fantasy_positions': fantasy_positions_json
+            'fantasy_positions': fantasy_positions_json,
         }
 
     @staticmethod
@@ -183,19 +179,15 @@ class KTCScraper:
         oneqb_values = player_obj.get('oneQBValues', {})
         superflex_values = player_obj.get('superflexValues', {})
 
-        # Base player data
         result = {
             PLAYER_NAME_KEY: player_info['name'],
             POSITION_KEY: player_info['position'],
             TEAM_KEY: player_info['team'],
             AGE_KEY: player_info['age'],
             ROOKIE_KEY: player_info['rookie'],
-            # All additional KTC fields
             'ktc_player_id': player_info['ktc_player_id'],
             'slug': player_info['slug'],
             'positionID': player_info['positionID'],
-            'heightFeet': player_info['heightFeet'],
-            'heightInches': player_info['heightInches'],
             'seasonsExperience': player_info['seasonsExperience'],
             'pickRound': player_info['pickRound'],
             'pickNum': player_info['pickNum'],
@@ -206,11 +198,10 @@ class KTCScraper:
             'isDevyYearDecrement': player_info['isDevyYearDecrement'],
             'ktc_number': player_info['ktc_number'],
             'teamLongName': player_info['teamLongName'],
-            'birthday': player_info['birthday'],
             'draftYear': player_info['draftYear'],
             'byeWeek': player_info['byeWeek'],
             'injury': player_info['injury'],
-            'fantasy_positions': player_info['fantasy_positions']
+            'fantasy_positions': player_info['fantasy_positions'],
         }
 
         # Extract oneQB and superflex values as separate objects

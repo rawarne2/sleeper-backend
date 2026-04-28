@@ -13,8 +13,6 @@ from utils.constants import (
     TEAM_KEY,
     AGE_KEY,
     ROOKIE_KEY,
-    DYNASTY_URL,
-    FANTASY_URL,
     SLEEPER_API_URL,
     SLEEPER_POSITION_RDP,
 )

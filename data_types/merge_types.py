@@ -76,8 +76,6 @@ class MergedPlayerData:
     ktc_player_id: Optional[int] = None
     slug: Optional[str] = None
     positionID: Optional[int] = None
-    heightFeet: Optional[int] = None
-    heightInches: Optional[int] = None
     seasonsExperience: Optional[int] = None
     pickRound: Optional[int] = None
     pickNum: Optional[int] = None
@@ -87,7 +85,6 @@ class MergedPlayerData:
     isDevyReturningToSchool: Optional[bool] = None
     isDevyYearDecrement: Optional[bool] = None
     teamLongName: Optional[str] = None
-    birthday: Optional[str] = None
     draftYear: Optional[int] = None
     byeWeek: Optional[int] = None
     injury: Optional[str] = None

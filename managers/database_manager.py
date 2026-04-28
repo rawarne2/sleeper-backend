@@ -4,7 +4,7 @@ from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional, Set
 
 from sqlalchemy import text
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from models.entities import (
     db,
@@ -21,6 +21,8 @@ from utils.constants import (
     AGE_KEY,
     ROOKIE_KEY,
     SLEEPER_POSITION_RDP,
+    SLEEPER_STATS_AGGREGATE_WEEK_MAX,
+    SLEEPER_STATS_AGGREGATE_WEEK_MIN,
 )
 from utils.datetime_serialization import format_instant_rfc3339_utc, utc_now_rfc3339
 from utils.helpers import create_player_match_key, normalize_tep_level, setup_logging
@@ -95,13 +97,10 @@ class DatabaseManager:
                 PlayerKTCSuperflexValues.rank.asc()
             ).all()
 
-        # Filter players that have the appropriate values based on league format
-        filtered_players = []
-        for player in players:
-            if league_format == '1qb' and player.oneqb_values:
-                filtered_players.append(player)
-            elif league_format == 'superflex' and player.superflex_values:
-                filtered_players.append(player)
+        # Join already limits to rows with the requested KTC side; do not
+        # touch oneqb_values/superflex_values here (avoids uselist=False
+        # warnings if duplicate KTC child rows exist).
+        filtered_players = list(players)
 
         last_updated = max(
             player.last_updated for player in filtered_players) if filtered_players else None
@@ -112,9 +111,14 @@ class DatabaseManager:
         league_format: str, sleeper_ids: Set[str]
     ) -> tuple[List[Player], Optional[datetime]]:
         """
-        Load Player rows (with KTC join for format) for a bounded set of Sleeper IDs.
+        Load Player rows for a bounded set of Sleeper IDs with the relevant
+        KTC values eagerly loaded.
 
-        Used by the dashboard league bundle to avoid full-table scans and large JSON parses.
+        Eager-loads only the side matching ``league_format`` (1qb or superflex)
+        via ``selectinload`` to avoid N+1 lazy lookups when callers later
+        access ``player.oneqb_values`` / ``player.superflex_values``. The
+        INNER JOIN on the same KTC table guarantees every returned Player has
+        values for that format.
         """
         if not sleeper_ids:
             return [], None
@@ -123,28 +127,25 @@ class DatabaseManager:
             return [], None
 
         if league_format == '1qb':
-            q = (
-                Player.query.join(PlayerKTCOneQBValues)
-                .filter(Player.sleeper_player_id.in_(id_list))
-                .order_by(PlayerKTCOneQBValues.rank.asc())
-            )
+            ktc_table = PlayerKTCOneQBValues
+            eager_load = selectinload(Player.oneqb_values)
+            order_col = PlayerKTCOneQBValues.rank
         else:
-            q = (
-                Player.query.join(PlayerKTCSuperflexValues)
-                .filter(Player.sleeper_player_id.in_(id_list))
-                .order_by(PlayerKTCSuperflexValues.rank.asc())
-            )
-        players = q.all()
-        filtered: List[Player] = []
-        for player in players:
-            if league_format == '1qb' and player.oneqb_values:
-                filtered.append(player)
-            elif league_format == 'superflex' and player.superflex_values:
-                filtered.append(player)
-        last_updated = (
-            max(p.last_updated for p in filtered) if filtered else None
+            ktc_table = PlayerKTCSuperflexValues
+            eager_load = selectinload(Player.superflex_values)
+            order_col = PlayerKTCSuperflexValues.rank
+
+        players = (
+            Player.query.options(eager_load)
+            .join(ktc_table)
+            .filter(Player.sleeper_player_id.in_(id_list))
+            .order_by(order_col.asc())
+            .all()
         )
-        return filtered, last_updated
+        last_updated = (
+            max(p.last_updated for p in players) if players else None
+        )
+        return players, last_updated
 
     @staticmethod
     def save_players_to_db(players: List[Dict[str, Any]], league_format: str, is_redraft: bool) -> int:
@@ -231,8 +232,10 @@ class DatabaseManager:
 
                     # If no sleeper_id match, use efficient match_key lookup
                     if not existing_player:
-                        match_key = create_player_match_key(player_name, position)
-                        existing_player = Player.query.filter_by(match_key=match_key).first()
+                        match_key = create_player_match_key(
+                            player_name, position)
+                        existing_player = Player.query.filter_by(
+                            match_key=match_key).first()
 
                     if existing_player:
                         DatabaseManager._update_existing_player_with_merged_data(
@@ -240,12 +243,15 @@ class DatabaseManager:
                         if not existing_player.match_key:
                             existing_player.match_key = create_player_match_key(
                                 player_name, position)
-                        logger.debug("Updated existing player: %s", player_name)
+                        logger.debug(
+                            "Updated existing player: %s", player_name)
                     else:
                         new_player = DatabaseManager._create_player_with_merged_data(
                             player_data, league_format, is_redraft)
-                        new_player.match_key = create_player_match_key(player_name, position)
-                        logger.debug("Created new non-sleeper player: %s", player_name)
+                        new_player.match_key = create_player_match_key(
+                            player_name, position)
+                        logger.debug(
+                            "Created new non-sleeper player: %s", player_name)
 
                     processed_count += 1
 
@@ -414,7 +420,7 @@ class DatabaseManager:
             week: The week number (None for all weeks)
             league_type: League type (default: 'dynasty')
             player_id: Specific player ID to filter by (None for all players)
-            average: Whether to return season averages (weeks 1-16 only)
+            average: Whether to return season averages (weeks 1–17; week 18 excluded)
 
         Returns:
             Dictionary containing weekly stats data
@@ -432,8 +438,12 @@ class DatabaseManager:
                 query = query.filter_by(player_id=player_id)
 
             if average:
-                # For averages, only consider weeks 1-16 (regular season)
-                query = query.filter(SleeperWeeklyData.week.between(1, 16))
+                query = query.filter(
+                    SleeperWeeklyData.week.between(
+                        SLEEPER_STATS_AGGREGATE_WEEK_MIN,
+                        SLEEPER_STATS_AGGREGATE_WEEK_MAX,
+                    )
+                )
 
             records = query.all()
 
@@ -466,7 +476,7 @@ class DatabaseManager:
                     'status': 'success',
                     'data_type': 'averages',
                     'season': season,
-                    'weeks_considered': '1-16',
+                    'weeks_considered': '1-17',
                     'player_averages': player_averages,
                     'count': len(player_averages)
                 }
@@ -501,11 +511,19 @@ class DatabaseManager:
             Dictionary containing player averages
         """
         try:
-            # Get all weekly data records for the season and league type
-            weekly_records = SleeperWeeklyData.query.filter_by(
-                season=season,
-                league_type=league_type
-            ).all()
+            weekly_records = (
+                SleeperWeeklyData.query.filter_by(
+                    season=season,
+                    league_type=league_type,
+                )
+                .filter(
+                    SleeperWeeklyData.week.between(
+                        SLEEPER_STATS_AGGREGATE_WEEK_MIN,
+                        SLEEPER_STATS_AGGREGATE_WEEK_MAX,
+                    )
+                )
+                .all()
+            )
 
             if not weekly_records:
                 return {
@@ -937,6 +955,26 @@ class DatabaseManager:
                 updated_count += 1
 
         return {'saved': saved_count, 'updated': updated_count}
+
+    @staticmethod
+    def get_league_season_only(league_id: str) -> tuple[bool, Optional[str]]:
+        """
+        Cheap lookup for dashboard cache keying when ``season`` is omitted.
+
+        Returns:
+            (False, None) if no ``sleeper_leagues`` row exists.
+            (True, season_value) where season_value may be None if the column is unset.
+        """
+        from models.entities import SleeperLeague
+
+        row = (
+            db.session.query(SleeperLeague.season)
+            .filter_by(league_id=league_id)
+            .one_or_none()
+        )
+        if row is None:
+            return (False, None)
+        return (True, row[0])
 
     @staticmethod
     def get_league_data(league_id: str) -> Dict[str, Any]:
@@ -1373,8 +1411,6 @@ class DatabaseManager:
         existing_player.rookie = merged_data.get(ROOKIE_KEY, "No")
         existing_player.slug = merged_data.get('slug')
         existing_player.positionID = merged_data.get('positionID')
-        existing_player.heightFeet = merged_data.get('heightFeet')
-        existing_player.heightInches = merged_data.get('heightInches')
         existing_player.seasonsExperience = merged_data.get(
             'seasonsExperience')
         existing_player.pickRound = merged_data.get('pickRound')
@@ -1388,7 +1424,6 @@ class DatabaseManager:
         existing_player.isDevyYearDecrement = merged_data.get(
             'isDevyYearDecrement')
         existing_player.teamLongName = merged_data.get('teamLongName')
-        existing_player.birthday = merged_data.get('birthday')
         existing_player.draftYear = merged_data.get('draftYear')
         existing_player.byeWeek = merged_data.get('byeWeek')
         existing_player.injury = merged_data.get('injury')
@@ -1489,8 +1524,6 @@ class DatabaseManager:
             ktc_player_id=merged_data.get('ktc_player_id'),
             slug=merged_data.get('slug'),
             positionID=merged_data.get('positionID'),
-            heightFeet=merged_data.get('heightFeet'),
-            heightInches=merged_data.get('heightInches'),
             seasonsExperience=merged_data.get('seasonsExperience'),
             pickRound=merged_data.get('pickRound'),
             pickNum=merged_data.get('pickNum'),
@@ -1500,7 +1533,6 @@ class DatabaseManager:
             isDevyReturningToSchool=merged_data.get('isDevyReturningToSchool'),
             isDevyYearDecrement=merged_data.get('isDevyYearDecrement'),
             teamLongName=merged_data.get('teamLongName'),
-            birthday=merged_data.get('birthday'),
             draftYear=merged_data.get('draftYear'),
             byeWeek=merged_data.get('byeWeek'),
             injury=merged_data.get('injury'),
@@ -1579,26 +1611,31 @@ class DatabaseManager:
         if merged_data.get('oneqb_values'):
             oneqb_data = merged_data['oneqb_values']
 
-            # Remove existing OneQB values
-            if player.oneqb_values:
-                db.session.delete(player.oneqb_values)
+            if player.id is not None:
+                for row in list(
+                    PlayerKTCOneQBValues.query.filter_by(
+                        player_id=player.id
+                    ).all()
+                ):
+                    db.session.delete(row)
 
-            # Create new OneQB values
             oneqb_values = PlayerKTCOneQBValues(
                 player=player,
                 **oneqb_data
             )
             db.session.add(oneqb_values)
 
-        # Update Superflex values if present
         if merged_data.get('superflex_values'):
             superflex_data = merged_data['superflex_values']
 
-            # Remove existing Superflex values
-            if player.superflex_values:
-                db.session.delete(player.superflex_values)
+            if player.id is not None:
+                for row in list(
+                    PlayerKTCSuperflexValues.query.filter_by(
+                        player_id=player.id
+                    ).all()
+                ):
+                    db.session.delete(row)
 
-            # Create new Superflex values
             superflex_values = PlayerKTCSuperflexValues(
                 player=player,
                 **superflex_data

@@ -19,6 +19,11 @@ SLEEPER_SEARCH_RANK_EXCLUDE = 9_999_999
 # Rookie/draft pick rows — often inactive and/or use the search_rank sentinel; still persist.
 SLEEPER_POSITION_RDP = "RDP"
 
+# Fantasy weeks included in season aggregates (dashboard per-player stats, ``average=true`` GET stats).
+# Week 18 is excluded so end-of-regular-season rests, tanking, and soft matchups skew averages less.
+SLEEPER_STATS_AGGREGATE_WEEK_MIN = 1
+SLEEPER_STATS_AGGREGATE_WEEK_MAX = 17
+
 DATABASE_URI = os.getenv(
     'TEST_DATABASE_URI',
     os.getenv('DATABASE_URL',

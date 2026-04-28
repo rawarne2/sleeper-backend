@@ -9,7 +9,7 @@ from utils.constants import (
     POSITION_KEY,
     AGE_KEY,
 )
-from utils.helpers import setup_logging
+from utils.helpers import ktc_write_unmatched_merge_report_enabled, setup_logging
 
 logger = setup_logging()
 
@@ -234,7 +234,7 @@ class PlayerMerger:
                     logger.warning("KTC_DUPLICATE_MATCH_KEY_COLLISION ... plus %s more",
                                    len(duplicate_key_collisions) - 20)
 
-                if os.getenv('IS_DEV', '').lower() == 'true':
+                if ktc_write_unmatched_merge_report_enabled():
                     try:
                         report = {
                             'generated_at': datetime.now(UTC).isoformat(),

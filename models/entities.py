@@ -1,6 +1,7 @@
 import json
+import logging
 from datetime import datetime, UTC
-from typing import Dict, Any
+from typing import Any, Dict
 
 from utils.datetime_serialization import format_instant_rfc3339_utc
 from utils.constants import (
@@ -12,6 +13,8 @@ from utils.constants import (
 )
 
 from models.extensions import db
+
+logger = logging.getLogger(__name__)
 
 
 class Player(db.Model):
@@ -96,8 +99,6 @@ class Player(db.Model):
     # Additional KTC fields
     slug = db.Column(db.String(100))
     positionID = db.Column(db.Integer)
-    heightFeet = db.Column(db.Integer)
-    heightInches = db.Column(db.Integer)
     seasonsExperience = db.Column(db.Integer)
     pickRound = db.Column(db.Integer)
     pickNum = db.Column(db.Integer)
@@ -107,7 +108,6 @@ class Player(db.Model):
     isDevyReturningToSchool = db.Column(db.Boolean)
     isDevyYearDecrement = db.Column(db.Boolean)
     teamLongName = db.Column(db.String(100))
-    birthday = db.Column(db.String(20))  # timestamp format
     draftYear = db.Column(db.Integer)
     byeWeek = db.Column(db.Integer)
     injury = db.Column(db.Text)  # JSON string with injuryCode
@@ -121,6 +121,40 @@ class Player(db.Model):
         'PlayerKTCOneQBValues', backref='player', lazy=True, cascade='all, delete-orphan', uselist=False)
     superflex_values = db.relationship(
         'PlayerKTCSuperflexValues', backref='player', lazy=True, cascade='all, delete-orphan', uselist=False)
+
+    def _first_ktc_oneqb_row(self):
+        """
+        Return a single OneQB KTC row. Uses a query when possible so duplicate
+        DB rows (legacy bad upserts) do not trigger ``uselist=False`` warnings.
+        """
+        from sqlalchemy.orm import object_session
+
+        if self.id is None:
+            return None
+        sess = object_session(self)
+        if sess is not None:
+            return (
+                sess.query(PlayerKTCOneQBValues)
+                .filter_by(player_id=self.id)
+                .order_by(PlayerKTCOneQBValues.id)
+                .first()
+            )
+        return self.oneqb_values
+
+    def _first_ktc_superflex_row(self):
+        from sqlalchemy.orm import object_session
+
+        if self.id is None:
+            return None
+        sess = object_session(self)
+        if sess is not None:
+            return (
+                sess.query(PlayerKTCSuperflexValues)
+                .filter_by(player_id=self.id)
+                .order_by(PlayerKTCSuperflexValues.id)
+                .first()
+            )
+        return self.superflex_values
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert player object to dictionary for API responses."""
@@ -180,16 +214,16 @@ class Player(db.Model):
             'last_updated': format_instant_rfc3339_utc(self.last_updated),
         }
 
+        oqb = self._first_ktc_oneqb_row()
+        sfl = self._first_ktc_superflex_row()
+
         # KTC data nested in ktc object
         ktc_data = {
             'ktc_player_id': self.ktc_player_id,
             AGE_KEY: self.age,
             ROOKIE_KEY: self.rookie,
-            # Additional KTC fields
             'slug': self.slug,
             'positionID': self.positionID,
-            'heightFeet': self.heightFeet,
-            'heightInches': self.heightInches,
             'seasonsExperience': self.seasonsExperience,
             'pickRound': self.pickRound,
             'pickNum': self.pickNum,
@@ -199,14 +233,11 @@ class Player(db.Model):
             'isDevyReturningToSchool': self.isDevyReturningToSchool,
             'isDevyYearDecrement': self.isDevyYearDecrement,
             'teamLongName': self.teamLongName,
-            'birthday': self.birthday,
             'draftYear': self.draftYear,
             'byeWeek': self.byeWeek,
             'injury': self._safe_json_loads(self.injury),
-            # OneQB Values
-            'oneQBValues': self.oneqb_values.to_dict() if self.oneqb_values else None,
-            # Superflex Values
-            'superflexValues': self.superflex_values.to_dict() if self.superflex_values else None
+            'oneQBValues': oqb.to_dict() if oqb else None,
+            'superflexValues': sfl.to_dict() if sfl else None,
         }
 
         # Add KTC data as nested object
@@ -221,8 +252,7 @@ class Player(db.Model):
         try:
             return json.loads(json_str)
         except (json.JSONDecodeError, TypeError) as e:
-            # Log the error but don't break the entire response
-            print(f"JSON parsing error for player {self.player_name}: {e}")
+            logger.warning("JSON parse error for player %s: %s", self.player_name, e)
             return None
 
 

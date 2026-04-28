@@ -24,8 +24,6 @@ class KTCPlayerData:
     positionID: Optional[int] = None
 
     # Physical attributes (KTC format)
-    heightFeet: Optional[int] = None
-    heightInches: Optional[int] = None
     weight: Optional[str] = None  # KTC weight format
 
     # Career/draft info
@@ -47,10 +45,8 @@ class KTCPlayerData:
 
     # Additional KTC fields
     ktc_number: Optional[int] = None  # KTC's number field
-    birthday: Optional[str] = None  # KTC timestamp format
     injury: Optional[str] = None  # JSON string with injury data
-    # JSON string with fantasy positions
-    fantasy_positions: Optional[str] = None
+    fantasy_positions: Optional[str] = None  # JSON string with fantasy positions
 
     # KTC values (these contain the ranking data)
     oneqb_values: Optional[Dict[str, Any]] = None
