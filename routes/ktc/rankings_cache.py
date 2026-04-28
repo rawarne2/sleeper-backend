@@ -10,14 +10,17 @@ GET was still slow because every request:
 Caching the serialized JSON avoids repeating that work. TTL bounds staleness;
 refresh/cleanup endpoints invalidate so updates are visible immediately.
 
-For serverless/multi-worker, each instance has its own cache; set REDIS_URL to
-share serialized payloads across workers. Cache-Control headers help CDN/browser.
+Shared Redis holds the serialized JSON in production (VERCEL_ENV=production);
+each instance also keeps a short in-process copy. Cache-Control headers help CDN/browser.
 """
 import json
 import threading
 import time
 from typing import Optional, Tuple
 
+from cache.redis_dashboard import (
+    invalidate_dashboard_league_caches_for_ktc_dimensions,
+)
 from cache.redis_rankings import (
     redis_get_rankings_bytes,
     redis_invalidate_rankings,
@@ -26,7 +29,7 @@ from cache.redis_rankings import (
 
 # Default TTL: repeat hits skip DB+filter work. Refresh/cleanup/bulk clear
 # the cache, so a longer TTL is safe and improves initial load on warm workers.
-_DEFAULT_TTL_SECONDS = 3600
+_DEFAULT_TTL_SECONDS = 604800  # 7 days
 
 _lock = threading.Lock()
 # key -> (expires_at_epoch, json_bytes)
@@ -52,7 +55,8 @@ def get_cached_rankings_json(
             else:
                 return payload
 
-    redis_payload = redis_get_rankings_bytes(is_redraft, league_format, tep_level)
+    redis_payload = redis_get_rankings_bytes(
+        is_redraft, league_format, tep_level)
     if redis_payload is not None:
         expires_at = time.monotonic() + _DEFAULT_TTL_SECONDS
         with _lock:
@@ -105,6 +109,9 @@ def invalidate_rankings_cache(
             for k in keys_to_delete:
                 _cache.pop(k, None)
     redis_invalidate_rankings(is_redraft, league_format, tep_norm)
+    invalidate_dashboard_league_caches_for_ktc_dimensions(
+        is_redraft, league_format, tep_norm
+    )
 
 
 def cache_stats() -> Tuple[int, int]:

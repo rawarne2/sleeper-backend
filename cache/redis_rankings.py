@@ -1,8 +1,10 @@
 """
-Optional Redis cache for serialized GET /api/ktc/rankings payloads.
+Redis cache for serialized GET /api/ktc/rankings payloads.
 
-Use when REDIS_URL is set (e.g. production multi-worker). Falls back silently
-if redis is unavailable so local/dev without Redis is unchanged.
+On Vercel production (VERCEL_ENV=production), REDIS_URL is required and cache
+operations fail loudly if Redis is misconfigured or down. Locally or on Vercel
+preview, Redis is unused unless REDIS_URL is set; missing Redis falls back with
+no shared cache across workers.
 """
 from __future__ import annotations
 
@@ -23,6 +25,14 @@ _RETRY_AFTER_SECONDS = 60
 # None = not attempted yet; float = retry-after monotonic timestamp; else client
 _redis_holder: list = [None]
 _connect_log_done = False
+
+
+class RedisConfigurationError(RuntimeError):
+    """Missing REDIS_URL or Redis unreachable when production requires it."""
+
+
+def _redis_mandatory() -> bool:
+    return (os.getenv("VERCEL_ENV") or "").strip().lower() == "production"
 
 
 def _redis_url_safe_summary(url: str) -> str:
@@ -77,20 +87,32 @@ def _redis_key(is_redraft: bool, league_format: str, tep_level: str) -> str:
 
 
 def get_redis_client():
-    """Return a redis client or None if Redis should not be used."""
+    """Return a connected Redis client, or None when Redis is optional and not configured."""
     global _connect_log_done
+    mandatory = _redis_mandatory()
     with _redis_lock:
         cached = _redis_holder[0]
-        if cached is not None:
+        if mandatory:
             if isinstance(cached, float):
-                if time.monotonic() < cached:
-                    return None
                 _redis_holder[0] = None
-            else:
+                cached = None
+            elif cached is not None:
                 return cached
+        else:
+            if cached is not None:
+                if isinstance(cached, float):
+                    if time.monotonic() < cached:
+                        return None
+                    _redis_holder[0] = None
+                else:
+                    return cached
 
         url = (os.getenv("REDIS_URL") or "").strip()
         if not url:
+            if mandatory:
+                raise RedisConfigurationError(
+                    "REDIS_URL is required when VERCEL_ENV=production"
+                )
             return None
         try:
             import redis
@@ -112,7 +134,16 @@ def get_redis_client():
                     (time.perf_counter() - t0) * 1000,
                 )
             return client
+        except RedisConfigurationError:
+            raise
         except Exception as exc:
+            if mandatory:
+                logger.error(
+                    "Redis connect failed (VERCEL_ENV=production): %s", exc
+                )
+                raise RedisConfigurationError(
+                    "Could not connect to Redis in production"
+                ) from exc
             logger.warning(
                 "Redis connect failed, retrying in %ss: %s",
                 _RETRY_AFTER_SECONDS,
@@ -143,6 +174,10 @@ def redis_get_rankings_bytes(
         return raw
     except Exception as exc:
         _invalidate_after_command_error(exc)
+        if _redis_mandatory():
+            raise RedisConfigurationError(
+                "Redis rankings read failed in production"
+            ) from exc
         return None
 
 
@@ -171,6 +206,10 @@ def redis_set_rankings_bytes(
         )
     except Exception as exc:
         _invalidate_after_command_error(exc)
+        if _redis_mandatory():
+            raise RedisConfigurationError(
+                "Redis rankings write failed in production"
+            ) from exc
 
 
 def redis_invalidate_rankings(
@@ -178,7 +217,11 @@ def redis_invalidate_rankings(
     league_format: Optional[str] = None,
     tep_level: Optional[str] = None,
 ) -> None:
-    r = get_redis_client()
+    try:
+        r = get_redis_client()
+    except RedisConfigurationError as exc:
+        logger.warning("redis_rankings_invalidate skipped: %s", exc)
+        return
     if not r:
         return
     prefix = "ktc:rankings:v1:"
@@ -211,3 +254,7 @@ def redis_invalidate_rankings(
             logger.info("redis_rankings_invalidate deleted_keys=%s", deleted)
     except Exception as exc:
         _invalidate_after_command_error(exc)
+        if _redis_mandatory():
+            logger.error(
+                "redis_rankings_invalidate failed in production: %s", exc
+            )
