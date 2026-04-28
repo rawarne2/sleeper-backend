@@ -1,7 +1,8 @@
 from datetime import datetime, UTC
 from flask import Blueprint, jsonify, request
-from scrapers.sleeper_scraper import SleeperScraper
 from managers.database_manager import DatabaseManager
+from models.entities import SleeperLeague, SleeperLeagueStats
+from services.daily_refresh import refresh_weekly_stats_for_league
 from utils.helpers import setup_logging
 from routes.helpers import with_error_handling
 
@@ -10,7 +11,7 @@ sleeper_stats_bp = Blueprint(
 logger = setup_logging()
 
 
-@sleeper_stats_bp.route('/<string:league_id>/stats/seed', methods=['POST'])
+@sleeper_stats_bp.route('/<string:league_id>/stats/seed', methods=['POST', 'PUT'])
 @with_error_handling
 def seed_league_stats(league_id: str):
     """
@@ -107,28 +108,25 @@ def seed_league_stats(league_id: str):
             details:
               type: string
     """
-    # Get request data
-    data = request.get_json()
-
-    if not data:
-        return jsonify({
-            'status': 'error',
-            'error': 'No JSON data provided'
-        }), 400
-
-    # Validate required fields
+    data = request.get_json(silent=True) or {}
     league_name = data.get('league_name')
     season = data.get('season')
-
-    if not league_name or not season:
-        return jsonify({
-            'status': 'error',
-            'error': 'Missing required fields: league_name and season are required'
-        }), 400
-
-    # Get optional fields
-    league_type = data.get('league_type', 'dynasty')
+    league_type = data.get('league_type')
     scoring_settings = data.get('scoring_settings')
+
+    existing = SleeperLeagueStats.query.filter_by(league_id=league_id).first()
+
+    if existing:
+        league_name = league_name or existing.league_name
+        season = season or existing.season
+        league_type = league_type or existing.league_type or 'dynasty'
+    else:
+        if not league_name or not season:
+            return jsonify({
+                'status': 'error',
+                'error': 'league_name and season are required for new leagues',
+            }), 400
+        league_type = league_type or 'dynasty'
 
     logger.info("Seeding league stats for league: %s, season: %s, type: %s",
                 league_id, season, league_type)
@@ -149,6 +147,23 @@ def seed_league_stats(league_id: str):
             'details': result.get('error', 'Unknown error')
         }), 500
 
+    row = SleeperLeagueStats.query.filter_by(league_id=league_id).first()
+    start_week = (row.last_week_updated or 0) + 1 if row else 1
+    weeks_to_fetch = range(start_week, 19)
+
+    weekly_summary = None
+    if start_week <= 18:
+        logger.info(
+            "Auto-fetching weekly stats league=%s weeks=%s-18",
+            league_id, start_week,
+        )
+        weekly_summary = refresh_weekly_stats_for_league(
+            league_id, season, weeks=weeks_to_fetch, league_type=league_type,
+        )
+
+    refreshed_row = SleeperLeagueStats.query.filter_by(league_id=league_id).first()
+    last_week = refreshed_row.last_week_updated if refreshed_row else 0
+
     return jsonify({
         'status': 'success',
         'message': 'League stats seeded successfully',
@@ -156,6 +171,8 @@ def seed_league_stats(league_id: str):
         'league_id': league_id,
         'league_name': league_name,
         'season': season,
+        'last_week_updated': last_week,
+        'weekly_stats': weekly_summary,
         'timestamp': datetime.now(UTC).isoformat()
     })
 
@@ -201,7 +218,7 @@ def get_weekly_stats(league_id: str, week: int):
         default: 'dynasty'
       - name: average
         in: query
-        description: Whether to return season averages (weeks 1-16 only)
+        description: Whether to return season averages (weeks 1-17; week 18 excluded)
         required: false
         type: boolean
         default: false
@@ -403,44 +420,58 @@ def refresh_weekly_stats(league_id: str, week: int):
             details:
               type: string
     """
-    # Get query parameters
-    season = request.args.get('season', '2024')
-    league_type = request.args.get('league_type', 'dynasty')
+    season = request.args.get('season')
+    league_type = request.args.get('league_type')
+
+    if not season or not league_type:
+        existing = SleeperLeagueStats.query.filter_by(league_id=league_id).first()
+        if existing:
+            season = season or existing.season
+            league_type = league_type or existing.league_type or 'dynasty'
+        else:
+            league_row = SleeperLeague.query.filter_by(league_id=league_id).first()
+            season = season or (str(league_row.season) if league_row and league_row.season else None)
+            league_type = league_type or 'dynasty'
+
+    if not season:
+        return jsonify({
+            'status': 'error',
+            'error': 'season is required (not found in DB for this league_id)',
+        }), 400
 
     logger.info("Weekly stats refresh requested for league: %s, week: %s, season: %s",
                 league_id, week, season)
 
-    # Fetch fresh data from Sleeper API
-    matchups_data = SleeperScraper.fetch_weekly_matchups(league_id, week)
+    summary = refresh_weekly_stats_for_league(
+        league_id, season, weeks=[week], league_type=league_type,
+    )
+    week_results = summary.get('weeks') or []
+    week_entry = week_results[0] if week_results else {}
+    errors = summary.get('errors') or []
 
-    if not matchups_data:
+    if errors:
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to refresh weekly stats',
+            'details': errors[0].get('error', 'Unknown error'),
+        }), 500
+
+    if week_entry.get('status') == 'no_data':
         return jsonify({
             'status': 'error',
             'error': 'Failed to fetch weekly matchups',
-            'details': 'No matchup data returned from Sleeper API'
+            'details': 'No matchup data returned from Sleeper API',
         }), 400
 
-    # Parse the matchup data to extract player scoring records
-    weekly_stats = SleeperScraper.parse_weekly_matchups(matchups_data)
-
-    if not weekly_stats:
+    if week_entry.get('status') == 'no_records':
         return jsonify({
             'status': 'error',
             'error': 'Failed to parse weekly matchups',
-            'details': 'No player scoring records found in matchup data'
+            'details': 'No player scoring records found in matchup data',
         }), 400
 
-    # Save to database
-    save_result = DatabaseManager.save_weekly_stats(
-        weekly_stats, season, week, league_type
-    )
-
-    if save_result.get('status') == 'error':
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to save weekly stats',
-            'details': save_result.get('error', 'Unknown error')
-        }), 500
+    refreshed_row = SleeperLeagueStats.query.filter_by(league_id=league_id).first()
+    last_week = refreshed_row.last_week_updated if refreshed_row else None
 
     return jsonify({
         'status': 'success',
@@ -448,14 +479,8 @@ def refresh_weekly_stats(league_id: str, week: int):
         'league_id': league_id,
         'week': week,
         'season': season,
-        'refresh_results': save_result,
-        'refreshed_stats': {
-            'status': 'success',
-            'data_type': 'weekly',
-            'season': season,
-            'week': week,
-            'records': weekly_stats,
-            'count': len(weekly_stats)
-        },
+        'league_type': league_type,
+        'last_week_updated': last_week,
+        'refresh_results': week_entry,
         'timestamp': datetime.now(UTC).isoformat()
     })

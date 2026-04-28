@@ -1,5 +1,5 @@
 """
-Orchestration for daily / scheduled data refresh (KTC + leagues + research).
+Orchestration for daily / scheduled data refresh (KTC + leagues + research + weekly stats).
 
 Kept separate from route handlers so it can be called from Flask or a CLI later.
 """
@@ -7,11 +7,11 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from cache.redis_dashboard import invalidate_dashboard_league
 from managers.database_manager import DatabaseManager
-from models.entities import SleeperWeeklyData
+from models.entities import SleeperLeague, SleeperLeagueStats, SleeperWeeklyData
 from models.extensions import db
 from scrapers.ktc_scraper import KTCScraper
 from scrapers.pipelines import scrape_and_save_all_ktc_data
@@ -21,11 +21,11 @@ from utils.helpers import setup_logging
 
 logger = setup_logging()
 
+REGULAR_SEASON_WEEKS = range(1, 19)  # Sleeper uses weeks 1..18 for regular season + week 18
+
 
 def _league_ids_for_refresh() -> List[str]:
     """All leagues persisted in the DB; if none yet, fall back to built-in defaults."""
-    from models.entities import SleeperLeague
-
     rows = SleeperLeague.query.with_entities(SleeperLeague.league_id).all()
     out = [r[0] for r in rows if r and r[0]]
     if out:
@@ -35,6 +35,14 @@ def _league_ids_for_refresh() -> List[str]:
         "1210364682523656192",
         "1050831680350568448",
     ]
+
+
+def _league_id_to_season() -> Dict[str, str]:
+    """Map league_id -> season for all leagues persisted in the DB."""
+    rows = SleeperLeague.query.with_entities(
+        SleeperLeague.league_id, SleeperLeague.season
+    ).all()
+    return {r[0]: str(r[1]) for r in rows if r and r[0] and r[1]}
 
 
 def refresh_leagues(league_ids: List[str]) -> Dict[str, Any]:
@@ -112,6 +120,81 @@ def persist_research(
     }
 
 
+def _bump_last_week_updated(league_id: str, week: int) -> None:
+    """Advance SleeperLeagueStats.last_week_updated to ``week`` if higher than stored."""
+    row = SleeperLeagueStats.query.filter_by(league_id=league_id).first()
+    if not row:
+        return
+    if (row.last_week_updated or 0) < week:
+        row.last_week_updated = week
+        db.session.commit()
+
+
+def refresh_weekly_stats_for_league(
+    league_id: str,
+    season: str,
+    *,
+    weeks: Iterable[int] = REGULAR_SEASON_WEEKS,
+    league_type: str = "dynasty",
+) -> Dict[str, Any]:
+    """Fetch weekly matchup stats from Sleeper for a single league across one or more weeks.
+
+    After each successful save, advances ``SleeperLeagueStats.last_week_updated``
+    so callers can resume incrementally.
+    """
+    summary: Dict[str, Any] = {
+        "league_id": league_id,
+        "season": season,
+        "league_type": league_type,
+        "weeks": [],
+        "errors": [],
+    }
+    for week in weeks:
+        try:
+            matchups = SleeperScraper.fetch_weekly_matchups(league_id, week)
+            if not matchups:
+                summary["weeks"].append({"week": week, "status": "no_data"})
+                continue
+            records = SleeperScraper.parse_weekly_matchups(matchups)
+            if not records:
+                summary["weeks"].append({"week": week, "status": "no_records"})
+                continue
+            save_result = DatabaseManager.save_weekly_stats(
+                records, season, week, league_type
+            )
+            summary["weeks"].append({"week": week, **save_result})
+            _bump_last_week_updated(league_id, week)
+        except Exception as exc:
+            logger.exception(
+                "weekly stats fetch failed league=%s week=%s", league_id, week
+            )
+            summary["errors"].append({"week": week, "error": str(exc)})
+    return summary
+
+
+def refresh_weekly_stats_for_leagues(
+    league_ids: List[str],
+    *,
+    weeks: Iterable[int] = REGULAR_SEASON_WEEKS,
+) -> Dict[str, Any]:
+    """Fetch weekly stats for many leagues. Uses each league's stored season."""
+    league_seasons = _league_id_to_season()
+    out: Dict[str, Any] = {"leagues": [], "errors": []}
+    for lid in league_ids:
+        season = league_seasons.get(lid)
+        if not season:
+            out["errors"].append({"league_id": lid, "error": "no season in DB"})
+            continue
+        try:
+            out["leagues"].append(
+                refresh_weekly_stats_for_league(lid, season, weeks=weeks)
+            )
+        except Exception as exc:
+            logger.exception("weekly stats refresh failed for league %s", lid)
+            out["errors"].append({"league_id": lid, "error": str(exc)})
+    return out
+
+
 def run_daily_refresh(
     *,
     league_ids: Optional[List[str]] = None,
@@ -120,6 +203,7 @@ def run_daily_refresh(
     skip_ktc: bool = False,
     skip_leagues: bool = False,
     skip_research: bool = False,
+    skip_weekly_stats: bool = False,
 ) -> DailyRefreshSummary:
     """
     Run the full pipeline used for once-per-day updates.
@@ -144,6 +228,7 @@ def run_daily_refresh(
         "ktc": None,
         "leagues": None,
         "research": [],
+        "weekly_stats": None,
         "errors": [],
     }
 
@@ -199,5 +284,14 @@ def run_daily_refresh(
                             "error": str(e),
                         }
                     )
+
+    if not skip_weekly_stats and lids:
+        try:
+            summary["weekly_stats"] = refresh_weekly_stats_for_leagues(lids)
+            for err in summary["weekly_stats"].get("errors", []):
+                summary["errors"].append({"step": "weekly_stats", **err})
+        except Exception as e:
+            logger.exception("Weekly stats refresh failed")
+            summary["errors"].append({"step": "weekly_stats", "error": str(e)})
 
     return summary

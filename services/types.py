@@ -6,4 +6,5 @@ class DailyRefreshSummary(TypedDict, total=False):
     ktc: Any
     leagues: Any
     research: List[Any]
+    weekly_stats: Any
     errors: List[Any]
