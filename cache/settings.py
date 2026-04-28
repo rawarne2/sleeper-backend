@@ -3,7 +3,7 @@ import os
 
 DEFAULT_KTC_RANKINGS_REDIS_TTL_SECONDS = 86400
 # Bundle is invalidated explicitly on KTC refresh and league sync, so a long
-# TTL is safe and keeps the prewarm cron's effort durable between runs.
+# TTL fits nightly-sync (which ends with dashboard prewarm) on a Hobby-safe daily cron.
 DEFAULT_DASHBOARD_LEAGUE_REDIS_TTL_SECONDS = 86400
 
 

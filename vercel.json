@@ -3,11 +3,7 @@
   "crons": [
     {
       "path": "/api/maintenance/nightly-sync",
-      "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/maintenance/prewarm",
-      "schedule": "*/50 * * * *"
+      "schedule": "30 15 * * *"
     }
   ],
   "builds": [

@@ -12,7 +12,8 @@ from services.daily_refresh import run_daily_refresh
 from routes.ktc.rankings_cache import invalidate_rankings_cache
 from utils.helpers import setup_logging
 
-maintenance_bp = Blueprint("maintenance", __name__, url_prefix="/api/maintenance")
+maintenance_bp = Blueprint("maintenance", __name__,
+                           url_prefix="/api/maintenance")
 logger = setup_logging()
 
 
@@ -57,7 +58,8 @@ def _prewarm_dashboard_caches() -> Dict[str, Any]:
                 body = resp.get_json(force=True) or {}
             except Exception:
                 body = {}
-            detail = body.get("details") or body.get("error") or f"HTTP {resp.status_code}"
+            detail = body.get("details") or body.get(
+                "error") or f"HTTP {resp.status_code}"
             entry["error"] = detail
             logger.error(
                 "prewarm failed league_id=%s season=%s status=%s error=%s",
@@ -151,15 +153,14 @@ def nightly_sync():
     """
     Full ingest pipeline for scheduled jobs (Vercel Cron uses GET + CRON_SECRET).
 
-    Schedule in vercel.json (UTC): e.g. 0 9 * * * = 4:00 AM Eastern Standard Time;
-    same expression is 5:00 AM local during Eastern Daylight Time.
+    Schedule: see vercel.json (UTC). Repo default 30 15 * * * ≈ 11:30 AM Eastern when DST.
 
     Pipeline: KTC all formats -> leagues -> research per season.
     NFL player ingest is NOT included; use POST /api/sleeper/refresh separately (rare).
 
     Optional JSON body (POST only):
       { "league_ids": ["..."], "seasons": ["2025"], "research_week": 1,
-        "skip_ktc": false, "skip_leagues": false, "skip_research": false }
+        "skip_ktc": false, "skip_leagues": false, "skip_research": false, "skip_prewarm": false }
     """
     if not _cron_authorized():
         return jsonify(
@@ -180,7 +181,8 @@ def nightly_sync():
     summary = run_daily_refresh(
         league_ids=league_ids,
         seasons=seasons,
-        research_week=int(research_week) if research_week is not None else None,
+        research_week=int(
+            research_week) if research_week is not None else None,
         skip_ktc=bool(payload.get("skip_ktc")),
         skip_leagues=bool(payload.get("skip_leagues")),
         skip_research=bool(payload.get("skip_research")),
@@ -193,7 +195,8 @@ def nightly_sync():
             summary["prewarm"] = _prewarm_dashboard_caches()
         except Exception as e:
             logger.exception("nightly-sync prewarm failed")
-            summary.setdefault("errors", []).append({"step": "prewarm", "error": str(e)})
+            summary.setdefault("errors", []).append(
+                {"step": "prewarm", "error": str(e)})
 
     return jsonify({"status": "success", "summary": summary})
 
@@ -219,7 +222,8 @@ def daily_refresh():
     """
     if not _authorized():
         return jsonify(
-            {"status": "error", "error": "Unauthorized", "hint": "X-Daily-Refresh-Secret"}
+            {"status": "error", "error": "Unauthorized",
+                "hint": "X-Daily-Refresh-Secret"}
         ), 401
 
     payload = request.get_json(silent=True) or {}
@@ -232,7 +236,8 @@ def daily_refresh():
     summary = run_daily_refresh(
         league_ids=league_ids,
         seasons=seasons,
-        research_week=int(research_week) if research_week is not None else None,
+        research_week=int(
+            research_week) if research_week is not None else None,
         skip_ktc=bool(payload.get("skip_ktc")),
         skip_leagues=bool(payload.get("skip_leagues")),
         skip_research=bool(payload.get("skip_research")),
