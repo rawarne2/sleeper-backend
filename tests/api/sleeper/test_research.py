@@ -15,8 +15,7 @@ def test_get_research_data_endpoint_exists(client):
 def test_get_research_data_invalid_season(client):
     """Test that invalid season format returns appropriate error"""
     response = client.get('/api/sleeper/players/research/invalid')
-    # Should return 404 or 500 for invalid season
-    assert response.status_code in [404, 500]
+    assert response.status_code in [400, 404, 500]
 
 
 def test_get_research_data_with_params(client):

@@ -1,6 +1,7 @@
-from datetime import datetime, UTC
 from flask import Blueprint, jsonify
+
 from managers.database_manager import DatabaseManager
+from utils.datetime_serialization import utc_now_rfc3339
 from utils.helpers import setup_logging
 
 health_bp = Blueprint('health', __name__, url_prefix='/api')
@@ -10,6 +11,8 @@ logger = setup_logging()
 @health_bp.route('/ktc/health', methods=['GET'])
 def health_check():
     """
+    ``GET /api/ktc/health`` — verify API process and Postgres connectivity.
+
     Database health check endpoint
     ---
     tags:
@@ -60,7 +63,7 @@ def health_check():
 
         # Test database connection
         connection_ok = DatabaseManager.verify_database_connection()
-        timestamp = datetime.now(UTC).isoformat()
+        timestamp = utc_now_rfc3339()
 
         if not connection_ok:
             return jsonify({
@@ -81,5 +84,5 @@ def health_check():
             'status': 'unhealthy',
             'database': 'error',
             'error': str(e),
-            'timestamp': datetime.now(UTC).isoformat()
+            'timestamp': utc_now_rfc3339(),
         }), 500

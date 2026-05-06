@@ -74,11 +74,9 @@ League bundle for the dashboard (rosters, merged players, research meta; optiona
 ```
 GET|POST /api/maintenance/nightly-sync
 GET /api/maintenance/prewarm
-POST /api/maintenance/daily-refresh
 ```
 
-- **nightly-sync, prewarm:** `Authorization: Bearer <CRON_SECRET>` (required on Vercel production). **Prewarm:** end of `nightly-sync` (or `GET /api/maintenance/prewarm` alone) fills dashboard Redis for fixed example leagues; omit with `"skip_prewarm": true` on POST. **Cron:** production uses one daily job on `/api/maintenance/nightly-sync` (`vercel.json`, UTC schedule).
-- **daily-refresh:** `X-Daily-Refresh-Secret` when `DAILY_REFRESH_SECRET` is set.  
+- **nightly-sync, prewarm:** `Authorization: Bearer <CRON_SECRET>` (required on Vercel production). **Prewarm:** end of `nightly-sync` (or `GET /api/maintenance/prewarm` alone) fills dashboard Redis for fixed example leagues; omit with `"skip_prewarm": true` on POST. **Cron:** production uses one daily job on `/api/maintenance/nightly-sync` (`vercel.json`, UTC schedule). Manual runs use the same route with GET or POST and the same Bearer.
   Pipeline: KTC formats → leagues → research (no full NFL Sleeper player export).
 
 ### KTC health (detail)

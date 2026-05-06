@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # HTTP integration / smoke: curl against a *running* backend (see BASE_URL). Uses
-# CRON_SECRET / DAILY_REFRESH_SECRET from .env for maintenance routes. This is NOT
+# CRON_SECRET from .env for maintenance routes. This is NOT
 # a database seed.
 #
 # For in-process KTC + league + research + weekly stats (no HTTP server), use:
@@ -16,7 +16,6 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
 
 CRON_SECRET=$(grep '^CRON_SECRET=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
-DAILY_REFRESH_SECRET=$(grep '^DAILY_REFRESH_SECRET=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")
 
 KTC_SF_DYN="tep_level=tep&is_redraft=false&league_format=superflex"
 KTC_1QB_DYN="tep_level=tep&is_redraft=false&league_format=1qb"
@@ -82,12 +81,6 @@ req "GET /api/maintenance/nightly-sync" 3600 \
   -H "Accept: application/json" \
   -H "Authorization: Bearer ${CRON_SECRET}" \
   "$BASE/api/maintenance/nightly-sync"
-
-req "POST /api/maintenance/daily-refresh" 3600 \
-  "${HDR_JSON[@]}" \
-  -H "X-Daily-Refresh-Secret: ${DAILY_REFRESH_SECRET}" \
-  -d '{}' \
-  "$BASE/api/maintenance/daily-refresh"
 
 req "GET /api/ktc/health" 60 "$BASE/api/ktc/health" "${HDR_JSON[@]}"
 

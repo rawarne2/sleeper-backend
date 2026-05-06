@@ -50,7 +50,7 @@ _EPILOG = textwrap.dedent(
     Related scripts
     ---------------
     ``scripts/run_all_requests_three_leagues.sh`` is different: it curl's a
-    *running* API (nightly-sync, daily-refresh, per-league routes) for HTTP smoke
+    *running* API (nightly-sync, per-league routes) for HTTP smoke
     / integration. It does not run this in-process seed.
     """
 ).strip()

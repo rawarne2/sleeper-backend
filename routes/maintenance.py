@@ -1,5 +1,5 @@
 """
-Maintenance and batch operations (daily refresh, etc.).
+Maintenance and batch operations (nightly sync, prewarm).
 """
 import os
 import time
@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 from flask import Blueprint, current_app, jsonify, request
 
-from routes.helpers import with_error_handling
+from routes.helpers import json_api_error, with_error_handling
 from services.daily_refresh import run_daily_refresh
 from routes.ktc.rankings_cache import invalidate_rankings_cache
 from utils.helpers import setup_logging
@@ -120,7 +120,7 @@ def _cron_authorized() -> bool:
 @maintenance_bp.route("/health", methods=["GET"])
 @with_error_handling
 def maintenance_health():
-    """Smoke test that this blueprint is deployed (use if POST /daily-refresh returns 404)."""
+    """``GET /api/maintenance/health`` — JSON map of maintenance paths and auth expectations (no pipeline run)."""
     return jsonify(
         {
             "status": "ok",
@@ -130,21 +130,8 @@ def maintenance_health():
                 "auth": "Authorization: Bearer <CRON_SECRET> (CRON_SECRET must be set on server)",
                 "note": "Vercel Cron invokes GET with the Bearer header; use POST for manual curl.",
             },
-            "daily_refresh": {
-                "method": "POST",
-                "path": "/api/maintenance/daily-refresh",
-                "note": "Operator/manual use; not for browser clients. Prefer nightly-sync + cron.",
-            },
         }
     )
-
-
-def _authorized() -> bool:
-    secret = (os.getenv("DAILY_REFRESH_SECRET") or "").strip()
-    if not secret:
-        return True
-    header = (request.headers.get("X-Daily-Refresh-Secret") or "").strip()
-    return header == secret
 
 
 @maintenance_bp.route("/nightly-sync", methods=["GET", "POST"])
@@ -163,13 +150,14 @@ def nightly_sync():
         "skip_ktc": false, "skip_leagues": false, "skip_research": false, "skip_prewarm": false }
     """
     if not _cron_authorized():
-        return jsonify(
-            {
-                "status": "error",
-                "error": "Unauthorized",
-                "hint": "Set CRON_SECRET in the server environment and send Authorization: Bearer <CRON_SECRET>",
-            }
-        ), 401
+        return json_api_error(
+            "Unauthorized",
+            401,
+            hint=(
+                "Set CRON_SECRET in the server environment and send "
+                "Authorization: Bearer <CRON_SECRET>"
+            ),
+        )
 
     payload = request.get_json(silent=True) or {}
     league_ids = payload.get("league_ids")
@@ -201,65 +189,18 @@ def nightly_sync():
     return jsonify({"status": "success", "summary": summary})
 
 
-@maintenance_bp.route("/daily-refresh", methods=["POST"])
-@with_error_handling
-def daily_refresh():
-    """
-    Run full KTC scrape, league snapshots, and research refresh.
-
-    Pipeline: KTC all formats -> leagues -> research per season.
-    NFL player ingest is NOT included; use POST /api/sleeper/refresh separately (rare).
-
-    League IDs default to every league row in the database (or built-in fallbacks).
-    Seasons are derived from the league refresh step; pass explicitly when skip_leagues is true.
-
-    Optional JSON body:
-      { "league_ids": ["..."], "seasons": ["2025"], "research_week": 1,
-        "skip_ktc": false, "skip_leagues": false, "skip_research": false }
-
-    If DAILY_REFRESH_SECRET is set, send header X-Daily-Refresh-Secret matching it.
-    Prefer /nightly-sync on a schedule; do not call this from public dashboard clients.
-    """
-    if not _authorized():
-        return jsonify(
-            {"status": "error", "error": "Unauthorized",
-                "hint": "X-Daily-Refresh-Secret"}
-        ), 401
-
-    payload = request.get_json(silent=True) or {}
-    league_ids = payload.get("league_ids")
-    seasons = payload.get("seasons")
-    research_week = payload.get("research_week")
-
-    logger.info("Daily refresh started (remote=%s)", request.remote_addr)
-
-    summary = run_daily_refresh(
-        league_ids=league_ids,
-        seasons=seasons,
-        research_week=int(
-            research_week) if research_week is not None else None,
-        skip_ktc=bool(payload.get("skip_ktc")),
-        skip_leagues=bool(payload.get("skip_leagues")),
-        skip_research=bool(payload.get("skip_research")),
-    )
-
-    invalidate_rankings_cache()
-
-    return jsonify({"status": "success", "summary": summary})
-
-
 @maintenance_bp.route("/prewarm", methods=["GET"])
 @with_error_handling
 def prewarm():
-    """Hit dashboard endpoint for known leagues to keep Redis + CDN caches warm."""
+    """``GET /api/maintenance/prewarm`` — same as nightly-sync prewarm; requires cron auth."""
     if not _cron_authorized():
-        return jsonify({"status": "error", "error": "Unauthorized"}), 401
+        return json_api_error("Unauthorized", 401)
 
     summary = _prewarm_dashboard_caches()
     if summary["failed"]:
-        return jsonify({
-            "status": "error",
-            "error": f"{summary['failed']} of {summary['total']} prewarm requests failed",
-            "results": summary["results"],
-        }), 500
+        return json_api_error(
+            f"{summary['failed']} of {summary['total']} prewarm requests failed",
+            500,
+            results=summary["results"],
+        )
     return jsonify({"status": "success", "results": summary["results"]})

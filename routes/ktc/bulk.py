@@ -1,11 +1,12 @@
-from datetime import datetime, UTC
 from flask import Blueprint, jsonify
-from scrapers.ktc_scraper import KTCScraper
+
 from managers.database_manager import DatabaseManager
-from utils.helpers import setup_logging
-from scrapers.pipelines import scrape_and_save_all_ktc_data
-from routes.helpers import with_error_handling
+from routes.helpers import json_api_error, with_error_handling
 from routes.ktc.rankings_cache import invalidate_rankings_cache
+from scrapers.ktc_scraper import KTCScraper
+from scrapers.pipelines import scrape_and_save_all_ktc_data
+from utils.datetime_serialization import utc_now_rfc3339
+from utils.helpers import setup_logging
 
 ktc_bulk_bp = Blueprint('ktc_bulk', __name__, url_prefix='/api/ktc')
 logger = setup_logging()
@@ -90,57 +91,54 @@ def refresh_ktc_all():
             details:
               type: string
     """
-    try:
-        # Verify database connection
-        logger.info(
-            "Verifying database connection before comprehensive refresh...")
-        if not DatabaseManager.verify_database_connection():
-            return jsonify({
-                'error': 'Database connection failed',
-                'details': 'Cannot establish database connection before starting refresh operation'
-            }), 500
+    # Verify database connection
+    logger.info(
+        "Verifying database connection before comprehensive refresh...")
+    if not DatabaseManager.verify_database_connection():
+        return json_api_error(
+            'Database connection failed',
+            500,
+            details='Cannot establish database connection before starting refresh operation',
+        )
 
-        # Scrape and save all KTC data
-        logger.info(
-            "Starting comprehensive KTC refresh for all formats and TEP levels...")
+    logger.info(
+        "Starting comprehensive KTC refresh for all formats and TEP levels...")
 
-        results = scrape_and_save_all_ktc_data(KTCScraper, DatabaseManager)
+    results = scrape_and_save_all_ktc_data(KTCScraper, DatabaseManager)
 
-        # All rankings variants may have changed
-        invalidate_rankings_cache()
+    invalidate_rankings_cache()
 
-        # Return results
-        if results['overall_status'] == 'error':
-            return jsonify({
-                'error': 'Comprehensive refresh failed',
-                'details': results.get('error', 'Both dynasty and redraft operations failed'),
-                'results': results
-            }), 500
-        elif results['overall_status'] == 'partial_success':
-            return jsonify({
-                'message': 'Comprehensive refresh partially successful',
-                'warning': 'One of the operations failed',
-                'timestamp': datetime.now(UTC).isoformat(),
-                'results': results
-            }), 200
-        else:
-            return jsonify({
-                'message': 'Comprehensive refresh completed successfully',
-                'timestamp': datetime.now(UTC).isoformat(),
-                'results': results,
-                'summary': {
-                    'dynasty_players': results['dynasty']['players_count'],
-                    'dynasty_saved': results['dynasty']['db_count'],
-                    'redraft_players': results['redraft']['players_count'],
-                    'redraft_saved': results['redraft']['db_count'],
-                    'total_players': results['dynasty']['players_count'] + results['redraft']['players_count'],
-                    'total_saved': results['dynasty']['db_count'] + results['redraft']['db_count']
-                }
-            })
-
-    except Exception as e:
-        logger.error("Error in comprehensive KTC refresh: %s", e)
+    if results['overall_status'] == 'error':
+        return json_api_error(
+            'Comprehensive refresh failed',
+            500,
+            details=results.get(
+                'error', 'Both dynasty and redraft operations failed'),
+            results=results,
+        )
+    if results['overall_status'] == 'partial_success':
         return jsonify({
-            'error': 'Internal server error during comprehensive refresh',
-            'details': str(e)
-        }), 500
+            'message': 'Comprehensive refresh partially successful',
+            'warning': 'One of the operations failed',
+            'timestamp': utc_now_rfc3339(),
+            'results': results,
+        }), 200
+    return jsonify({
+        'message': 'Comprehensive refresh completed successfully',
+        'timestamp': utc_now_rfc3339(),
+        'results': results,
+        'summary': {
+            'dynasty_players': results['dynasty']['players_count'],
+            'dynasty_saved': results['dynasty']['db_count'],
+            'redraft_players': results['redraft']['players_count'],
+            'redraft_saved': results['redraft']['db_count'],
+            'total_players': (
+                results['dynasty']['players_count']
+                + results['redraft']['players_count']
+            ),
+            'total_saved': (
+                results['dynasty']['db_count']
+                + results['redraft']['db_count']
+            ),
+        },
+    })

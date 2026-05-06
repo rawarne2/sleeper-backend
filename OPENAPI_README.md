@@ -85,7 +85,7 @@ Access the OpenAPI spec at: **<http://localhost:5001/openapi.json>**
 
 - `GET|POST /api/maintenance/nightly-sync` — Daily pipeline + optional dashboard Redis prewarm (Bearer `CRON_SECRET` in prod).
 - `GET /api/maintenance/prewarm` — Prewarm alone (same auth).
-- `POST /api/maintenance/daily-refresh` — Manual pipeline (`X-Daily-Refresh-Secret` when configured).
+- `GET` / `POST /api/maintenance/nightly-sync` — Full pipeline (cron + manual; `Authorization: Bearer <CRON_SECRET>`).
 
 ## 🔧 Key Features
 

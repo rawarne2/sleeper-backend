@@ -58,7 +58,6 @@ services:
       - IS_DEV=${IS_DEV:-True}
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:password@postgres:5432/sleeper_db?sslmode=disable}
       - CRON_SECRET=${CRON_SECRET}
-      - DAILY_REFRESH_SECRET=${DAILY_REFRESH_SECRET}
       - DAILY_REFRESH_RESEARCH_WEEK=${DAILY_REFRESH_RESEARCH_WEEK:-1}
       - REDIS_URL=${REDIS_URL}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}

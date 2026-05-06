@@ -1,10 +1,11 @@
-from datetime import datetime, UTC
 from flask import Blueprint, jsonify
-from scrapers.sleeper_scraper import SleeperScraper
+
 from cache.redis_dashboard import invalidate_dashboard_league
 from managers.database_manager import DatabaseManager
+from routes.helpers import json_api_error, with_error_handling
+from scrapers.sleeper_scraper import SleeperScraper
+from utils.datetime_serialization import utc_now_rfc3339
 from utils.helpers import setup_logging
-from routes.helpers import with_error_handling
 
 sleeper_leagues_bp = Blueprint(
     'sleeper_leagues', __name__, url_prefix='/api/sleeper/league')
@@ -121,7 +122,7 @@ def get_league_data(league_id: str):
             'status': 'success',
             'data': db_result,
             'source': 'database',
-            'timestamp': datetime.now(UTC).isoformat()
+            'timestamp': utc_now_rfc3339(),
         })
 
     # If not in database, fetch from Sleeper API
@@ -130,12 +131,12 @@ def get_league_data(league_id: str):
     league_data = SleeperScraper.scrape_league_data(league_id)
 
     if not league_data.get('success'):
-        return jsonify({
-            'status': 'error',
-            'error': 'Invalid league ID or failed to fetch league data',
-            'details': league_data.get('error'),
-            'league_id': league_id
-        }), 404
+        return json_api_error(
+            'Invalid league ID or failed to fetch league data',
+            404,
+            details=league_data.get('error'),
+            league_id=league_id,
+        )
 
     # Save to database
     save_result = DatabaseManager.save_league_data(league_data)
@@ -149,7 +150,7 @@ def get_league_data(league_id: str):
         'data': league_data,
         'source': 'sleeper_api',
         'database_saved': save_result.get('status') == 'success',
-        'timestamp': datetime.now(UTC).isoformat()
+        'timestamp': utc_now_rfc3339(),
     })
 
 
@@ -234,18 +235,18 @@ def get_league_rosters(league_id: str):
             'rosters': league_result['rosters'],
             'count': len(league_result['rosters']),
             'last_updated': league_result.get('last_updated'),
-            'timestamp': datetime.now(UTC).isoformat()
+            'timestamp': utc_now_rfc3339(),
         })
 
     # Fallback to direct API call if not in database
     rosters_data = SleeperScraper.fetch_league_rosters(league_id)
 
     if rosters_data is None:
-        return jsonify({
-            'status': 'error',
-            'error': 'Invalid league ID or failed to fetch roster data',
-            'league_id': league_id
-        }), 404
+        return json_api_error(
+            'Invalid league ID or failed to fetch roster data',
+            404,
+            league_id=league_id,
+        )
 
     return jsonify({
         'status': 'success',
@@ -253,7 +254,7 @@ def get_league_rosters(league_id: str):
         'rosters': rosters_data,
         'count': len(rosters_data),
         'source': 'direct_api',
-        'timestamp': datetime.now(UTC).isoformat()
+        'timestamp': utc_now_rfc3339(),
     })
 
 
@@ -343,18 +344,18 @@ def get_league_users(league_id: str):
             'users': league_result['users'],
             'count': len(league_result['users']),
             'last_updated': league_result.get('last_updated'),
-            'timestamp': datetime.now(UTC).isoformat()
+            'timestamp': utc_now_rfc3339(),
         })
 
     # Fallback to direct API call if not in database
     users_data = SleeperScraper.fetch_league_users(league_id)
 
     if users_data is None:
-        return jsonify({
-            'status': 'error',
-            'error': 'Invalid league ID or failed to fetch users data',
-            'league_id': league_id
-        }), 404
+        return json_api_error(
+            'Invalid league ID or failed to fetch users data',
+            404,
+            league_id=league_id,
+        )
 
     return jsonify({
         'status': 'success',
@@ -362,7 +363,7 @@ def get_league_users(league_id: str):
         'users': users_data,
         'count': len(users_data),
         'source': 'direct_api',
-        'timestamp': datetime.now(UTC).isoformat()
+        'timestamp': utc_now_rfc3339(),
     })
 
 
@@ -456,7 +457,7 @@ def refresh_league_data(league_id: str):
 
     results = {
         'status': 'success',
-        'timestamp': datetime.now(UTC).isoformat(),
+        'timestamp': utc_now_rfc3339(),
         'league_id': league_id,
         'league_data': None,
         'users_data': None,
@@ -542,4 +543,10 @@ def refresh_league_data(league_id: str):
         results['data'] = None
         results['source'] = 'sleeper_api'
 
-    return jsonify(results)
+    http_code = 200
+    if results['status'] == 'error':
+        scrape_failed = any(
+            e.get('type') == 'league_data' for e in results['errors'])
+        http_code = 404 if scrape_failed else 500
+    payload = jsonify(results)
+    return payload, http_code

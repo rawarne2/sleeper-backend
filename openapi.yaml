@@ -16,9 +16,6 @@ info:
   contact:
     name: API Support
     url: https://github.com/rawarne2/sleeper-backend
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
 
 servers:
   - url: http://localhost:5001
@@ -41,6 +38,10 @@ tags:
     description: Bulk refresh operations for scheduled tasks
   - name: Sleeper Weekly Stats
     description: Sleeper weekly fantasy football stats and roster information
+  - name: Dashboard
+    description: Aggregated dashboard payload endpoints
+  - name: Maintenance
+    description: Operator-only maintenance and cron endpoints
 
 paths:
   /api/ktc/health:
@@ -97,6 +98,56 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Server error during refresh
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/ktc/refresh/status/{job_id}:
+    get:
+      tags:
+        - KTC Player Rankings
+      summary: Get KTC refresh job status
+      description: Poll status for an async KTC refresh job started by POST/PUT /api/ktc/refresh.
+      operationId: getKtcRefreshJobStatus
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: Job status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [ "queued", "running", "success", "error" ]
+                  created_at:
+                    type: string
+                    nullable: true
+                  finished_at:
+                    type: string
+                    nullable: true
+                  league_format:
+                    type: string
+                    nullable: true
+                  is_redraft:
+                    type: boolean
+                    nullable: true
+                  tep_level:
+                    type: string
+                    nullable: true
+                  error:
+                    type: string
+                    nullable: true
+                  summary:
+                    type: object
+                    nullable: true
+        "404":
+          description: Unknown job id
           content:
             application/json:
               schema:
@@ -526,7 +577,7 @@ paths:
                 league_type:
                   type: string
                   description: League type
-                  enum: ["dynasty", "redraft"]
+                  enum: [ "dynasty", "redraft" ]
                   default: "dynasty"
                 scoring_settings:
                   type: object
@@ -581,6 +632,133 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/dashboard/league/{league_id}:
+    get:
+      tags:
+        - Dashboard
+      summary: Get dashboard league bundle
+      description: |
+        Returns a merged dashboard payload for a league, including rosters, player projections/values,
+        research metadata, and optional per-player season stats.
+      operationId: getDashboardLeagueBundle
+      parameters:
+        - $ref: "#/components/parameters/LeagueId"
+        - $ref: "#/components/parameters/SeasonQuery"
+        - $ref: "#/components/parameters/IsRedraft"
+        - $ref: "#/components/parameters/LeagueFormat"
+        - $ref: "#/components/parameters/TepLevel"
+      responses:
+        "200":
+          description: Dashboard payload retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: League not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/maintenance/health:
+    get:
+      tags:
+        - Maintenance
+      summary: Maintenance route health
+      description: Lightweight endpoint that documents available maintenance routes and auth expectations.
+      operationId: getMaintenanceHealth
+      responses:
+        "200":
+          description: Maintenance route metadata
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/maintenance/nightly-sync:
+    get:
+      tags:
+        - Maintenance
+      summary: Run nightly sync pipeline (cron style)
+      description: |
+        Runs the ingest pipeline (KTC -> leagues -> research). Requires
+        Authorization: Bearer <CRON_SECRET> in production.
+      operationId: runNightlySyncGet
+      responses:
+        "200":
+          description: Nightly sync completed
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags:
+        - Maintenance
+      summary: Run nightly sync pipeline (manual POST)
+      description: |
+        Same pipeline as GET /api/maintenance/nightly-sync with optional JSON body controls
+        (league_ids, seasons, research_week, skip_ktc, skip_leagues, skip_research, skip_prewarm).
+      operationId: runNightlySyncPost
+      responses:
+        "200":
+          description: Nightly sync completed
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/maintenance/prewarm:
+    get:
+      tags:
+        - Maintenance
+      summary: Prewarm dashboard caches
+      description: Prewarms known dashboard league cache keys; requires cron authorization.
+      operationId: prewarmDashboardCaches
+      responses:
+        "200":
+          description: Prewarm completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: One or more prewarm requests failed
           content:
             application/json:
               schema:
@@ -649,22 +827,24 @@ components:
     IsRedraft:
       name: is_redraft
       in: query
-      description: Ranking type - 'true' for redraft (current season only), 'false' for dynasty (long-term player value)
+      description: Ranking type - 'true' for redraft (current season only), 'false'
+        for dynasty (long-term player value)
       required: false
       schema:
         type: string
-        enum: ["true", "false"]
+        enum: [ "true", "false" ]
         default: "false"
       example: "false"
 
     LeagueFormat:
       name: league_format
       in: query
-      description: League format - '1qb' for standard leagues, 'superflex' for superflex leagues (can start 2 QBs)
+      description: League format - '1qb' for standard leagues, 'superflex' for
+        superflex leagues (can start 2 QBs)
       required: false
       schema:
         type: string
-        enum: ["1qb", "superflex"]
+        enum: [ "1qb", "superflex" ]
         default: "1qb"
       example: "superflex"
 
@@ -680,7 +860,7 @@ components:
       required: false
       schema:
         type: string
-        enum: ["", "tep", "tepp", "teppp"]
+        enum: [ "", "tep", "tepp", "teppp" ]
         default: ""
       example: "tep"
 
@@ -729,14 +909,25 @@ components:
     WeekQuery:
       name: week
       in: query
-      description: Week number (1-18)
+      description: Week number (1-18), or "all" for research refresh/read endpoints
       required: false
       schema:
-        type: integer
-        minimum: 1
-        maximum: 18
+        oneOf:
+          - type: integer
+            minimum: 1
+            maximum: 18
+          - type: string
+            enum: [ "all" ]
         default: 1
       example: 1
+
+    JobId:
+      name: job_id
+      in: path
+      description: Async KTC refresh job identifier
+      required: true
+      schema:
+        type: string
 
     LeagueType:
       name: league_type
@@ -745,7 +936,7 @@ components:
       required: false
       schema:
         type: string
-        enum: ["dynasty", "redraft"]
+        enum: [ "dynasty", "redraft" ]
         default: "dynasty"
       example: "dynasty"
 
@@ -759,11 +950,11 @@ components:
       properties:
         status:
           type: string
-          enum: ["healthy", "unhealthy"]
+          enum: [ "healthy", "unhealthy" ]
           description: Overall service health status
         database:
           type: string
-          enum: ["connected", "connection_failed", "error"]
+          enum: [ "connected", "connection_failed", "error" ]
           description: Database connection status
         timestamp:
           type: string
@@ -775,24 +966,67 @@ components:
 
     ErrorResponse:
       type: object
+      description: >
+        Standard JSON error envelope. Optional fields depend on the route;
+        clients should tolerate unknown keys.
       required:
         - status
         - error
         - timestamp
+      additionalProperties: true
       properties:
         status:
           type: string
-          enum: ["error"]
+          enum: [ "error" ]
         error:
           type: string
           description: Error message
         details:
           type: string
-          description: Additional error details
+          description: >
+            Additional detail as text. When the source value is structured
+            (e.g. upstream API error object), the server may JSON-encode it into this string.
         timestamp:
           type: string
           format: date-time
-          description: Error timestamp
+          description: Error timestamp (RFC 3339, UTC with Z)
+        hint:
+          type: string
+          description: Operator hint (e.g. maintenance auth)
+        suggestion:
+          type: string
+          description: Suggested remediation (e.g. which refresh to run)
+        job_id:
+          type: string
+        league_id:
+          type: string
+        season:
+          type: string
+        week:
+          oneOf:
+            - type: integer
+            - type: string
+          description: Week number or the literal "all" for research refresh errors
+        league_type:
+          type: string
+          enum: [ "dynasty", "redraft" ]
+        parameters:
+          type: object
+          additionalProperties: true
+          description: Request parameters associated with the error (e.g. KTC format flags)
+        configuration:
+          type: object
+          additionalProperties: true
+          description: Server-side configuration context (e.g. cleanup target)
+        results:
+          type: array
+          description: Per-item outcomes (e.g. prewarm summary entries)
+          items:
+            type: object
+            additionalProperties: true
+        sleeper_players_fetched:
+          type: integer
+          description: Count from Sleeper merge failures
 
     Player:
       type: object
@@ -805,7 +1039,7 @@ components:
           description: Player name
         position:
           type: string
-          enum: ["QB", "RB", "WR", "TE", "K", "DEF"]
+          enum: [ "QB", "RB", "WR", "TE", "K", "DEF" ]
           description: Player position
         team:
           type: string
@@ -860,7 +1094,7 @@ components:
           description: Player age
         rookie:
           type: string
-          enum: ["Yes", "No"]
+          enum: [ "Yes", "No" ]
           description: Whether player is a rookie
         oneQBValues:
           $ref: "#/components/schemas/PlayerValues"
@@ -979,10 +1213,10 @@ components:
           type: boolean
         league_format:
           type: string
-          enum: ["1qb", "superflex"]
+          enum: [ "1qb", "superflex" ]
         tep_level:
           type: string
-          enum: ["", "tep", "tepp", "teppp"]
+          enum: [ "", "tep", "tepp", "teppp" ]
         count:
           type: integer
         players:
@@ -1023,7 +1257,7 @@ components:
           properties:
             overall_status:
               type: string
-              enum: ["success", "partial_success", "error"]
+              enum: [ "success", "partial_success", "error" ]
             dynasty:
               type: object
               properties:
@@ -1196,7 +1430,7 @@ components:
       properties:
         status:
           type: string
-          enum: ["success"]
+          enum: [ "success" ]
         data:
           type: object
           properties:
@@ -1212,7 +1446,7 @@ components:
                 $ref: "#/components/schemas/User"
         source:
           type: string
-          enum: ["database", "sleeper_api"]
+          enum: [ "database", "sleeper_api" ]
         database_saved:
           type: boolean
         timestamp:
@@ -1224,7 +1458,7 @@ components:
       properties:
         status:
           type: string
-          enum: ["success"]
+          enum: [ "success" ]
         league_id:
           type: string
         rosters:
@@ -1245,7 +1479,7 @@ components:
       properties:
         status:
           type: string
-          enum: ["success"]
+          enum: [ "success" ]
         league_id:
           type: string
         users:
@@ -1266,7 +1500,7 @@ components:
       properties:
         status:
           type: string
-          enum: ["success", "partial_success", "error"]
+          enum: [ "success", "partial_success", "error" ]
         timestamp:
           type: string
           format: date-time
@@ -1314,7 +1548,7 @@ components:
           type: integer
         league_type:
           type: string
-          enum: ["dynasty", "redraft"]
+          enum: [ "dynasty", "redraft" ]
         player_id:
           type: string
         research_data:
@@ -1329,14 +1563,14 @@ components:
       properties:
         status:
           type: string
-          enum: ["success"]
+          enum: [ "success" ]
         data:
           type: array
           items:
             $ref: "#/components/schemas/ResearchData"
         source:
           type: string
-          enum: ["database", "sleeper_api"]
+          enum: [ "database", "sleeper_api" ]
         database_saved:
           type: boolean
         timestamp:
@@ -1348,7 +1582,7 @@ components:
       properties:
         status:
           type: string
-          enum: ["success"]
+          enum: [ "success" ]
         message:
           type: string
           example: "Research data refreshed successfully"
@@ -1358,7 +1592,7 @@ components:
           type: integer
         league_type:
           type: string
-          enum: ["dynasty", "redraft"]
+          enum: [ "dynasty", "redraft" ]
         refresh_results:
           type: object
         data:
@@ -1369,7 +1603,7 @@ components:
             - type: object
         source:
           type: string
-          enum: ["database", "sleeper_api"]
+          enum: [ "database", "sleeper_api" ]
         database_saved:
           type: boolean
         timestamp:
@@ -1381,10 +1615,10 @@ components:
       properties:
         status:
           type: string
-          enum: ["success"]
+          enum: [ "success" ]
         data_type:
           type: string
-          enum: ["weekly", "averages"]
+          enum: [ "weekly", "averages" ]
         season:
           type: string
         week:
@@ -1418,7 +1652,7 @@ components:
       properties:
         status:
           type: string
-          enum: ["success"]
+          enum: [ "success" ]
         message:
           type: string
           example: "Weekly stats refreshed successfully"
@@ -1441,13 +1675,13 @@ components:
       properties:
         status:
           type: string
-          enum: ["success"]
+          enum: [ "success" ]
         message:
           type: string
           example: "League stats seeded successfully"
         action:
           type: string
-          enum: ["created", "updated"]
+          enum: [ "created", "updated" ]
         league_id:
           type: string
         league_name:

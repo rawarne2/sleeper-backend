@@ -1,26 +1,58 @@
+import json
 from copy import copy as shallow_copy
-from datetime import datetime, UTC
-from flask import jsonify
+from typing import Any, Tuple
+
+from flask import Response, jsonify
 from functools import wraps
+
+from utils.datetime_serialization import utc_now_rfc3339
 from utils.helpers import setup_logging
 
 logger = setup_logging()
 
 
+def _error_detail_to_str(value: Any) -> str:
+    """Normalize ``details`` for JSON: always a string; dict/list use compact JSON."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, default=str)
+    return str(value)
+
+
+def json_api_error(
+    message: str,
+    code: int = 400,
+    *,
+    details: Any = None,
+    **extra: Any,
+) -> Tuple[Response, int]:
+    """JSON error body: ``status``, ``error``, RFC 3339 ``timestamp``, optional ``details``."""
+    body: dict[str, Any] = {
+        'status': 'error',
+        'error': message,
+        'timestamp': utc_now_rfc3339(),
+    }
+    if details is not None:
+        body['details'] = _error_detail_to_str(details)
+    body.update(extra)
+    return jsonify(body), code
+
+
 def with_error_handling(f):
-    """Decorator for consistent error handling."""
+    """Decorator for consistent unexpected-error handling (500)."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         try:
             return f(*args, **kwargs)
         except Exception as e:
             logger.error("Unexpected error in %s: %s", f.__name__, e)
-            return jsonify({
-                'status': 'error',
-                'error': 'Internal server error',
-                'details': str(e),
-                'timestamp': datetime.now(UTC).isoformat()
-            }), 500
+            return json_api_error(
+                'Internal server error',
+                500,
+                details=str(e),
+            )
+
     return decorated_function
 
 

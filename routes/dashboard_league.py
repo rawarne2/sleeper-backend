@@ -18,7 +18,7 @@ from cache.redis_dashboard import (
 from managers.database_manager import DatabaseManager
 from models.entities import Player, SleeperWeeklyData
 from models.extensions import db
-from routes.helpers import with_error_handling
+from routes.helpers import json_api_error, with_error_handling
 from scrapers.sleeper_scraper import SleeperScraper
 from utils.constants import (
     PLAYER_NAME_KEY,
@@ -332,6 +332,13 @@ def _attach_stats(
 @dashboard_bp.route("/league/<string:league_id>", methods=["GET"])
 @with_error_handling
 def get_dashboard_league(league_id: str):
+    """
+    ``GET /api/dashboard/league/<league_id>`` — league snapshot with rosters, slim KTC rows,
+    aggregated season points (weeks per ``SLEEPER_STATS_AGGREGATE_WEEK_*``), and research ownership.
+
+    Query: ``season``, ``league_format`` (1qb|superflex), ``is_redraft``, ``tep_level``.
+    Cache: ``X-Dashboard-League-Cache`` (HIT|MISS); body is JSON with ``status`` and ``data``.
+    """
     t0 = time.perf_counter()
 
     season_param = (request.args.get("season") or "").strip()
@@ -343,17 +350,15 @@ def get_dashboard_league(league_id: str):
         is_redraft_str, league_format_str, tep_level_str
     )
     if not valid:
-        return jsonify({"status": "error", "error": err}), 400
+        return json_api_error(err, 400)
 
     is_redraft = is_redraft_str.lower() == "true"
 
     if season_param and (len(season_param) != 4 or not season_param.isdigit()):
-        return jsonify(
-            {
-                "status": "error",
-                "error": "Query parameter season must be a four-digit year when provided.",
-            }
-        ), 400
+        return json_api_error(
+            "Query parameter season must be a four-digit year when provided.",
+            400,
+        )
 
     ms_season_lookup = 0.0
     if season_param:
@@ -366,13 +371,11 @@ def get_dashboard_league(league_id: str):
             # Auto-import league on first request so users can add new league IDs.
             ensured_season = _ensure_league_in_db(league_id)
             if not ensured_season:
-                return jsonify(
-                    {
-                        "status": "error",
-                        "error": "Invalid Sleeper league ID or unable to fetch league data.",
-                        "league_id": league_id,
-                    }
-                ), 404
+                return json_api_error(
+                    "Invalid Sleeper league ID or unable to fetch league data.",
+                    404,
+                    league_id=league_id,
+                )
             raw_season = ensured_season
         season = str(raw_season).strip() if raw_season is not None else ""
         if len(season) != 4 or not season.isdigit():
@@ -412,14 +415,15 @@ def get_dashboard_league(league_id: str):
     ms_league = (time.perf_counter() - t_league) * 1000
 
     if db_league.get("status") != "success":
-        return jsonify(
-            {
-                "status": "error",
-                "error": db_league.get("error", "League not found"),
-                "hint": "Run the nightly sync or refresh this league so a snapshot exists in the database.",
-                "league_id": league_id,
-            }
-        ), 404
+        return json_api_error(
+            db_league.get("error", "League not found"),
+            404,
+            hint=(
+                "Run the nightly sync or refresh this league so a snapshot "
+                "exists in the database."
+            ),
+            league_id=league_id,
+        )
 
     needed_ids = _roster_player_ids(db_league)
     research_lt = _research_league_type_label(is_redraft)

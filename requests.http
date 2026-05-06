@@ -18,7 +18,7 @@
 @KTC_QS_SUPERFLEX_REDRAFT = tep_level=&is_redraft=true&league_format=superflex
 
 # Same value as server CRON_SECRET (never commit real secrets)
-@CRON_SECRET = your-cron-secret
+@CRON_SECRET = 'your-cron-secret'
 
 ### ============================================================================
 ### VARIABLES / ENV (see bottom for reference + Redis / secrets)
@@ -27,18 +27,21 @@
 ### Verify maintenance routes are live (GET should be 200 JSON — if 404, wrong BASE_URL or old deploy)
 GET {{BASE_URL}}/api/maintenance/health
 
-### Nightly full sync — GET (matches Vercel Cron) or POST; requires CRON_SECRET on server
+### Nightly full sync — GET (matches Vercel Cron) or POST; Bearer required in production
 GET {{BASE_URL}}/api/maintenance/nightly-sync
 Authorization: Bearer {{CRON_SECRET}}
 
-### Daily refresh — optional X-Daily-Refresh-Secret when DAILY_REFRESH_SECRET is set on server
-POST {{BASE_URL}}/api/maintenance/daily-refresh
+### Prewarm (same Redis step as tail of nightly-sync)
+GET {{BASE_URL}}/api/maintenance/prewarm
+Authorization: Bearer {{CRON_SECRET}}
+
+### Manual full pipeline (same as cron): POST with optional JSON body, Bearer CRON_SECRET
+POST {{BASE_URL}}/api/maintenance/nightly-sync
+Authorization: Bearer {{CRON_SECRET}}
 Content-Type: application/json
 Accept: application/json
 
 {}
-
-# X-Daily-Refresh-Secret: {{DAILY_REFRESH_SECRET}}
 
 ### ============================================================================
 ### Health
@@ -71,16 +74,19 @@ GET {{BASE_URL}}/api/sleeper/league/{{LEAGUE_ID}}/users
 
 ### ============================================================================
 ### Sleeper — research (ownership %); week + league_type optional on GET
+### week accepts integers or "all" (weeks 1-18)
 ### ============================================================================
 
 GET {{BASE_URL}}/api/sleeper/players/research/{{SEASON}}?week={{WEEK}}&league_type={{LEAGUE_TYPE}}
 POST {{BASE_URL}}/api/sleeper/players/research/{{SEASON}}?week={{WEEK}}&league_type={{LEAGUE_TYPE}}
 PUT {{BASE_URL}}/api/sleeper/players/research/{{SEASON}}?week={{WEEK}}&league_type={{LEAGUE_TYPE}}
+PUT {{BASE_URL}}/api/sleeper/players/research/{{SEASON}}?week=all&league_type={{LEAGUE_TYPE}}
 
 ### ============================================================================
 ### Sleeper — weekly stats (league in path may differ from @SEASON)
 ### ============================================================================
 
+### Create league stats record (first time — also fetches weekly stats for weeks 1-18)
 POST {{BASE_URL}}/api/sleeper/league/{{LEAGUE_ID}}/stats/seed
 Content-Type: application/json
 
@@ -90,10 +96,13 @@ Content-Type: application/json
   "league_type": "{{LEAGUE_TYPE}}"
 }
 
-PUT {{BASE_URL}}/api/sleeper/league/{{LEAGUE_ID}}/stats/week/{{WEEK}}?season={{SEASON}}&league_type={{LEAGUE_TYPE}}
-POST {{BASE_URL}}/api/sleeper/league/{{LEAGUE_ID}}/stats/week/{{WEEK}}?season={{SEASON}}&league_type={{LEAGUE_TYPE}}
-GET {{BASE_URL}}/api/sleeper/league/{{LEAGUE_ID}}/stats/week/{{WEEK}}?season={{SEASON}}&league_type={{LEAGUE_TYPE}}
-GET {{BASE_URL}}/api/sleeper/league/{{LEAGUE_ID}}/stats/week/{{WEEK}}?season={{SEASON}}&league_type={{LEAGUE_TYPE}}&average=true
+### Update existing league stats record + fetch any new weeks past last_week_updated
+PUT {{BASE_URL}}/api/sleeper/league/{{LEAGUE_ID}}/stats/seed
+
+### Refresh weekly stats — season/league_type read from DB; pass as params to override
+PUT {{BASE_URL}}/api/sleeper/league/{{LEAGUE_ID}}/stats/week/{{WEEK}}
+GET {{BASE_URL}}/api/sleeper/league/{{LEAGUE_ID}}/stats/week/{{WEEK}}
+GET {{BASE_URL}}/api/sleeper/league/{{LEAGUE_ID}}/stats/week/{{WEEK}}?average=true
 
 ### ============================================================================
 ### KTC — refresh (POST and PUT both supported on /api/ktc/refresh)
@@ -145,3 +154,4 @@ POST {{BASE_URL}}/api/ktc/cleanup?{{KTC_QS_SUPERFLEX_DYN_TEP}}
 # 2) POST /api/ktc/refresh/all   (or targeted /api/ktc/refresh?...)
 # 3) GET league / research as needed
 # Scheduled: Vercel Cron → GET /api/maintenance/nightly-sync with CRON_SECRET (see .env.example).
+# Manual same pipeline: GET or POST /api/maintenance/nightly-sync with Authorization: Bearer <CRON_SECRET>.

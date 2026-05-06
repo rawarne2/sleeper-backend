@@ -1,6 +1,7 @@
 from flask import Blueprint, current_app, jsonify, make_response, request
+
 from managers.database_manager import DatabaseManager
-from routes.helpers import filter_players_by_format
+from routes.helpers import filter_players_by_format, json_api_error, with_error_handling
 from utils.datetime_serialization import format_instant_rfc3339_utc, utc_now_rfc3339
 from utils.helpers import validate_parameters, setup_logging
 from routes.ktc.rankings_cache import (
@@ -37,6 +38,7 @@ def _wants_synchronous_refresh() -> bool:
 
 
 @ktc_rankings_bp.route('/refresh', methods=['POST', 'PUT'])
+@with_error_handling
 def refresh_rankings():
     """
     Refresh/Update KTC player rankings
@@ -190,74 +192,63 @@ def refresh_rankings():
               type: boolean
               example: false
     """
-    try:
-        is_redraft_str = request.args.get('is_redraft', 'false')
-        league_format_str = request.args.get('league_format', '1qb')
-        tep_level_str = request.args.get('tep_level', '')
+    is_redraft_str = request.args.get('is_redraft', 'false')
+    league_format_str = request.args.get('league_format', '1qb')
+    tep_level_str = request.args.get('tep_level', '')
 
-        valid, league_format, tep_level, error_msg = validate_parameters(
-            is_redraft_str, league_format_str, tep_level_str)
-        if not valid:
-            return jsonify({'error': error_msg}), 400
+    valid, league_format, tep_level, error_msg = validate_parameters(
+        is_redraft_str, league_format_str, tep_level_str)
+    if not valid:
+        return json_api_error(error_msg, 400)
 
-        is_redraft = is_redraft_str.lower() == 'true'
+    is_redraft = is_redraft_str.lower() == 'true'
 
-        if _wants_synchronous_refresh():
-            logger.info("KTC refresh (sync=1): full pipeline in request thread")
-            outcome = execute_ktc_refresh_pipeline(
-                league_format, is_redraft, tep_level)
-            return jsonify(outcome.body), outcome.status_code
+    if _wants_synchronous_refresh():
+        logger.info("KTC refresh (sync=1): full pipeline in request thread")
+        outcome = execute_ktc_refresh_pipeline(
+            league_format, is_redraft, tep_level)
+        return jsonify(outcome.body), outcome.status_code
 
-        logger.info(
-            "KTC refresh: enqueue background job (use sync=1 for blocking)")
-        if not DatabaseManager.verify_database_connection():
-            logger.error(
-                "Database connection verification failed before refresh enqueue")
-            return jsonify({
-                'error': 'Database connection failed',
-                'details': 'Cannot establish database connection before starting refresh operation'
-            }), 500
+    logger.info(
+        "KTC refresh: enqueue background job (use sync=1 for blocking)")
+    if not DatabaseManager.verify_database_connection():
+        logger.error(
+            "Database connection verification failed before refresh enqueue")
+        return json_api_error(
+            'Database connection failed',
+            500,
+            details='Cannot establish database connection before starting refresh operation',
+        )
 
-        app = current_app._get_current_object()
-        job_id, already_running = try_begin_async_job(
-            app, league_format, is_redraft, tep_level)
+    app = current_app._get_current_object()
+    job_id, already_running = try_begin_async_job(
+        app, league_format, is_redraft, tep_level)
 
-        return jsonify({
-            'accepted': True,
-            'status': 'queued',
-            'job_id': job_id,
-            'already_running': already_running,
-            'message': (
-                'KTC refresh accepted; running in background'
-                + (' (already in progress for this configuration)'
-                   if already_running else '')
-            ),
-            'poll_url': f'/api/ktc/refresh/status/{job_id}',
-            'is_redraft': is_redraft,
-            'league_format': league_format,
-            'tep_level': tep_level or '',
-            'hint': 'Refetch GET /api/dashboard/league/<id> until ktcLastUpdated advances.',
-        }), 202
-
-    except Exception as e:
-        logger.error("Error refreshing rankings: %s", e)
-        return jsonify({
-            'error': 'Internal server error during refresh',
-            'details': str(e),
-            'database_success': False,
-            'context': 'Error occurred in main refresh flow'
-        }), 500
+    return jsonify({
+        'accepted': True,
+        'status': 'queued',
+        'job_id': job_id,
+        'already_running': already_running,
+        'message': (
+            'KTC refresh accepted; running in background'
+            + (' (already in progress for this configuration)'
+               if already_running else '')
+        ),
+        'poll_url': f'/api/ktc/refresh/status/{job_id}',
+        'is_redraft': is_redraft,
+        'league_format': league_format,
+        'tep_level': tep_level or '',
+        'hint': 'Refetch GET /api/dashboard/league/<id> until ktcLastUpdated advances.',
+    }), 202
 
 
 @ktc_rankings_bp.route('/refresh/status/<job_id>', methods=['GET'])
+@with_error_handling
 def refresh_rankings_job_status(job_id: str):
-    """Poll KTC background refresh job status."""
+    """``GET .../refresh/status/<job_id>`` — poll asynchronous KTC refresh job status."""
     rec = get_refresh_job(job_id)
     if not rec:
-        return jsonify({
-            'error': 'Unknown job_id',
-            'job_id': job_id,
-        }), 404
+        return json_api_error('Unknown job_id', 404, job_id=job_id)
     return jsonify({
         'job_id': rec['job_id'],
         'status': rec['status'],
@@ -272,6 +263,7 @@ def refresh_rankings_job_status(job_id: str):
 
 
 @ktc_rankings_bp.route('/cleanup', methods=['POST'])
+@with_error_handling
 def cleanup_database():
     """
     Clean up incomplete or corrupted data
@@ -342,48 +334,40 @@ def cleanup_database():
             details:
               type: string
     """
-    try:
-        # Get and validate parameters
-        is_redraft_str = request.args.get('is_redraft', 'false')
-        league_format_str = request.args.get('league_format', '1qb')
-        tep_level_str = request.args.get('tep_level', '')
+    is_redraft_str = request.args.get('is_redraft', 'false')
+    league_format_str = request.args.get('league_format', '1qb')
+    tep_level_str = request.args.get('tep_level', '')
 
-        valid, league_format, tep_level, error_msg = validate_parameters(
-            is_redraft_str, league_format_str, tep_level_str
+    valid, league_format, tep_level, error_msg = validate_parameters(
+        is_redraft_str, league_format_str, tep_level_str
+    )
+
+    if not valid:
+        return json_api_error(error_msg, 400)
+
+    is_redraft = is_redraft_str.lower() == 'true'
+
+    cleanup_result = DatabaseManager.cleanup_incomplete_data(
+        league_format, is_redraft, tep_level)
+
+    if cleanup_result['status'] == 'error':
+        return json_api_error(
+            'Cleanup operation failed',
+            500,
+            details=cleanup_result['error'],
+            configuration=cleanup_result['configuration'],
         )
 
-        if not valid:
-            return jsonify({'error': error_msg}), 400
-
-        is_redraft = is_redraft_str.lower() == 'true'
-
-        # Perform cleanup
-        cleanup_result = DatabaseManager.cleanup_incomplete_data(
-            league_format, is_redraft, tep_level)
-
-        if cleanup_result['status'] == 'error':
-            return jsonify({
-                'error': 'Cleanup operation failed',
-                'details': cleanup_result['error'],
-                'configuration': cleanup_result['configuration']
-            }), 500
-
-        invalidate_rankings_cache()
-        return jsonify({
-            'message': 'Database cleanup completed',
-            'timestamp': utc_now_rfc3339(),
-            'cleanup_result': cleanup_result
-        })
-
-    except Exception as e:
-        logger.error("Error during cleanup endpoint: %s", e)
-        return jsonify({
-            'error': 'Internal server error during cleanup',
-            'details': str(e)
-        }), 500
+    invalidate_rankings_cache()
+    return jsonify({
+        'message': 'Database cleanup completed',
+        'timestamp': utc_now_rfc3339(),
+        'cleanup_result': cleanup_result
+    })
 
 
 @ktc_rankings_bp.route('/rankings', methods=['GET'])
+@with_error_handling
 def get_rankings():
     """
     Get stored player rankings
@@ -502,70 +486,62 @@ def get_rankings():
             details:
               type: string
     """
-    try:
-        # Get and validate parameters
-        is_redraft_str = request.args.get('is_redraft', 'false')
-        league_format_str = request.args.get('league_format', '1qb')
-        tep_level_str = request.args.get('tep_level', '')
+    is_redraft_str = request.args.get('is_redraft', 'false')
+    league_format_str = request.args.get('league_format', '1qb')
+    tep_level_str = request.args.get('tep_level', '')
 
-        valid, league_format, tep_level, error_msg = validate_parameters(
-            is_redraft_str, league_format_str, tep_level_str
-        )
+    valid, league_format, tep_level, error_msg = validate_parameters(
+        is_redraft_str, league_format_str, tep_level_str
+    )
 
-        if not valid:
-            return jsonify({'error': error_msg}), 400
+    if not valid:
+        return json_api_error(error_msg, 400)
 
-        is_redraft = is_redraft_str.lower() == 'true'
+    is_redraft = is_redraft_str.lower() == 'true'
 
-        cached = get_cached_rankings_json(is_redraft, league_format, tep_level)
-        if cached is not None:
-            resp = make_response(cached)
-            resp.mimetype = 'application/json'
-            resp.headers['Cache-Control'] = (
-                'public, max-age=3600, stale-while-revalidate=86400'
-            )
-            resp.headers['X-Rankings-Cache'] = 'HIT'
-            return resp
-
-        players, last_updated = DatabaseManager.get_players_from_db(
-            league_format)
-
-        if not players:
-            return jsonify({
-                'error': 'No rankings found for the specified parameters',
-                'suggestion': 'Try calling the /api/ktc/refresh/all endpoint first to populate data',
-                'parameters': {
-                    'is_redraft': is_redraft,
-                    'league_format': league_format,
-                    'tep_level': tep_level
-                }
-            }), 404
-
-        players_data = filter_players_by_format(
-            players, league_format, tep_level)
-
-        payload = {
-            'timestamp': format_instant_rfc3339_utc(last_updated),
-            'is_redraft': is_redraft,
-            'league_format': league_format,
-            'tep_level': tep_level,
-            'count': len(players_data),
-            'players': players_data
-        }
-        json_bytes = set_cached_rankings_json(
-            is_redraft, league_format, tep_level, payload
-        )
-        resp = make_response(json_bytes)
+    cached = get_cached_rankings_json(is_redraft, league_format, tep_level)
+    if cached is not None:
+        resp = make_response(cached)
         resp.mimetype = 'application/json'
         resp.headers['Cache-Control'] = (
             'public, max-age=3600, stale-while-revalidate=86400'
         )
-        resp.headers['X-Rankings-Cache'] = 'MISS'
+        resp.headers['X-Rankings-Cache'] = 'HIT'
         return resp
 
-    except Exception as e:
-        logger.error("Error retrieving rankings: %s", e)
-        return jsonify({
-            'error': 'Internal server error during rankings retrieval',
-            'details': str(e)
-        }), 500
+    players, last_updated = DatabaseManager.get_players_from_db(
+        league_format)
+
+    if not players:
+        return json_api_error(
+            'No rankings found for the specified parameters',
+            404,
+            suggestion='Try POST /api/ktc/refresh/all or POST /api/ktc/refresh to populate data',
+            parameters={
+                'is_redraft': is_redraft,
+                'league_format': league_format,
+                'tep_level': tep_level,
+            },
+        )
+
+    players_data = filter_players_by_format(
+        players, league_format, tep_level)
+
+    payload = {
+        'timestamp': format_instant_rfc3339_utc(last_updated),
+        'is_redraft': is_redraft,
+        'league_format': league_format,
+        'tep_level': tep_level,
+        'count': len(players_data),
+        'players': players_data
+    }
+    json_bytes = set_cached_rankings_json(
+        is_redraft, league_format, tep_level, payload
+    )
+    resp = make_response(json_bytes)
+    resp.mimetype = 'application/json'
+    resp.headers['Cache-Control'] = (
+        'public, max-age=3600, stale-while-revalidate=86400'
+    )
+    resp.headers['X-Rankings-Cache'] = 'MISS'
+    return resp

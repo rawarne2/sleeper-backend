@@ -1,18 +1,35 @@
-from flask import Blueprint, jsonify, request
 import json
 from typing import Any, Dict, List, Optional, Tuple
 
+from flask import Blueprint, jsonify, request
+
 from cache.redis_dashboard import invalidate_dashboard_league_caches_for_ktc_dimensions
-from scrapers.sleeper_scraper import SleeperScraper
 from models.entities import SleeperWeeklyData
 from models.extensions import db
+from routes.helpers import json_api_error, with_error_handling
+from scrapers.sleeper_scraper import SleeperScraper
 from utils.datetime_serialization import utc_now_rfc3339
 from utils.helpers import setup_logging
-from routes.helpers import with_error_handling
 
 sleeper_research_bp = Blueprint(
     'sleeper_research', __name__, url_prefix='/api/sleeper/players')
 logger = setup_logging()
+
+_RESEARCH_LEAGUE_TYPES = frozenset({'dynasty', 'redraft'})
+
+
+def _season_path_error(season: str) -> Optional[str]:
+    s = season.strip()
+    if len(s) != 4 or not s.isdigit():
+        return 'season path must be a four-digit NFL year'
+    return None
+
+
+def _normalize_league_type(raw: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    v = (raw or 'dynasty').strip().lower()
+    if v not in _RESEARCH_LEAGUE_TYPES:
+        return None, "league_type must be 'dynasty' or 'redraft'"
+    return v, None
 
 
 def _parse_week_param(value: Optional[str]) -> Tuple[Optional[int], bool, Optional[str]]:
@@ -138,7 +155,8 @@ def get_research_data(season: str):
                   week:
                     type: integer
                   league_type:
-                    type: integer
+                    type: string
+                    enum: ['dynasty', 'redraft']
                   player_id:
                     type: string
                   research_data:
@@ -152,6 +170,19 @@ def get_research_data(season: str):
               enum: ['database', 'sleeper_api']
             database_saved:
               type: boolean
+            timestamp:
+              type: string
+              format: date-time
+      400:
+        description: Invalid week, season path, or league_type query
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: ['error']
+            error:
+              type: string
             timestamp:
               type: string
               format: date-time
@@ -183,15 +214,18 @@ def get_research_data(season: str):
             details:
               type: string
     """
-    # Get query parameters
     week, fetch_all_weeks, week_error = _parse_week_param(request.args.get('week'))
     if week_error:
-        return jsonify({
-            'status': 'error',
-            'error': week_error,
-            'season': season,
-        }), 400
-    league_type = request.args.get('league_type', 'dynasty')
+        return json_api_error(week_error, 400, season=season)
+
+    sea_err = _season_path_error(season)
+    if sea_err:
+        return json_api_error(sea_err, 400, season=season.strip())
+
+    league_type, lt_err = _normalize_league_type(
+        request.args.get('league_type'))
+    if lt_err:
+        return json_api_error(lt_err, 400, season=season)
 
     logger.info(
         "Research data requested for season: %s, week: %s", season, 'all' if fetch_all_weeks else week)
@@ -220,12 +254,14 @@ def get_research_data(season: str):
         })
 
     if fetch_all_weeks:
-        return jsonify({
-            'status': 'error',
-            'error': 'No research data found for weeks 1-18',
-            'details': 'Run PUT /api/sleeper/players/research/{season}?week=all first',
-            'season': season,
-        }), 404
+        return json_api_error(
+            'No research data found for weeks 1-18',
+            404,
+            details=(
+                'Run PUT /api/sleeper/players/research/{season}?week=all first'
+            ),
+            season=season,
+        )
 
     # If not in database, try to fetch from Sleeper API
     logger.info(
@@ -234,12 +270,12 @@ def get_research_data(season: str):
         season, week, league_type)
 
     if not research_data.get('success'):
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to fetch research data',
-            'details': research_data.get('error', 'Unknown error'),
-            'season': season
-        }), 404
+        return json_api_error(
+            'Failed to fetch research data',
+            404,
+            details=research_data.get('error', 'Unknown error'),
+            season=season,
+        )
 
     return jsonify({
         'status': 'success',
@@ -299,7 +335,8 @@ def refresh_research_data(season: str):
             week:
               type: integer
             league_type:
-              type: integer
+              type: string
+              enum: ['dynasty', 'redraft']
             refresh_results:
               type: object
             timestamp:
@@ -336,15 +373,18 @@ def refresh_research_data(season: str):
             season:
               type: string
     """
-    # Get query parameters
     week, refresh_all_weeks, week_error = _parse_week_param(request.args.get('week'))
     if week_error:
-        return jsonify({
-            'status': 'error',
-            'error': week_error,
-            'season': season,
-        }), 400
-    league_type = request.args.get('league_type', 'dynasty')
+        return json_api_error(week_error, 400, season=season)
+
+    sea_err = _season_path_error(season)
+    if sea_err:
+        return json_api_error(sea_err, 400, season=season.strip())
+
+    league_type, lt_err = _normalize_league_type(
+        request.args.get('league_type'))
+    if lt_err:
+        return json_api_error(lt_err, 400, season=season)
 
     logger.info(
         "Manual refresh requested for research data: season=%s, week=%s",
@@ -371,14 +411,14 @@ def refresh_research_data(season: str):
     invalidate_dashboard_league_caches_for_ktc_dimensions(None, None, None)
 
     if failed == len(weeks):
-        return jsonify({
-            'status': 'error',
-            'error': 'Failed to refresh research data',
-            'details': first_error or 'Unknown error',
-            'season': season,
-            'week': 'all' if refresh_all_weeks else week,
-            'league_type': league_type,
-        }), 400
+        return json_api_error(
+            'Failed to refresh research data',
+            400,
+            details=first_error or 'Unknown error',
+            season=season,
+            week='all' if refresh_all_weeks else week,
+            league_type=league_type,
+        )
 
     return jsonify({
         'status': 'success',

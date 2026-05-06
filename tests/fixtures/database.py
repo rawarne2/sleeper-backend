@@ -11,6 +11,16 @@ from cache import redis_rankings as _redis_rankings
 from models.extensions import db
 
 
+def _sqlite_teardown():
+    """End-of-test cleanup that avoids sqlite 'database is locked' on drop_all."""
+    db.session.rollback()
+    db.session.remove()
+    try:
+        db.engine.dispose()
+    except Exception:
+        pass
+
+
 def _disable_redis():
     """
     Force ``get_redis_client()`` to return None during a test so cached
@@ -34,13 +44,20 @@ def client():
     """Create test client with in-memory database."""
     app.config['TESTING'] = True
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+    if str(app.config['SQLALCHEMY_DATABASE_URI']).startswith('sqlite'):
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'connect_args': {
+                'timeout': 30,
+                'check_same_thread': False,
+            },
+        }
     _disable_redis()
 
     with app.test_client() as client:
         with app.app_context():
             db.create_all()
             yield client
-            db.session.remove()
+            _sqlite_teardown()
             db.drop_all()
 
 
@@ -49,10 +66,17 @@ def app_context():
     """Create app context for database operations."""
     app.config['TESTING'] = True
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+    if str(app.config['SQLALCHEMY_DATABASE_URI']).startswith('sqlite'):
+        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+            'connect_args': {
+                'timeout': 30,
+                'check_same_thread': False,
+            },
+        }
     _disable_redis()
 
     with app.app_context():
         db.create_all()
         yield app
-        db.session.remove()
+        _sqlite_teardown()
         db.drop_all()

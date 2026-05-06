@@ -1,7 +1,6 @@
 """
 Shared Swagger/OpenAPI configuration for both app.py and vercel_app.py
 """
-import os
 import yaml
 import json
 from flask import redirect, url_for
@@ -30,10 +29,6 @@ def get_swagger_config():
         "contact": {
             "name": "API Support",
             "url": "https://github.com/rawarne2/sleeper-backend"
-        },
-        "license": {
-            "name": "MIT",
-            "url": "https://opensource.org/licenses/MIT"
         }
     }
 
@@ -93,17 +88,13 @@ curl "{base_url}/api/ktc/rankings?league_format=1qb&is_redraft=true"
 curl "{base_url}/api/sleeper/league/1210364682523656192"
 
 # Refresh league data
-curl -X POST "{base_url}/api/sleeper/league/1210364682523656192/refresh"
+curl -X POST "{base_url}/api/sleeper/league/1210364682523656192"
 ```
             """,
             "version": "1.0.0",
             "contact": {
                 "name": "API Support",
                 "url": "https://github.com/rawarne2/sleeper-backend"
-            },
-            "license": {
-                "name": "MIT",
-                "url": "https://opensource.org/licenses/MIT"
             }
         },
         "host": host,
@@ -135,6 +126,18 @@ curl -X POST "{base_url}/api/sleeper/league/1210364682523656192/refresh"
             {
                 "name": "Bulk Operations",
                 "description": "Bulk refresh operations for scheduled tasks"
+            },
+            {
+                "name": "Sleeper Weekly Stats",
+                "description": "Sleeper weekly fantasy football stats and roster information"
+            },
+            {
+                "name": "Dashboard",
+                "description": "Aggregated dashboard payload endpoints"
+            },
+            {
+                "name": "Maintenance",
+                "description": "Operator-only maintenance and cron endpoints"
             }
         ]
     }

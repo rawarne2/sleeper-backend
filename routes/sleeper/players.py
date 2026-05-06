@@ -1,7 +1,9 @@
-from datetime import datetime, UTC
 from flask import Blueprint, jsonify
-from scrapers.sleeper_scraper import SleeperScraper
+
 from managers.database_manager import DatabaseManager
+from routes.helpers import json_api_error, with_error_handling
+from scrapers.sleeper_scraper import SleeperScraper
+from utils.datetime_serialization import utc_now_rfc3339
 from utils.helpers import setup_logging
 
 sleeper_players_bp = Blueprint(
@@ -10,6 +12,7 @@ logger = setup_logging()
 
 
 @sleeper_players_bp.route('/refresh', methods=['POST'])
+@with_error_handling
 def refresh_sleeper_data():
     """
     Refresh Sleeper player data and merge with existing KTC data
@@ -66,58 +69,49 @@ def refresh_sleeper_data():
               type: boolean
               example: false
     """
-    try:
-        logger.info("Starting comprehensive Sleeper data refresh and merge...")
+    logger.info("Starting comprehensive Sleeper data refresh and merge...")
 
-        # Verify database connection
-        if not DatabaseManager.verify_database_connection():
-            return jsonify({
-                'error': 'Database connection failed',
-                'details': 'Cannot establish database connection for Sleeper refresh'
-            }), 500
+    if not DatabaseManager.verify_database_connection():
+        return json_api_error(
+            'Database connection failed',
+            500,
+            details='Cannot establish database connection for Sleeper refresh',
+        )
 
-        # Fetch and process Sleeper player data using new SleeperScraper
-        sleeper_players = SleeperScraper.scrape_sleeper_data()
-        if not sleeper_players:
-            return jsonify({
-                'error': 'Failed to fetch Sleeper player data',
-                'details': 'No active fantasy players found in Sleeper API response'
-            }), 500
+    sleeper_players = SleeperScraper.scrape_sleeper_data()
+    if not sleeper_players:
+        return json_api_error(
+            'Failed to fetch Sleeper player data',
+            500,
+            details='No active fantasy players found in Sleeper API response',
+        )
 
-        logger.info("Successfully fetched %s Sleeper players",
-                    len(sleeper_players))
+    logger.info(
+        "Successfully fetched %s Sleeper players",
+        len(sleeper_players),
+    )
 
-        # Save Sleeper data to database
-        merge_result = DatabaseManager.save_sleeper_data_to_db(
-            sleeper_players)
+    merge_result = DatabaseManager.save_sleeper_data_to_db(sleeper_players)
 
-        if merge_result['status'] == 'error':
-            return jsonify({
-                'error': 'Failed to merge Sleeper data with KTC players',
-                'details': merge_result['error'],
-                'sleeper_players_fetched': len(sleeper_players)
-            }), 500
+    if merge_result['status'] == 'error':
+        return json_api_error(
+            'Failed to merge Sleeper data with KTC players',
+            500,
+            details=merge_result['error'],
+            sleeper_players_fetched=len(sleeper_players),
+        )
 
-        # Return comprehensive success response
-        return jsonify({
-            'message': 'Sleeper data refreshed and merged successfully',
-            'timestamp': datetime.now(UTC).isoformat(),
-            'sleeper_data_results': {
-                'total_sleeper_players': merge_result['total_sleeper_players'],
-                'existing_records_before': merge_result['existing_sleeper_records'],
-                'ktc_players_updated': merge_result['updates_made'],
-                'new_records_created': merge_result['new_records_created'],
-                'match_failures': merge_result['match_failures'],
-                'total_processed': merge_result['total_processed']
-            },
-            'database_success': True,
-            'merge_effective': merge_result['total_processed'] > 0
-        })
-
-    except Exception as e:
-        logger.error("Error refreshing Sleeper data: %s", e)
-        return jsonify({
-            'error': 'Internal server error during Sleeper refresh',
-            'details': str(e),
-            'database_success': False
-        }), 500
+    return jsonify({
+        'message': 'Sleeper data refreshed and merged successfully',
+        'timestamp': utc_now_rfc3339(),
+        'sleeper_data_results': {
+            'total_sleeper_players': merge_result['total_sleeper_players'],
+            'existing_records_before': merge_result['existing_sleeper_records'],
+            'ktc_players_updated': merge_result['updates_made'],
+            'new_records_created': merge_result['new_records_created'],
+            'match_failures': merge_result['match_failures'],
+            'total_processed': merge_result['total_processed']
+        },
+        'database_success': True,
+        'merge_effective': merge_result['total_processed'] > 0
+    })
