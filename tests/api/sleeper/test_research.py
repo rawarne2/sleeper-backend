@@ -1,8 +1,6 @@
 """
 Sleeper Research API endpoint tests.
 """
-import json
-from tests.fixtures.database import client
 
 
 def test_get_research_data_endpoint_exists(client):

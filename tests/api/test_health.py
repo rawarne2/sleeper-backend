@@ -1,8 +1,6 @@
 """
 Health API endpoint tests.
 """
-import json
-from tests.fixtures.database import client
 
 
 def test_health_check_endpoint_exists(client):
@@ -15,7 +13,7 @@ def test_health_check_endpoint_exists(client):
 def test_health_check_response_format(client):
     """Test that the health check endpoint returns properly formatted JSON"""
     response = client.get('/api/ktc/health')
-    data = json.loads(response.data)
+    data = response.get_json()
 
     # Check that all required fields are present
     assert 'status' in data

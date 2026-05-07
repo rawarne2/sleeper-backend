@@ -4,8 +4,6 @@ Integration tests for weekly stats API endpoints.
 These tests verify the weekly stats functionality works end-to-end
 with the database and API endpoints.
 """
-import json
-from tests.fixtures.database import client
 
 
 def test_seed_league_stats_integration(client):
@@ -23,7 +21,7 @@ def test_seed_league_stats_integration(client):
     assert response.status_code in [200, 400, 500]
 
     if response.status_code == 200:
-        response_data = json.loads(response.data)
+        response_data = response.get_json()
         assert response_data['status'] == 'success'
         assert 'message' in response_data
         assert 'league_id' in response_data
@@ -49,7 +47,7 @@ def test_seed_league_stats_missing_data(client):
         '/api/sleeper/league/new_league_8888/stats/seed', json={})
 
     assert response.status_code == 400
-    response_data = json.loads(response.data)
+    response_data = response.get_json()
     assert response_data['status'] == 'error'
     assert 'error' in response_data
 
@@ -63,7 +61,7 @@ def test_get_weekly_stats_integration(client):
     assert response.status_code in [200, 404, 500]
 
     if response.status_code == 200:
-        response_data = json.loads(response.data)
+        response_data = response.get_json()
         assert 'status' in response_data
         assert 'records' in response_data
         assert 'count' in response_data
@@ -86,7 +84,7 @@ def test_put_weekly_stats_integration(client):
     assert response.status_code in [200, 400, 500]
 
     if response.status_code == 200:
-        response_data = json.loads(response.data)
+        response_data = response.get_json()
         assert response_data['status'] == 'success'
         assert 'message' in response_data
         assert 'refresh_results' in response_data

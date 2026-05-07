@@ -4,7 +4,6 @@ Player model unit tests.
 from datetime import datetime, UTC
 from models.entities import Player as PlayerModel
 from models.extensions import db
-from tests.fixtures.database import app_context
 
 
 def test_player_model_creation(app_context):

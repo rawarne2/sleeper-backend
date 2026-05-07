@@ -1,10 +1,8 @@
 """
 KTC Rankings API endpoint tests.
 """
-import json
 
 from models.entities import Player as PlayerModel
-import routes.ktc.rankings as rankings_module
 import services.ktc_refresh_async as ktc_refresh_async
 
 
@@ -21,13 +19,13 @@ def test_refresh_endpoint_validation(client):
     # Test invalid league format
     response = client.post('/api/ktc/refresh?league_format=invalid')
     assert response.status_code == 400
-    data = json.loads(response.data)
+    data = response.get_json()
     assert 'error' in data
 
     # Test invalid TEP level value
     response = client.post('/api/ktc/refresh?tep_level=invalid_tep')
     assert response.status_code == 400
-    data = json.loads(response.data)
+    data = response.get_json()
     assert 'error' in data
 
 
@@ -39,7 +37,7 @@ def test_refresh_stores_data(client):
 
     # May fail due to scraping issues in test environment
     if response.status_code == 200:
-        data = json.loads(response.data)
+        data = response.get_json()
 
         # Check for the new response structure
         assert 'message' in data
@@ -114,7 +112,7 @@ def test_refresh_formats_scraper_players_in_response(client, monkeypatch):
         '/api/ktc/refresh?league_format=superflex&tep_level=tep&sync=1')
     assert response.status_code == 200
 
-    data = json.loads(response.data)
+    data = response.get_json()
     assert data['count'] == 1
     assert len(data['players']) == 1
     assert data['players'][0]['playerName'] == 'Josh Allen'
@@ -147,7 +145,7 @@ def test_refresh_async_returns_202(client, monkeypatch):
     response = client.post(
         '/api/ktc/refresh?league_format=superflex&tep_level=tep')
     assert response.status_code == 202
-    data = json.loads(response.data)
+    data = response.get_json()
     assert data.get('accepted') is True
     assert data.get('job_id')
     assert '/api/ktc/refresh/status/' in data.get('poll_url', '')
@@ -186,10 +184,10 @@ def test_refresh_job_status_after_enqueue(client, monkeypatch):
     post = client.post(
         '/api/ktc/refresh?league_format=1qb&is_redraft=false&tep_level=')
     assert post.status_code == 202
-    job_id = json.loads(post.data)['job_id']
+    job_id = post.get_json()['job_id']
     get = client.get(f'/api/ktc/refresh/status/{job_id}')
     assert get.status_code == 200
-    body = json.loads(get.data)
+    body = get.get_json()
     assert body['job_id'] == job_id
     assert body['status'] in ('queued', 'running', 'succeeded', 'failed')
 
@@ -201,7 +199,7 @@ def test_rankings_endpoint_exists(client):
     assert response.status_code in [200, 404, 500]
 
 
-def test_rankings_response_format(client, sample_player):
+def test_rankings_response_format(client):
     """Test that the rankings endpoint returns properly formatted JSON"""
     # Test the response format
     response = client.get(
@@ -209,7 +207,7 @@ def test_rankings_response_format(client, sample_player):
 
     # May fail due to database query issues in test environment
     if response.status_code == 200:
-        data = json.loads(response.data)
+        data = response.get_json()
 
         # Check that all required fields are present
         assert 'timestamp' in data or 'last_updated' in data
@@ -232,7 +230,7 @@ def test_rankings_response_format(client, sample_player):
         assert response.status_code in [404, 500]
 
 
-def test_rankings_query_parameters(client, sample_player):
+def test_rankings_query_parameters(client):
     """Test that query parameters are properly handled"""
     # Test with custom parameters
     response = client.get(
@@ -240,7 +238,7 @@ def test_rankings_query_parameters(client, sample_player):
 
     # May fail due to database query issues in test environment
     if response.status_code == 200:
-        data = json.loads(response.data)
+        data = response.get_json()
         assert data['is_redraft'] is True
         assert data['league_format'] == 'superflex'
         assert data['tep_level'] == 'tep'
@@ -254,24 +252,24 @@ def test_rankings_invalid_parameters(client):
     # Test invalid league format
     response = client.get('/api/ktc/rankings?league_format=invalid')
     assert response.status_code == 400
-    data = json.loads(response.data)
+    data = response.get_json()
     assert 'error' in data
 
     # Test invalid TEP level value
     response = client.get('/api/ktc/rankings?tep_level=invalid_tep')
     assert response.status_code == 400
-    data = json.loads(response.data)
+    data = response.get_json()
     assert 'error' in data
 
 
-def test_rankings_player_data_types(client, sample_player):
+def test_rankings_player_data_types(client):
     """Test that player data has correct types"""
     response = client.get(
         '/api/ktc/rankings?league_format=superflex&is_redraft=false&tep_level=tep')
 
     # May fail due to database query issues in test environment
     if response.status_code == 200:
-        data = json.loads(response.data)
+        data = response.get_json()
 
         if data.get('players'):
             player = data['players'][0]
@@ -292,7 +290,7 @@ def test_rankings_not_found(client):
         '/api/ktc/rankings?league_format=superflex&is_redraft=true&tep_level=tepp')
     # May return 500 due to database query issues in test environment
     assert response.status_code in [404, 500]
-    data = json.loads(response.data)
+    data = response.get_json()
     assert 'error' in data
 
 
@@ -308,5 +306,5 @@ def test_cleanup_endpoint_validation(client):
     # Test invalid league format
     response = client.post('/api/ktc/cleanup?league_format=invalid')
     assert response.status_code == 400
-    data = json.loads(response.data)
+    data = response.get_json()
     assert 'error' in data

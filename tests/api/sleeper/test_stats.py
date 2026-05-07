@@ -1,8 +1,6 @@
 """
 Sleeper Weekly Stats API endpoint tests.
 """
-import json
-from tests.fixtures.database import client
 
 
 def test_seed_league_stats_post_creates(client):
@@ -29,7 +27,7 @@ def test_seed_league_stats_missing_data_on_new_league(client):
     """POST with empty body for a new league returns 400."""
     response = client.post('/api/sleeper/league/new_league_999/stats/seed', json={})
     assert response.status_code == 400
-    data = json.loads(response.data)
+    data = response.get_json()
     assert data['status'] == 'error'
     assert 'error' in data
 
@@ -42,7 +40,7 @@ def test_seed_league_stats_invalid_json(client):
         content_type='text/plain',
     )
     assert response.status_code == 400
-    data = json.loads(response.data)
+    data = response.get_json()
     assert data['status'] == 'error'
 
 

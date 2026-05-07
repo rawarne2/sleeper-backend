@@ -1,5 +1,4 @@
 """Tests for GET /api/dashboard/league/:id."""
-import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -61,13 +60,13 @@ def test_dashboard_defaults_season_from_league(client):
     ), patch(
         "routes.dashboard_league._load_player_stats",
         return_value={},
-    ):
+        ):
         r = client.get(
             "/api/dashboard/league/1210364682523656192"
             "?league_format=superflex&is_redraft=false&tep_level=tep"
         )
     assert r.status_code == 200
-    data = json.loads(r.data)
+    data = r.get_json()
     assert data.get("status") == "success"
     assert data.get("data", {}).get("league", {}).get("season") == "2025"
 
@@ -155,7 +154,7 @@ def test_nightly_sync_with_bearer(client, monkeypatch):
             headers={"Authorization": "Bearer test-cron-secret"},
         )
     assert r.status_code == 200
-    data = json.loads(r.data)
+    data = r.get_json()
     assert data.get("status") == "success"
     prewarm_mock.assert_called_once()
     assert "prewarm" in (data.get("summary") or {})

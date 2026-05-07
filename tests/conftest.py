@@ -3,19 +3,15 @@ Pytest configuration and shared fixtures.
 
 This file provides shared fixtures and configuration for all test modules.
 """
+import json
 import os
 
-os.environ.setdefault('TEST_DATABASE_URI', 'sqlite:///:memory:')
-from tests.fixtures.players import sample_player_data, sample_player, sample_ktc_player_data
-from tests.fixtures.database import client, app_context
-from models.extensions import db
-from models.entities import Player as PlayerModel
-from app import app
 import pytest
-import json
-from datetime import datetime, UTC
 
-# Import fixtures to make them available to all tests
+os.environ.setdefault('TEST_DATABASE_URI', 'sqlite:///:memory:')
+pytest_plugins = ("tests.fixtures.database", "tests.fixtures.players")
+
+from app import app  # noqa: E402 -- imported after env/plugins so TEST_DATABASE_URI applies
 
 
 @pytest.fixture(scope="session")

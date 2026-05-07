@@ -1,8 +1,6 @@
 """
 KTC Bulk Operations API endpoint tests.
 """
-import json
-from tests.fixtures.database import client
 
 
 def test_refresh_all_endpoint_exists(client):
@@ -18,7 +16,7 @@ def test_refresh_all_response_format(client):
 
     # May fail due to scraping issues in test environment
     if response.status_code == 200:
-        data = json.loads(response.data)
+        data = response.get_json()
 
         # Check for the expected response structure
         assert 'message' in data
@@ -37,5 +35,5 @@ def test_refresh_all_response_format(client):
     else:
         # Expected to fail in test environment due to scraping issues
         assert response.status_code == 500
-        data = json.loads(response.data)
+        data = response.get_json()
         assert 'error' in data

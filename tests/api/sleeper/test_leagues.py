@@ -1,8 +1,6 @@
 """
 Sleeper Leagues API endpoint tests.
 """
-import json
-from tests.fixtures.database import client
 
 
 def test_get_league_data_endpoint_exists(client):
@@ -20,7 +18,7 @@ def test_get_league_data_invalid_id(client):
     assert response.status_code in [404, 500]
 
     if response.status_code == 404:
-        data = json.loads(response.data)
+        data = response.get_json()
         assert 'status' in data
         assert data['status'] == 'error'
         assert 'error' in data
@@ -47,7 +45,7 @@ def test_refresh_league_data_endpoint_exists(client):
     assert response.status_code in [200, 404, 500]
 
     if response.status_code == 200:
-        data = json.loads(response.data)
+        data = response.get_json()
         assert 'status' in data
         assert 'timestamp' in data
         assert 'league_id' in data

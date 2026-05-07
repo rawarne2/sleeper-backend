@@ -7,8 +7,9 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from flask import Blueprint, current_app, jsonify, request, Response
+from flask import Blueprint, current_app, request, Response
 from sqlalchemy import func
+from sqlalchemy.sql.functions import count as sa_count
 
 from cache.redis_dashboard import (
     dashboard_league_cache_key,
@@ -249,7 +250,7 @@ def _load_player_stats(
         db.session.query(
             SleeperWeeklyData.player_id,
             func.sum(SleeperWeeklyData.points).label("total_points"),
-            func.count(SleeperWeeklyData.id).label("games_played"),
+            sa_count(SleeperWeeklyData.id).label("games_played"),
         )
         .filter(
             SleeperWeeklyData.season == season,

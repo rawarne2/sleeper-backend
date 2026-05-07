@@ -9,7 +9,6 @@ from datetime import datetime, UTC
 from models.entities import Player
 from models.extensions import db
 from managers.database_manager import DatabaseManager
-from tests.fixtures.database import app_context
 
 
 def test_sleeper_data_saving_integration(app_context):
