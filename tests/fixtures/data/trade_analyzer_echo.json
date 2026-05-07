@@ -1,0 +1,44 @@
+{
+  "fairness_score": 47,
+  "winner": "side_b",
+  "summary_bullets": [
+    "Side A trades veteran QB depth for younger pick capital.",
+    "Side B consolidates roster around proven production."
+  ],
+  "side_a": {
+    "pros": ["Adds 2026 1st"],
+    "cons": ["Loses elite QB tier"],
+    "ktc_delta": {
+      "values_in": 12100, "values_out": 13320, "net": -1220,
+      "per_asset": [
+        {"name": "Josh Allen", "value": 9120, "direction": "out"},
+        {"name": "2026 Mid 1st", "value": 4200, "direction": "in"}
+      ]
+    },
+    "sleeper_breakdown": {
+      "stats_trajectory": ["Allen trending +2.3 vs season"],
+      "positional_impact": "QB depth thinned",
+      "team_needs_addressed": ["future picks"]
+    }
+  },
+  "side_b": {
+    "pros": ["Adds elite QB"],
+    "cons": ["Sends top pick"],
+    "ktc_delta": {
+      "values_in": 13320, "values_out": 12100, "net": 1220,
+      "per_asset": [
+        {"name": "Josh Allen", "value": 9120, "direction": "in"},
+        {"name": "2026 Mid 1st", "value": 4200, "direction": "out"}
+      ]
+    },
+    "sleeper_breakdown": {
+      "stats_trajectory": ["Allen on heater"],
+      "positional_impact": "QB room upgraded",
+      "team_needs_addressed": ["starting QB"]
+    }
+  },
+  "context_summary": {
+    "side_a_team_needs": ["needs picks for rebuild"],
+    "side_b_team_needs": ["needs QB1 for contention window"]
+  }
+}

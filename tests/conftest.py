@@ -9,7 +9,11 @@ import os
 import pytest
 
 os.environ.setdefault('TEST_DATABASE_URI', 'sqlite:///:memory:')
-pytest_plugins = ("tests.fixtures.database", "tests.fixtures.players")
+pytest_plugins = (
+    "tests.fixtures.database",
+    "tests.fixtures.players",
+    "tests.fixtures.trade_analyzer",
+)
 
 from app import app  # noqa: E402 -- imported after env/plugins so TEST_DATABASE_URI applies
 
