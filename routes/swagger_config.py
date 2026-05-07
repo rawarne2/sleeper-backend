@@ -138,6 +138,10 @@ curl -X POST "{base_url}/api/sleeper/league/1210364682523656192"
             {
                 "name": "Maintenance",
                 "description": "Operator-only maintenance and cron endpoints"
+            },
+            {
+                "name": "Trade Analyzer",
+                "description": "AI-powered trade analysis endpoints"
             }
         ]
     }

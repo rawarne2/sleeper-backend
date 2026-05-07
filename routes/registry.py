@@ -10,6 +10,7 @@ from .sleeper.leagues import sleeper_leagues_bp
 from .sleeper.players import sleeper_players_bp
 from .sleeper.research import sleeper_research_bp
 from .sleeper.stats import sleeper_stats_bp
+from .trade_analyzer import trade_analyzer_bp
 
 
 def register_blueprints(app: Flask) -> None:
@@ -23,3 +24,4 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(sleeper_stats_bp)
     app.register_blueprint(maintenance_bp)
     app.register_blueprint(dashboard_bp)
+    app.register_blueprint(trade_analyzer_bp)

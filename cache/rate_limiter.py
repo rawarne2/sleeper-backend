@@ -81,8 +81,18 @@ class InMemoryFallbackLimiter:
             return True, 0
 
 
+_INMEMORY_CACHE: Dict[Tuple[int, int], InMemoryFallbackLimiter] = {}
+_INMEMORY_CACHE_LOCK = threading.Lock()
+
+
 def get_rate_limiter(*, limit: int, window_s: int) -> RateLimiter:
     client = get_redis_client()
     if client is not None:
         return RedisSlidingWindowLimiter(client, limit=limit, window_s=window_s)
-    return InMemoryFallbackLimiter(limit=limit, window_s=window_s)
+    cache_key = (limit, window_s)
+    with _INMEMORY_CACHE_LOCK:
+        cached = _INMEMORY_CACHE.get(cache_key)
+        if cached is None:
+            cached = InMemoryFallbackLimiter(limit=limit, window_s=window_s)
+            _INMEMORY_CACHE[cache_key] = cached
+        return cached
