@@ -113,6 +113,26 @@ curl -X POST "http://localhost:5001/api/ktc/refresh?league_format=superflex&is_r
 curl "http://localhost:5001/api/ktc/rankings?league_format=superflex&is_redraft=false&tep_level=tep"
 ```
 
+### Trade Analyzer
+
+Three endpoints under `/api/trade-analyzer`:
+
+- `GET /providers` — list configured LLM providers and their availability.
+- `POST /preview` — build the LLM-ready context (no model call); useful for debugging.
+- `POST /analyze` — run a proposed trade through the configured provider and return fairness score, winner, and per-side breakdown.
+
+```bash
+curl -s -X POST http://localhost:5001/api/trade-analyzer/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "league_id": "1333945997071515648",
+    "season": "2026",
+    "side_a": {"roster_id": 1, "player_ids": ["4881"], "pick_ids": []},
+    "side_b": {"roster_id": 2, "player_ids": ["4017"], "pick_ids": []},
+    "provider": "echo"
+  }'
+```
+
 ## Available scripts
 
 | Path | Purpose |

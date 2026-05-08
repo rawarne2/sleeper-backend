@@ -42,6 +42,8 @@ tags:
     description: Aggregated dashboard payload endpoints
   - name: Maintenance
     description: Operator-only maintenance and cron endpoints
+  - name: Trade Analyzer
+    description: AI-powered trade analysis endpoints
 
 paths:
   /api/ktc/health:
@@ -817,6 +819,105 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/trade-analyzer/providers:
+    get:
+      tags: [Trade Analyzer]
+      summary: List configured LLM providers and their availability
+      operationId: listTradeAnalyzerProviders
+      responses:
+        "200":
+          description: Provider list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeAnalyzerProvidersResponse"
+
+  /api/trade-analyzer/preview:
+    post:
+      tags: [Trade Analyzer]
+      summary: Build the analysis context without calling an LLM
+      operationId: previewTradeAnalysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeAnalyzerRequest"
+      responses:
+        "200":
+          description: Preview payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeAnalyzerPreviewResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: League not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/trade-analyzer/analyze:
+    post:
+      tags: [Trade Analyzer]
+      summary: Analyze a proposed trade via the configured LLM provider
+      operationId: analyzeTrade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeAnalyzerRequest"
+      responses:
+        "200":
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeAnalyzerResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: League not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: LLM returned malformed response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Provider unavailable or feature disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: Provider timeout
           content:
             application/json:
               schema:
@@ -1691,6 +1792,107 @@ components:
         timestamp:
           type: string
           format: date-time
+
+    TradeAnalyzerKTC:
+      type: object
+      properties:
+        league_format: { type: string, enum: ["1qb", "superflex"] }
+        is_redraft:    { type: boolean }
+        tep_level:     { type: string, enum: ["", "tep", "tepp", "teppp"] }
+
+    TradeAnalyzerSide:
+      type: object
+      required: [roster_id]
+      properties:
+        roster_id:  { type: integer }
+        player_ids: { type: array, items: { type: string } }
+        pick_ids:   { type: array, items: { type: string, pattern: "^[0-9]{4}-r[0-9]+-(early|mid|late|pick[0-9]+)$" } }
+
+    TradeAnalyzerRequest:
+      type: object
+      required: [league_id, season, side_a, side_b]
+      properties:
+        league_id:          { type: string }
+        season:             { type: string, pattern: "^[0-9]{4}$" }
+        ktc:                { $ref: "#/components/schemas/TradeAnalyzerKTC" }
+        side_a:             { $ref: "#/components/schemas/TradeAnalyzerSide" }
+        side_b:             { $ref: "#/components/schemas/TradeAnalyzerSide" }
+        additional_context: { type: string, nullable: true }
+        provider:           { type: string, enum: ["ollama", "anthropic", "echo"] }
+        model:              { type: string }
+
+    TradeAnalyzerProvidersResponse:
+      type: object
+      properties:
+        default_provider: { type: string }
+        providers:
+          type: array
+          items:
+            type: object
+            properties:
+              name:          { type: string }
+              default_model: { type: string }
+              available:     { type: boolean }
+              detail:        { type: string }
+        rate_limit:
+          type: object
+          properties:
+            per_hour: { type: integer }
+            key:      { type: string }
+        enabled: { type: boolean }
+
+    TradeAnalyzerPreviewResponse:
+      type: object
+      properties:
+        context:           { type: object }
+        system_prompt:     { type: string }
+        user_prompt:       { type: string }
+        estimated_tokens:  { type: integer }
+        provider_used:     { type: string }
+        model_used:        { type: string }
+
+    TradeAnalyzerSideResult:
+      type: object
+      properties:
+        pros: { type: array, items: { type: string } }
+        cons: { type: array, items: { type: string } }
+        ktc_delta:
+          type: object
+          properties:
+            values_in:  { type: integer }
+            values_out: { type: integer }
+            net:        { type: integer }
+            per_asset:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:      { type: string }
+                  value:     { type: integer }
+                  direction: { type: string, enum: ["in", "out"] }
+        sleeper_breakdown:
+          type: object
+          properties:
+            stats_trajectory:     { type: array, items: { type: string } }
+            positional_impact:    { type: string }
+            team_needs_addressed: { type: array, items: { type: string } }
+
+    TradeAnalyzerResult:
+      type: object
+      properties:
+        fairness_score:  { type: integer, minimum: 0, maximum: 100 }
+        winner:          { type: string, enum: ["side_a", "side_b", "even"] }
+        summary_bullets: { type: array, items: { type: string } }
+        side_a:          { $ref: "#/components/schemas/TradeAnalyzerSideResult" }
+        side_b:          { $ref: "#/components/schemas/TradeAnalyzerSideResult" }
+        context_summary:
+          type: object
+          properties:
+            side_a_team_needs: { type: array, items: { type: string } }
+            side_b_team_needs: { type: array, items: { type: string } }
+        provider_used: { type: string }
+        model_used:    { type: string }
+        elapsed_ms:    { type: integer }
 
   examples:
     KTCRefreshExample:
