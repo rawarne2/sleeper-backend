@@ -39,9 +39,11 @@ def _parse_side(name: str, raw: Any) -> TradeSide:
     player_ids = raw.get("player_ids") or []
     pick_ids = raw.get("pick_ids") or []
     if not isinstance(player_ids, list) or not all(isinstance(x, str) for x in player_ids):
-        raise RequestValidationError(f"{name}.player_ids must be a list of strings")
+        raise RequestValidationError(
+            f"{name}.player_ids must be a list of strings")
     if not isinstance(pick_ids, list) or not all(isinstance(x, str) for x in pick_ids):
-        raise RequestValidationError(f"{name}.pick_ids must be a list of strings")
+        raise RequestValidationError(
+            f"{name}.pick_ids must be a list of strings")
     for pid in pick_ids:
         try:
             parse_pick_id(pid)
@@ -105,7 +107,8 @@ def parse_trade_request(body: Any) -> TradeRequest:
         if not p:
             raise RequestValidationError("provider must not be empty when set")
         if p not in _KNOWN_PROVIDERS:
-            raise RequestValidationError(f"Unknown provider {p!r}; expected one of {sorted(_KNOWN_PROVIDERS)}")
+            raise RequestValidationError(
+                f"Unknown provider {p!r}; expected one of {sorted(_KNOWN_PROVIDERS)}")
         provider = p
 
     model = body.get("model")

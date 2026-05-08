@@ -62,13 +62,15 @@ def test_rejects_both_sides_empty():
 
 
 def test_rejects_invalid_league_format():
-    body = {**_VALID, "ktc": {"league_format": "PPR", "is_redraft": False, "tep_level": ""}}
+    body = {**_VALID, "ktc": {"league_format": "PPR",
+                              "is_redraft": False, "tep_level": ""}}
     with pytest.raises(RequestValidationError, match="league_format"):
         parse_trade_request(body)
 
 
 def test_rejects_invalid_tep_level():
-    body = {**_VALID, "ktc": {"league_format": "superflex", "is_redraft": False, "tep_level": "xxx"}}
+    body = {**_VALID, "ktc": {"league_format": "superflex",
+                              "is_redraft": False, "tep_level": "xxx"}}
     with pytest.raises(RequestValidationError, match="tep_level"):
         parse_trade_request(body)
 
