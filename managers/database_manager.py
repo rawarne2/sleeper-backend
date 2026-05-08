@@ -827,6 +827,12 @@ class DatabaseManager:
             users_result = DatabaseManager._save_league_users(
                 league_id, league_data.get('users', []))
 
+            from models.entities import SleeperLeague
+            picks = league_data.get('traded_picks') or []
+            league_row = SleeperLeague.query.filter_by(league_id=league_id).first()
+            if league_row is not None:
+                league_row.traded_picks = json.dumps(picks)
+
             db.session.commit()
 
             return {
@@ -875,16 +881,16 @@ class DatabaseManager:
             'name': league_info.get('name'),
             'season': league_info.get('season'),
             'roster_positions': json.dumps(league_info.get('roster_positions')),
+            'scoring_settings': json.dumps(league_info.get('scoring_settings')) if league_info.get('scoring_settings') is not None else None,
+            'league_settings': json.dumps(league_info.get('settings')) if league_info.get('settings') is not None else None,
             'status': league_info.get('status'),
             'draft_id': league_info.get('draft_id'),
             'avatar': league_info.get('avatar'),
-            'last_refreshed': datetime.now(UTC)
+            'last_refreshed': datetime.now(UTC),
         }
 
         return DatabaseManager._upsert_record(
-            SleeperLeague,
-            {'league_id': league_id},
-            data
+            SleeperLeague, {'league_id': league_id}, data
         )
 
     @staticmethod
