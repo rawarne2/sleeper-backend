@@ -856,7 +856,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/TradeAnalyzerPreviewResponse"
         "400":
-          description: Invalid request
+          description: Invalid request body (missing fields, unknown provider, malformed pick_ids, etc.)
           content:
             application/json:
               schema:
@@ -887,7 +887,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/TradeAnalyzerResult"
         "400":
-          description: Invalid request
+          description: Invalid request body (missing fields, unknown provider, malformed pick_ids, bad context, etc.)
           content:
             application/json:
               schema:

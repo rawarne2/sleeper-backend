@@ -31,6 +31,8 @@ def _register_defaults() -> None:
     register("ollama", OllamaProvider)
     from .anthropic import AnthropicProvider
     register("anthropic", AnthropicProvider)
+    from .gemini import GeminiProvider
+    register("gemini", GeminiProvider)
 
 
 _register_defaults()

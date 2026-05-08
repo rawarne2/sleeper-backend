@@ -4,9 +4,11 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from data_types.trade_analyzer_types import KTCConfig, TradeRequest, TradeSide
-
+from services.trade_analyzer.picks import PickIdError, parse_pick_id
+from services.trade_analyzer.providers.registry import known_providers
 
 _VALID_FORMATS = {"1qb", "superflex"}
+_KNOWN_PROVIDERS = frozenset(known_providers())
 _VALID_TEP = {"", "tep", "tepp", "teppp", None}
 
 _DEFAULT_KTC: KTCConfig = {
@@ -40,6 +42,13 @@ def _parse_side(name: str, raw: Any) -> TradeSide:
         raise RequestValidationError(f"{name}.player_ids must be a list of strings")
     if not isinstance(pick_ids, list) or not all(isinstance(x, str) for x in pick_ids):
         raise RequestValidationError(f"{name}.pick_ids must be a list of strings")
+    for pid in pick_ids:
+        try:
+            parse_pick_id(pid)
+        except PickIdError as exc:
+            raise RequestValidationError(
+                f"{name}.pick_ids: invalid pick_id {pid!r} ({exc})",
+            ) from exc
     return {"roster_id": rid, "player_ids": player_ids, "pick_ids": pick_ids}
 
 
@@ -85,9 +94,19 @@ def parse_trade_request(body: Any) -> TradeRequest:
     if additional_context is not None and not isinstance(additional_context, str):
         raise RequestValidationError("additional_context must be a string")
 
-    provider = body.get("provider")
-    if provider is not None and not isinstance(provider, str):
+    provider_raw = body.get("provider")
+    provider: str | None
+    if provider_raw is None:
+        provider = None
+    elif not isinstance(provider_raw, str):
         raise RequestValidationError("provider must be a string")
+    else:
+        p = provider_raw.strip().lower()
+        if not p:
+            raise RequestValidationError("provider must not be empty when set")
+        if p not in _KNOWN_PROVIDERS:
+            raise RequestValidationError(f"Unknown provider {p!r}; expected one of {sorted(_KNOWN_PROVIDERS)}")
+        provider = p
 
     model = body.get("model")
     if model is not None and not isinstance(model, str):
@@ -97,5 +116,6 @@ def parse_trade_request(body: Any) -> TradeRequest:
         "league_id": league_id, "season": season, "ktc": ktc,
         "side_a": side_a, "side_b": side_b,
         "additional_context": additional_context,
-        "provider": provider, "model": model,
+        "provider": provider,
+        "model": model,
     }

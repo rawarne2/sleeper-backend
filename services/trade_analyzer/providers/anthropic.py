@@ -22,7 +22,7 @@ def _client():
 
 class AnthropicProvider(LLMProvider):
     name = "anthropic"
-    default_model = "claude-haiku-4-5-20251001"
+    default_model = "claude-sonnet-4-6"
 
     def generate(self, system_prompt, user_prompt, *, model, timeout_s, **opts):
         client = _client()

@@ -6,7 +6,8 @@ import os
 from flask import jsonify
 
 from routes.helpers import with_error_handling
-from services.trade_analyzer.providers.registry import get_provider, known_providers
+from services.trade_analyzer import policy as ta_policy
+from services.trade_analyzer.providers.registry import get_provider
 
 from . import trade_analyzer_bp
 
@@ -16,21 +17,17 @@ def _enabled() -> bool:
             not in ("0", "false", "no"))
 
 
-def _default_provider() -> str:
-    return os.getenv("TRADE_ANALYZER_DEFAULT_PROVIDER", "ollama").strip().lower()
-
-
 @trade_analyzer_bp.route("/providers", methods=["GET"])
 @with_error_handling
 def list_providers():
     entries = []
-    for name in known_providers():
+    for name in ta_policy.provider_names_for_listing():
         try:
             instance = get_provider(name)
             available, detail = instance.health_check()
             entries.append({
                 "name": name,
-                "default_model": instance.default_model,
+                "default_model": ta_policy.default_model_for(name),
                 "available": bool(available),
                 "detail": detail,
             })
@@ -40,7 +37,8 @@ def list_providers():
                 "available": False, "detail": f"factory error: {exc}",
             })
     return jsonify({
-        "default_provider": _default_provider(),
+        "default_provider": ta_policy.effective_default_provider(),
+        "allows_client_provider_model_choice": not ta_policy.anthropic_only_mode(),
         "providers": entries,
         "rate_limit": {
             "per_hour": int(os.getenv("TRADE_ANALYZER_RATE_LIMIT_PER_HOUR", "20")),

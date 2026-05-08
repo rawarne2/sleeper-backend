@@ -35,7 +35,7 @@ def test_generate_returns_text(monkeypatch):
         return_value=fake_client,
     ):
         p = AnthropicProvider()
-        out = p.generate("sys", "user", model="claude-haiku-4-5-20251001", timeout_s=10)
+        out = p.generate("sys", "user", model="claude-sonnet-4-6", timeout_s=10)
     assert out == '{"fairness_score":50}'
 
 
@@ -43,4 +43,4 @@ def test_generate_raises_unavailable_without_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     p = AnthropicProvider()
     with pytest.raises(ProviderUnavailable):
-        p.generate("sys", "user", model="claude-haiku-4-5-20251001", timeout_s=10)
+        p.generate("sys", "user", model="claude-sonnet-4-6", timeout_s=10)

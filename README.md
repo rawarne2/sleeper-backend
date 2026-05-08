@@ -13,11 +13,6 @@ A Flask API for fantasy football data across KeepTradeCut (KTC) and Sleeper, inc
 - **[OPENAPI_README.md](OPENAPI_README.md)** -- How the interactive Swagger UI and OpenAPI spec are set up, plus instructions for accessing `/docs` and `/openapi.json`.
 - **[tests/README.md](tests/README.md)** -- Test directory layout and instructions for running tests locally and in Docker.
 
-## Pending changes (not committed)
-
-- **Packages:** `models/`, `managers/`, `data_types/`, `scrapers/`, `routes/` (blueprints via `routes/registry.py`; dashboard: `routes/dashboard_league.py`), `cache/` (Redis rankings + dashboard league TTL from `cache/settings.py`), `services/` (async KTC refresh among others), `utils/`, `scripts/` (CLI tools moved from repo root).
-- **Invalid players:** `scripts/cleanup_invalid_players.py` — dry run by default; `--execute` deletes in batches (ORM, cascades related rows). Loads `.env` and unsets `TEST_DATABASE_URI` when `DATABASE_URL` is set so cleanup targets the same DB as the app, not pytest SQLite.
-
 ## 🚀 Features
 
 - **KTC Integration**: Player rankings and trade values from KeepTradeCut

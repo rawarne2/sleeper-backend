@@ -64,10 +64,13 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
       - S3_BUCKET=${S3_BUCKET}
+      # Ollama on the host: default host.docker.internal; extra_hosts maps it on Linux too.
+      # If .env sets OLLAMA_HOST to localhost/127.0.0.1, the Ollama client rewrites to host.docker.internal inside this container.
       - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
       - TRADE_ANALYZER_ENABLED=${TRADE_ANALYZER_ENABLED:-true}
       - TRADE_ANALYZER_DEFAULT_PROVIDER=${TRADE_ANALYZER_DEFAULT_PROVIDER:-ollama}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

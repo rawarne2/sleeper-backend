@@ -33,6 +33,44 @@ def test_strips_trailing_prose():
     assert p["fairness_score"] == 50
 
 
+def test_picks_full_object_when_prefixed_with_other_json():
+    noise = '{"note":"ignore"}'
+    payload = '{"fairness_score":60,"winner":"side_a","summary_bullets":["x"],"side_a":{},"side_b":{}}'
+    raw = f"{noise}\n{payload}"
+    p = parse_llm_response(raw)
+    assert p["fairness_score"] == 60
+    assert p["winner"] == "side_a"
+
+
+def test_unwraps_analysis_wrapper():
+    inner = (
+        '{"fairness_score":60,"winner":"side_a","summary_bullets":["x"],'
+        '"side_a":{},"side_b":{}}'
+    )
+    raw = '{"analysis": ' + inner + "}"
+    p = parse_llm_response(raw)
+    assert p["fairness_score"] == 60
+    assert p["winner"] == "side_a"
+
+
+def test_recovers_trade_details_blob():
+    raw = (
+        '{"trade_details": {'
+        '"team_a_gain": 2172, "team_a_losing_player": "Mac Jones", '
+        '"team_b_gain": -2172, "team_b_losing_player": "C.J. Stroud"'
+        "}}"
+    )
+    totals = {
+        "side_a": {"in": 100, "out": 80, "net": 20},
+        "side_b": {"in": 80, "out": 100, "net": -20},
+    }
+    p = parse_llm_response(raw, expected_totals=totals)
+    assert p["winner"] == "side_a"
+    assert p["fairness_score"] >= 50
+    assert p["side_a"]["ktc_delta"]["net"] == 20
+    assert p["side_b"]["ktc_delta"]["net"] == -20
+
+
 def test_raises_on_invalid_json():
     with pytest.raises(ParseError):
         parse_llm_response("not json at all")

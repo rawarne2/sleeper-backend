@@ -1,13 +1,61 @@
 """Ollama LLM provider — local-only."""
 from __future__ import annotations
 
+import logging
 import os
+from pathlib import Path
+from urllib.parse import urlparse, urlunparse
+
+from services.trade_analyzer.output_schema import TRADE_ANALYZER_JSON_SCHEMA
 
 from .base import LLMProvider, ProviderError, ProviderTimeout, ProviderUnavailable
 
+logger = logging.getLogger(__name__)
+
+_LOOPBACK_MARKERS = frozenset(("localhost", "127.0.0.1", "::1"))
+
+_DEFAULT_URL = "http://localhost:11434"
+
+
+def _is_container_environment() -> bool:
+    """True inside Linux containers (.dockerenv is present when not using rootless quirks)."""
+    try:
+        return Path("/.dockerenv").exists()
+    except OSError:
+        return False
+
 
 def _host() -> str:
-    return os.getenv("OLLAMA_HOST", "http://localhost:11434").strip()
+    raw = (os.getenv("OLLAMA_HOST") or _DEFAULT_URL).strip()
+
+    escape = (os.getenv("OLLAMA_USE_LOCALHOST_IN_CONTAINER") or "").strip().lower()
+    if escape in ("1", "true", "yes"):
+        return raw
+
+    if not _is_container_environment():
+        return raw
+
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return raw
+
+    host = (parsed.hostname or "").lower()
+    if host not in _LOOPBACK_MARKERS:
+        return raw
+
+    port = parsed.port
+    netloc = "host.docker.internal" if port is None else f"host.docker.internal:{port}"
+    return urlunparse(
+        (
+            parsed.scheme or "http",
+            netloc,
+            parsed.path or "",
+            parsed.params,
+            parsed.query,
+            parsed.fragment,
+        ),
+    )
 
 
 def _client():
@@ -24,19 +72,30 @@ class OllamaProvider(LLMProvider):
 
     def generate(self, system_prompt, user_prompt, *, model, timeout_s, **opts):
         client = _client()
+        chat_kw = dict(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            options={"temperature": 0.2},
+        )
         try:
-            resp = client.chat(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                options={"temperature": 0.2},
-            )
+            # Structured outputs (JSON Schema) prevent shape drift vs plain format="json".
+            resp = client.chat(**chat_kw, format=TRADE_ANALYZER_JSON_SCHEMA)
         except TimeoutError as exc:
             raise ProviderTimeout(f"Ollama timeout after {timeout_s}s: {exc}") from exc
         except Exception as exc:
-            raise ProviderError(f"Ollama call failed: {exc}") from exc
+            logger.warning(
+                "ollama: structured schema format failed (%s); retrying with format=json",
+                exc,
+            )
+            try:
+                resp = client.chat(**chat_kw, format="json")
+            except TimeoutError as exc2:
+                raise ProviderTimeout(f"Ollama timeout after {timeout_s}s: {exc2}") from exc2
+            except Exception as exc2:
+                raise ProviderError(f"Ollama call failed: {exc2}") from exc2
 
         try:
             return resp["message"]["content"]

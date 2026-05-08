@@ -48,10 +48,38 @@ def test_analyze_503_when_disabled(client, monkeypatch, stubbed_league):
     assert resp.status_code == 503
 
 
-def test_analyze_503_when_unknown_provider(client, stubbed_league):
+def test_analyze_400_when_unknown_provider(client, stubbed_league):
     body = {**_BASE, "provider": "does-not-exist"}
     resp = client.post("/api/trade-analyzer/analyze", json=body)
-    assert resp.status_code == 503
+    assert resp.status_code == 400
+    assert "Unknown provider" in (resp.get_json() or {}).get("error", "")
+
+
+def test_analyze_400_when_echo_in_vercel_production(client, monkeypatch, stubbed_league):
+    monkeypatch.delenv("TRADE_ANALYZER_ANTHROPIC_ONLY", raising=False)
+    monkeypatch.setenv("VERCEL_ENV", "production")
+    resp = client.post("/api/trade-analyzer/analyze", json=_BASE)
+    assert resp.status_code == 400
+    err = (resp.get_json() or {}).get("error", "")
+    assert "Anthropic" in err
+
+
+def test_analyze_accepts_explicit_anthropic_in_vercel_production(
+    client, monkeypatch, stubbed_league,
+):
+    monkeypatch.delenv("TRADE_ANALYZER_ANTHROPIC_ONLY", raising=False)
+    monkeypatch.setenv("VERCEL_ENV", "production")
+    body = {**_BASE, "provider": "anthropic"}
+    with patch("routes.trade_analyzer.analyze.run_analysis") as run:
+        from services.trade_analyzer.analyzer import AnalyzerOutcome
+
+        run.return_value = AnalyzerOutcome(status_code=200, body={
+            "fairness_score": 50, "winner": "even", "summary_bullets": [],
+            "side_a": {}, "side_b": {},
+        })
+        resp = client.post("/api/trade-analyzer/analyze", json=body)
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    run.assert_called_once()
 
 
 def test_analyze_404_when_league_missing(client):

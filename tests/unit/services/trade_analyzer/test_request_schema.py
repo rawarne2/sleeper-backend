@@ -84,3 +84,25 @@ def test_optional_fields_normalized():
     assert req["additional_context"] is None
     assert req["provider"] is None
     assert req["model"] is None
+
+
+def test_rejects_invalid_pick_id_pattern():
+    body = {
+        **_VALID,
+        "side_a": {"roster_id": 3, "player_ids": ["4881"], "pick_ids": []},
+        "side_b": {"roster_id": 7, "player_ids": [], "pick_ids": ["bogus-pick-id"]},
+    }
+    with pytest.raises(RequestValidationError, match="invalid pick_id"):
+        parse_trade_request(body)
+
+
+def test_normalizes_provider_case():
+    body = {**_VALID, "provider": "ECHO"}
+    req = parse_trade_request(body)
+    assert req["provider"] == "echo"
+
+
+def test_rejects_unknown_provider():
+    body = {**_VALID, "provider": "not_registered"}
+    with pytest.raises(RequestValidationError, match="Unknown provider"):
+        parse_trade_request(body)

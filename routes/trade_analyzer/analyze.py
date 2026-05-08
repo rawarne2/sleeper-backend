@@ -8,6 +8,7 @@ from flask import jsonify, request
 
 from cache.rate_limiter import get_rate_limiter
 from routes.helpers import json_api_error, with_error_handling
+from services.trade_analyzer import policy as ta_policy
 from routes.trade_analyzer.request_schema import (
     RequestValidationError, parse_trade_request,
 )
@@ -21,22 +22,6 @@ logger = logging.getLogger(__name__)
 def _enabled() -> bool:
     return (os.getenv("TRADE_ANALYZER_ENABLED", "true").strip().lower()
             not in ("0", "false", "no"))
-
-
-def _default_provider() -> str:
-    return os.getenv("TRADE_ANALYZER_DEFAULT_PROVIDER", "ollama").strip().lower()
-
-
-def _default_model_for(provider: str) -> str:
-    env_key = f"TRADE_ANALYZER_{provider.upper()}_MODEL"
-    fallback = {
-        "ollama": "qwen2.5:14b-instruct",
-        "anthropic": "claude-haiku-4-5-20251001",
-        "gemini": "gemini-2.5-flash",
-        "groq": "llama-3.3-70b-versatile",
-        "echo": "echo",
-    }.get(provider, "echo")
-    return os.getenv(env_key, fallback)
 
 
 def _timeout_for(provider: str) -> int:
@@ -67,6 +52,10 @@ def analyze_trade():
     except RequestValidationError as exc:
         return json_api_error(str(exc), 400)
 
+    deny = ta_policy.environment_provider_error(req.get("provider"))
+    if deny:
+        return json_api_error(deny, 400)
+
     limiter = get_rate_limiter(
         limit=int(os.getenv("TRADE_ANALYZER_RATE_LIMIT_PER_HOUR", "20")),
         window_s=int(os.getenv("TRADE_ANALYZER_RATE_LIMIT_WINDOW_SECONDS", "3600")),
@@ -79,8 +68,10 @@ def analyze_trade():
             retry_after_seconds=retry_after,
         )
 
-    provider_name = req.get("provider") or _default_provider()
-    model = req.get("model") or _default_model_for(provider_name)
+    provider_name, model = ta_policy.resolved_provider_and_model(
+        body_provider=req.get("provider"),
+        body_model=req.get("model"),
+    )
     timeout_s = _timeout_for(provider_name)
 
     outcome = run_analysis(req, provider_name=provider_name, model=model, timeout_s=timeout_s)

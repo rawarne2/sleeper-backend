@@ -1,11 +1,10 @@
 """POST /api/trade-analyzer/preview — assemble context, no LLM call."""
 from __future__ import annotations
 
-import os
-
 from flask import jsonify, request
 
 from routes.helpers import json_api_error, with_error_handling
+from services.trade_analyzer import policy as ta_policy
 from routes.trade_analyzer.request_schema import (
     RequestValidationError, parse_trade_request,
 )
@@ -16,22 +15,6 @@ from services.trade_analyzer.prompt import SYSTEM_PROMPT, build_user_prompt
 from . import trade_analyzer_bp
 
 
-def _default_provider() -> str:
-    return os.getenv("TRADE_ANALYZER_DEFAULT_PROVIDER", "ollama").strip().lower()
-
-
-def _default_model_for(provider: str) -> str:
-    env_key = f"TRADE_ANALYZER_{provider.upper()}_MODEL"
-    fallback = {
-        "ollama": "qwen2.5:14b-instruct",
-        "anthropic": "claude-haiku-4-5-20251001",
-        "gemini": "gemini-2.5-flash",
-        "groq": "llama-3.3-70b-versatile",
-        "echo": "echo",
-    }.get(provider, "echo")
-    return os.getenv(env_key, fallback)
-
-
 @trade_analyzer_bp.route("/preview", methods=["POST"])
 @with_error_handling
 def preview_trade():
@@ -40,8 +23,14 @@ def preview_trade():
     except RequestValidationError as exc:
         return json_api_error(str(exc), 400)
 
-    provider = req.get("provider") or _default_provider()
-    model = req.get("model") or _default_model_for(provider)
+    deny = ta_policy.environment_provider_error(req.get("provider"))
+    if deny:
+        return json_api_error(deny, 400)
+
+    provider, model = ta_policy.resolved_provider_and_model(
+        body_provider=req.get("provider"),
+        body_model=req.get("model"),
+    )
 
     try:
         league_data = load_league_bundle(
