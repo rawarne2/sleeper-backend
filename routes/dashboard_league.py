@@ -464,6 +464,25 @@ def get_dashboard_league(league_id: str):
 
     players = _attach_stats(players, player_stats)
 
+    from managers.sleeper_picks import compute_owned_picks
+    from services.trade_analyzer.picks import resolve_pick_to_ktc, PickIdError
+
+    raw_picks = compute_owned_picks(league_id)
+    picks_by_roster: Dict[str, Any] = {}
+    for rid, picks in raw_picks.items():
+        out = []
+        for p in picks:
+            ktc_value = None
+            try:
+                resolved = resolve_pick_to_ktc(
+                    p["pick_id"], league_format=league_format, tep_level=tep_level or "")
+                if resolved is not None:
+                    _, ktc_value = resolved
+            except PickIdError:
+                pass
+            out.append({**p, "ktc_value": ktc_value})
+        picks_by_roster[str(rid)] = out
+
     body: Dict[str, Any] = {
         "league": db_league.get("league"),
         "rosters": db_league.get("rosters") or [],
@@ -472,6 +491,7 @@ def get_dashboard_league(league_id: str):
         "ownership": ownership,
         "researchMeta": research_meta,
         "ktcLastUpdated": ktc_last_updated,
+        "picks_by_roster": picks_by_roster,
     }
 
     t_json = time.perf_counter()

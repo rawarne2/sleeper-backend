@@ -239,3 +239,29 @@ def test_ktc_values_block_tepp_override_skips_when_value_missing():
     block = _ktc_values_block_for_dashboard(values, "tepp")
     assert block["value"] == 8000  # base, unchanged
     assert block["rank"] == 10
+
+
+def test_dashboard_includes_picks_by_roster_block(client):
+    from unittest.mock import patch
+
+    def fake_season(_):
+        return (True, "2026")
+
+    def fake_league(_):
+        return {
+            "status": "success",
+            "league": {"league_id": "X", "season": "2026"},
+            "rosters": [], "users": [],
+        }
+
+    with patch("routes.dashboard_league.DatabaseManager.get_league_season_only", side_effect=fake_season), \
+         patch("routes.dashboard_league.DatabaseManager.get_league_data", side_effect=fake_league), \
+         patch("routes.dashboard_league._ktc_players_for_roster", return_value=([], None)), \
+         patch("routes.dashboard_league._load_ownership_and_meta",
+               return_value=({}, {"season": "2026", "week": None, "league_type": 2, "last_updated": None})), \
+         patch("routes.dashboard_league._load_player_stats", return_value={}), \
+         patch("managers.sleeper_picks.compute_owned_picks", return_value={}):
+        r = client.get("/api/dashboard/league/X?season=2026&league_format=superflex&is_redraft=false&tep_level=tep")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert "picks_by_roster" in body["data"]
