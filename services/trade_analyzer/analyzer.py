@@ -1,7 +1,6 @@
 """Orchestrator: validate -> context -> prompt -> provider -> parse."""
 from __future__ import annotations
 
-import json as _json
 import logging
 import time
 from typing import Any, Dict
@@ -9,6 +8,7 @@ from typing import Any, Dict
 from data_types.trade_analyzer_types import TradeRequest
 from services.trade_analyzer._load_league import LeagueNotFound, load_league_bundle
 from services.trade_analyzer.context import build_context
+from services.trade_analyzer.parser import ParseError, parse_llm_response
 from services.trade_analyzer.prompt import SYSTEM_PROMPT, build_user_prompt
 from services.trade_analyzer.providers.base import (
     ProviderError, ProviderTimeout, ProviderUnavailable,
@@ -73,12 +73,12 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
         })
 
     try:
-        parsed = _json.loads(raw)
-    except _json.JSONDecodeError as exc:
+        parsed = parse_llm_response(raw, expected_totals=context["trade"]["ktc_totals"])
+    except ParseError as exc:
         return AnalyzerOutcome(status_code=502, body={
             "status": "error", "error": "LLM returned invalid JSON",
             "details": str(exc), "provider_used": provider_name,
-            "model_used": model, "raw_response": raw[:4096],
+            "model_used": model, "raw_response": exc.raw[:4096],
         })
 
     elapsed_ms = int((time.perf_counter() - started) * 1000)
