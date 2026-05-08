@@ -1,20 +1,17 @@
-"""POST /api/trade-analyzer/preview - assemble context, no LLM call.
-
-Phase 1 returns a STUB context. Task 8/9 replaces _stub_context with the real
-build_context() driven from the DB-backed league bundle.
-"""
+"""POST /api/trade-analyzer/preview — assemble context, no LLM call."""
 from __future__ import annotations
 
-import json
 import os
 
 from flask import jsonify, request
 
 from routes.helpers import json_api_error, with_error_handling
 from routes.trade_analyzer.request_schema import (
-    RequestValidationError,
-    parse_trade_request,
+    RequestValidationError, parse_trade_request,
 )
+from services.trade_analyzer._load_league import LeagueNotFound, load_league_bundle
+from services.trade_analyzer.context import build_context
+from services.trade_analyzer.prompt import SYSTEM_PROMPT, build_user_prompt
 
 from . import trade_analyzer_bp
 
@@ -25,23 +22,14 @@ def _default_provider() -> str:
 
 def _default_model_for(provider: str) -> str:
     env_key = f"TRADE_ANALYZER_{provider.upper()}_MODEL"
-    return os.getenv(env_key, {
+    fallback = {
         "ollama": "qwen2.5:14b-instruct",
         "anthropic": "claude-haiku-4-5-20251001",
         "gemini": "gemini-2.5-flash",
         "groq": "llama-3.3-70b-versatile",
         "echo": "echo",
-    }.get(provider, "echo"))
-
-
-def _stub_context(req) -> dict:
-    return {
-        "league": {"league_id": req["league_id"], "season": req["season"], "ktc": req["ktc"]},
-        "side_a": {"roster_id": req["side_a"]["roster_id"]},
-        "side_b": {"roster_id": req["side_b"]["roster_id"]},
-        "trade": {"side_a_outgoing": [], "side_b_outgoing": []},
-        "additional_context": req.get("additional_context"),
-    }
+    }.get(provider, "echo")
+    return os.getenv(env_key, fallback)
 
 
 @trade_analyzer_bp.route("/preview", methods=["POST"])
@@ -55,14 +43,23 @@ def preview_trade():
     provider = req.get("provider") or _default_provider()
     model = req.get("model") or _default_model_for(provider)
 
-    context = _stub_context(req)
-    system_prompt = "You are a fantasy football trade analyst. (stub)"
-    user_prompt = json.dumps(context, separators=(",", ":"))
-    estimated_tokens = max(1, (len(system_prompt) + len(user_prompt)) // 4)
+    try:
+        league_data = load_league_bundle(
+            req["league_id"], req["ktc"]["league_format"], req["ktc"].get("tep_level") or "")
+    except LeagueNotFound as exc:
+        return json_api_error("League not found", 404, details=str(exc), league_id=req["league_id"])
+
+    try:
+        context = build_context(req, league_data=league_data)
+    except ValueError as exc:
+        return json_api_error(str(exc), 400)
+
+    user_prompt = build_user_prompt(context, req.get("additional_context"))
+    estimated_tokens = max(1, (len(SYSTEM_PROMPT) + len(user_prompt)) // 4)
 
     return jsonify({
         "context": context,
-        "system_prompt": system_prompt,
+        "system_prompt": SYSTEM_PROMPT,
         "user_prompt": user_prompt,
         "estimated_tokens": estimated_tokens,
         "provider_used": provider,

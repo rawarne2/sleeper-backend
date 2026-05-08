@@ -1,0 +1,31 @@
+{
+  "league": {
+    "league_id": "1210364682523656192",
+    "season": "2026",
+    "name": "Salt Factory",
+    "roster_positions": ["QB","RB","RB","WR","WR","WR","TE","FLEX","SUPER_FLEX","BN","BN","BN","BN","BN","BN"],
+    "scoring_settings": {"rec": 0.5, "bonus_rec_te": 0.5}
+  },
+  "rosters": [
+    {"roster_id": 3, "owner_id": "u1", "players": ["4881","4017"], "starters": ["4881"], "settings": {"wins": 2, "losses": 1, "ties": 0, "fpts": 432.7}},
+    {"roster_id": 7, "owner_id": "u2", "players": ["4034","4035"], "starters": ["4034"], "settings": {"wins": 1, "losses": 2, "ties": 0, "fpts": 380.0}}
+  ],
+  "users": [
+    {"user_id": "u1", "display_name": "Alpha"},
+    {"user_id": "u2", "display_name": "Bravo"}
+  ],
+  "players": [
+    {"playerName":"Josh Allen","sleeper_player_id":"4881","position":"QB","team":"BUF","years_exp":7,
+     "ktc":{"age":29,"superflexValues":{"value":9120,"positionalRank":1,"overallTrend":150},"oneQBValues":null},
+     "stats":{"average_points":24.1,"games_played":3}},
+    {"playerName":"Patrick Mahomes","sleeper_player_id":"4017","position":"QB","team":"KC","years_exp":8,
+     "ktc":{"age":30,"superflexValues":{"value":8800,"positionalRank":2,"overallTrend":-20},"oneQBValues":null},
+     "stats":{"average_points":22.5,"games_played":3}},
+    {"playerName":"Bijan Robinson","sleeper_player_id":"4034","position":"RB","team":"ATL","years_exp":3,
+     "ktc":{"age":24,"superflexValues":{"value":8200,"positionalRank":3,"overallTrend":80},"oneQBValues":null},
+     "stats":{"average_points":18.0,"games_played":3}},
+    {"playerName":"Christian McCaffrey","sleeper_player_id":"4035","position":"RB","team":"SF","years_exp":7,
+     "ktc":{"age":29,"superflexValues":{"value":6800,"positionalRank":6,"overallTrend":-50},"oneQBValues":null},
+     "stats":{"average_points":17.5,"games_played":3}}
+  ]
+}

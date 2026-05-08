@@ -1,19 +1,21 @@
-"""Orchestrator: validate -> context -> prompt -> provider -> parse.
-
-Phase 1 version: minimal echo end-to-end, no real context, no parser. Tasks 8-10
-rebuild this with real context + the robust parser.
-"""
+"""Orchestrator: validate -> context -> prompt -> provider -> parse."""
 from __future__ import annotations
 
-import json
+import json as _json
+import logging
 import time
 from typing import Any, Dict
 
 from data_types.trade_analyzer_types import TradeRequest
+from services.trade_analyzer._load_league import LeagueNotFound, load_league_bundle
+from services.trade_analyzer.context import build_context
+from services.trade_analyzer.prompt import SYSTEM_PROMPT, build_user_prompt
 from services.trade_analyzer.providers.base import (
     ProviderError, ProviderTimeout, ProviderUnavailable,
 )
 from services.trade_analyzer.providers.registry import get_provider
+
+logger = logging.getLogger(__name__)
 
 
 class AnalyzerOutcome:
@@ -24,6 +26,7 @@ class AnalyzerOutcome:
 
 def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s: int) -> AnalyzerOutcome:
     started = time.perf_counter()
+
     try:
         provider = get_provider(provider_name)
     except ProviderUnavailable as exc:
@@ -34,15 +37,30 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
     available, detail = provider.health_check()
     if not available:
         return AnalyzerOutcome(status_code=503, body={
-            "status": "error", "error": "Provider unavailable",
-            "details": detail, "provider_used": provider_name,
+            "status": "error", "error": "Provider unavailable", "details": detail,
+            "provider_used": provider_name,
         })
 
-    system_prompt = "stub"
-    user_prompt = json.dumps({"req": req}, default=str)
+    try:
+        league_data = load_league_bundle(
+            req["league_id"], req["ktc"]["league_format"], req["ktc"].get("tep_level") or "")
+    except LeagueNotFound as exc:
+        return AnalyzerOutcome(status_code=404, body={
+            "status": "error", "error": "League not found",
+            "details": str(exc), "league_id": req["league_id"],
+        })
 
     try:
-        raw = provider.generate(system_prompt, user_prompt, model=model, timeout_s=timeout_s)
+        context = build_context(req, league_data=league_data)
+    except ValueError as exc:
+        return AnalyzerOutcome(status_code=400, body={
+            "status": "error", "error": str(exc),
+        })
+
+    user_prompt = build_user_prompt(context, req.get("additional_context"))
+
+    try:
+        raw = provider.generate(SYSTEM_PROMPT, user_prompt, model=model, timeout_s=timeout_s)
     except ProviderTimeout as exc:
         return AnalyzerOutcome(status_code=504, body={
             "status": "error", "error": "Provider timeout", "details": str(exc),
@@ -55,8 +73,8 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
         })
 
     try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
+        parsed = _json.loads(raw)
+    except _json.JSONDecodeError as exc:
         return AnalyzerOutcome(status_code=502, body={
             "status": "error", "error": "LLM returned invalid JSON",
             "details": str(exc), "provider_used": provider_name,
@@ -68,4 +86,8 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
     body["provider_used"] = provider_name
     body["model_used"] = model
     body["elapsed_ms"] = elapsed_ms
+    logger.info(
+        "trade_analyzer call provider=%s model=%s league_id=%s elapsed_ms=%s parse_ok=true",
+        provider_name, model, req["league_id"], elapsed_ms,
+    )
     return AnalyzerOutcome(status_code=200, body=body)
