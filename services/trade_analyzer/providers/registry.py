@@ -29,6 +29,8 @@ def _register_defaults() -> None:
 
     register("echo", EchoProvider)
     register("ollama", OllamaProvider)
+    from .anthropic import AnthropicProvider
+    register("anthropic", AnthropicProvider)
 
 
 _register_defaults()
