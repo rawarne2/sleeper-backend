@@ -288,6 +288,7 @@ class SleeperLeague(db.Model):
     last_updated = db.Column(db.DateTime, nullable=False,
                              default=lambda: datetime.now(UTC))
     last_refreshed = db.Column(db.DateTime)
+    traded_picks = db.Column(db.Text)  # JSON array from Sleeper /traded_picks; refreshed on league save
 
     # Relationships
     rosters = db.relationship(
@@ -297,6 +298,10 @@ class SleeperLeague(db.Model):
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert league object to dictionary for API responses."""
+        try:
+            picks = json.loads(self.traded_picks) if self.traded_picks else []
+        except (json.JSONDecodeError, TypeError):
+            picks = []
         return {
             'id': self.id,
             'league_id': self.league_id,
@@ -310,6 +315,7 @@ class SleeperLeague(db.Model):
             'avatar': self.avatar,
             'last_updated': format_instant_rfc3339_utc(self.last_updated),
             'last_refreshed': format_instant_rfc3339_utc(self.last_refreshed),
+            'traded_picks': picks,
         }
 
 
