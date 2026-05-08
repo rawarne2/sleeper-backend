@@ -393,6 +393,29 @@ class SleeperScraper:
             return None
 
     @staticmethod
+    def fetch_traded_picks(league_id: str) -> Optional[List[Dict[str, Any]]]:
+        """Fetch traded picks for a league.
+
+        Each row: {round, season, roster_id (original), owner_id (current), previous_owner_id}.
+        Returns None on transport/JSON failures so callers can warn-and-continue.
+        """
+        try:
+            logger.info("Fetching traded picks for league_id: %s", league_id)
+            url = f"https://api.sleeper.app/v1/league/{league_id}/traded_picks"
+            response = requests.get(url, timeout=60)
+            response.raise_for_status()
+            data = response.json()
+            logger.info("Fetched %s traded picks for league_id: %s",
+                        len(data) if data else 0, league_id)
+            return data or []
+        except requests.RequestException as exc:
+            logger.error("Failed to fetch traded picks for %s: %s", league_id, exc)
+            return None
+        except json.JSONDecodeError as exc:
+            logger.error("Failed to parse traded picks response for %s: %s", league_id, exc)
+            return None
+
+    @staticmethod
     def _normalize_research_league_type(league_type):
         if league_type in ('dynasty', '2', 2):
             return 2
@@ -531,12 +554,18 @@ class SleeperScraper:
             rosters_data = SleeperScraper.fetch_league_rosters(league_id)
             users_data = SleeperScraper.fetch_league_users(league_id)
 
+            traded = SleeperScraper.fetch_traded_picks(league_id)
+            if traded is None:
+                logger.warning("traded_picks fetch failed for %s; storing []", league_id)
+                traded = []
+
             return {
                 'success': True,
                 'league_id': league_id,
                 'league_info': league_info,
                 'rosters': rosters_data or [],
                 'users': users_data or [],
+                'traded_picks': traded,
                 'timestamp': datetime.now(UTC).isoformat()
             }
 

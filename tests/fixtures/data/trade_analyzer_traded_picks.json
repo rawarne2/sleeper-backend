@@ -1,0 +1,6 @@
+[
+  {"round": 1, "season": "2025", "roster_id": 1, "owner_id": 5, "previous_owner_id": 8},
+  {"round": 1, "season": "2026", "roster_id": 1, "owner_id": 10, "previous_owner_id": 1},
+  {"round": 2, "season": "2026", "roster_id": 1, "owner_id": 8, "previous_owner_id": 1},
+  {"round": 1, "season": "2027", "roster_id": 3, "owner_id": 7, "previous_owner_id": 3}
+]
