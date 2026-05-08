@@ -4,6 +4,14 @@ import pytest
 from services.trade_analyzer.context import build_context
 
 
+@pytest.fixture(autouse=True)
+def _stub_owned_picks(monkeypatch):
+    monkeypatch.setattr(
+        "services.trade_analyzer.context.compute_owned_picks",
+        lambda lid: {},
+    )
+
+
 def _req(side_a_players, side_b_players):
     return {
         "league_id": "1210364682523656192",
@@ -78,3 +86,46 @@ def test_context_400_when_unknown_player(league_fixture):
     body = _req(["nope"], ["4034"])
     with pytest.raises(ValueError, match="player_id"):
         build_context(body, league_data=league_fixture)
+
+
+def test_context_includes_owned_picks_when_resolved(league_fixture, monkeypatch):
+    fake_picks = {
+        3: [{"season": "2026", "round": 1, "original_roster_id": 3,
+             "slot_bucket": "mid", "pick_id": "2026-r1-mid", "ktc_value": None}],
+        7: [],
+    }
+    monkeypatch.setattr(
+        "services.trade_analyzer.context.compute_owned_picks",
+        lambda lid: fake_picks,
+    )
+    monkeypatch.setattr(
+        "services.trade_analyzer.context.resolve_pick_to_ktc",
+        lambda pid, **kw: None,
+    )
+    from services.trade_analyzer.context import build_context
+    req = {
+        "league_id": "1210364682523656192", "season": "2026",
+        "ktc": {"league_format": "superflex", "is_redraft": False, "tep_level": "tep"},
+        "side_a": {"roster_id": 3, "player_ids": ["4881"], "pick_ids": ["2026-r1-mid"]},
+        "side_b": {"roster_id": 7, "player_ids": ["4034"], "pick_ids": []},
+    }
+    ctx = build_context(req, league_data=league_fixture)
+    assert ctx["side_a"]["owned_picks"] == [{"pick_id": "2026-r1-mid", "ktc_value": None}]
+    assert any(asset.get("kind") == "pick" for asset in ctx["trade"]["side_a_outgoing"])
+
+
+def test_context_400_on_unparseable_pick(league_fixture, monkeypatch):
+    monkeypatch.setattr(
+        "services.trade_analyzer.context.compute_owned_picks",
+        lambda lid: {3: [], 7: []},
+    )
+    from services.trade_analyzer.context import build_context
+    req = {
+        "league_id": "1210364682523656192", "season": "2026",
+        "ktc": {"league_format": "superflex", "is_redraft": False, "tep_level": "tep"},
+        "side_a": {"roster_id": 3, "player_ids": ["4881"], "pick_ids": ["garbage"]},
+        "side_b": {"roster_id": 7, "player_ids": ["4034"], "pick_ids": []},
+    }
+    import pytest
+    with pytest.raises(ValueError):
+        build_context(req, league_data=league_fixture)

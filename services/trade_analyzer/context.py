@@ -4,6 +4,37 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from data_types.trade_analyzer_types import TradeRequest
+from managers.sleeper_picks import compute_owned_picks
+from services.trade_analyzer.picks import (
+    PickIdError, parse_pick_id, resolve_pick_to_ktc,
+)
+
+
+def _picks_for_side(picks_by_roster, roster_id, league_format, tep_level):
+    out = []
+    for pick in picks_by_roster.get(roster_id, []):
+        ktc_value = None
+        try:
+            resolved = resolve_pick_to_ktc(
+                pick["pick_id"], league_format=league_format, tep_level=tep_level)
+            if resolved is not None:
+                _, ktc_value = resolved
+        except PickIdError:
+            pass
+        out.append({"pick_id": pick["pick_id"], "ktc_value": ktc_value})
+    return out
+
+
+def _trade_picks(pick_ids, league_format, tep_level):
+    out = []
+    for pid in pick_ids:
+        try:
+            resolved = resolve_pick_to_ktc(pid, league_format=league_format, tep_level=tep_level)
+        except PickIdError as exc:
+            raise ValueError(str(exc))
+        ktc_value = resolved[1] if resolved else None
+        out.append({"pick_id": pid, "kind": "pick", "ktc_value": ktc_value})
+    return out
 
 _PLAYER_KEYS = (
     "name", "age", "years_exp", "ktc_value",
@@ -108,6 +139,8 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
     user_by_id = _index_users(users)
     player_index = _index_players(players)
     league_format = req["ktc"]["league_format"]
+    picks_by_roster = compute_owned_picks(req["league_id"])
+    tep = req["ktc"].get("tep_level") or ""
 
     def _build_side(side_key: str) -> Dict[str, Any]:
         side = req[side_key]
@@ -119,7 +152,7 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
             "roster_by_position": _roster_by_position(
                 roster.get("players") or [], player_index, league_format
             ),
-            "owned_picks": [],
+            "owned_picks": _picks_for_side(picks_by_roster, side["roster_id"], league_format, tep),
             "team_needs_signals": {},
         }
 
@@ -128,6 +161,11 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
 
     a_out = _trade_assets(req["side_a"]["player_ids"], player_index, league_format)
     b_out = _trade_assets(req["side_b"]["player_ids"], player_index, league_format)
+    a_out_picks = _trade_picks(req["side_a"].get("pick_ids") or [], league_format, tep)
+    b_out_picks = _trade_picks(req["side_b"].get("pick_ids") or [], league_format, tep)
+
+    a_out = a_out + a_out_picks
+    b_out = b_out + b_out_picks
     a_in = b_out
     b_in = a_out
 
