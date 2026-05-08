@@ -25,8 +25,10 @@ def get_provider(name: str) -> LLMProvider:
 
 def _register_defaults() -> None:
     from .echo import EchoProvider
+    from .ollama import OllamaProvider
 
     register("echo", EchoProvider)
+    register("ollama", OllamaProvider)
 
 
 _register_defaults()
