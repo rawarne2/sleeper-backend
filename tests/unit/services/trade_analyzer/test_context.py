@@ -129,3 +129,21 @@ def test_context_400_on_unparseable_pick(league_fixture, monkeypatch):
     import pytest
     with pytest.raises(ValueError):
         build_context(req, league_data=league_fixture)
+
+
+def test_context_includes_team_needs_signals(league_fixture, monkeypatch):
+    monkeypatch.setattr(
+        "services.trade_analyzer.context.compute_owned_picks",
+        lambda lid: {3: [], 7: []},
+    )
+    from services.trade_analyzer.context import build_context
+    req = {
+        "league_id": "1210364682523656192", "season": "2026",
+        "ktc": {"league_format": "superflex", "is_redraft": False, "tep_level": "tep"},
+        "side_a": {"roster_id": 3, "player_ids": ["4881"], "pick_ids": []},
+        "side_b": {"roster_id": 7, "player_ids": ["4034"], "pick_ids": []},
+    }
+    ctx = build_context(req, league_data=league_fixture)
+    needs = ctx["side_a"]["team_needs_signals"]
+    assert "starter_slots_required" in needs
+    assert "age_profile" in needs

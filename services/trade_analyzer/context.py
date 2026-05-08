@@ -8,6 +8,7 @@ from managers.sleeper_picks import compute_owned_picks
 from services.trade_analyzer.picks import (
     PickIdError, parse_pick_id, resolve_pick_to_ktc,
 )
+from services.trade_analyzer.team_needs import compute_team_needs
 
 
 def _picks_for_side(picks_by_roster, roster_id, league_format, tep_level):
@@ -145,6 +146,17 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
     def _build_side(side_key: str) -> Dict[str, Any]:
         side = req[side_key]
         roster = _find_roster(rosters, side["roster_id"])
+        roster_players_full = []
+        for pid in roster.get("players") or []:
+            p = player_index.get(str(pid))
+            if not p:
+                continue
+            ktc_block = p.get("ktc") or {}
+            roster_players_full.append({
+                "name": p.get("playerName") or p.get("full_name"),
+                "position": (p.get("position") or "").upper(),
+                "age": ktc_block.get("age"),
+            })
         return {
             "manager": user_by_id.get(roster.get("owner_id"), "(unknown)"),
             "roster_id": side["roster_id"],
@@ -153,7 +165,10 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
                 roster.get("players") or [], player_index, league_format
             ),
             "owned_picks": _picks_for_side(picks_by_roster, side["roster_id"], league_format, tep),
-            "team_needs_signals": {},
+            "team_needs_signals": compute_team_needs(
+                roster_players_full,
+                roster_positions=league.get("roster_positions") or [],
+            ),
         }
 
     side_a = _build_side("side_a")
