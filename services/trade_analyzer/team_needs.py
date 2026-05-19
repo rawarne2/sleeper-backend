@@ -3,10 +3,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-
+_PRIMARY_POSITIONS = ("QB", "RB", "WR", "TE")
 _OLD_THRESHOLDS = {"QB": 33, "RB": 30, "WR": 30, "TE": 30}
 _YOUNG_THRESHOLD = 24
-_PRIMARY_POSITIONS = ("QB", "RB", "WR", "TE")
 _SKIP_SLOTS = {"BN", "TAXI", "IR"}
 
 
@@ -45,8 +44,10 @@ def _age_profile(players: List[Dict[str, Any]]) -> Dict[str, Any]:
     ages = [p.get("age") for p in players if isinstance(p.get("age"), (int, float))]
     if not ages:
         return {
-            "avg_starter_age": 0.0, "young_starters_count": 0,
-            "old_starters_count": 0, "contention_window": "rebuild",
+            "avg_starter_age": 0.0,
+            "young_starters_count": 0,
+            "old_starters_count": 0,
+            "contention_window": "rebuild",
         }
     avg = round(sum(ages) / len(ages), 1)
     young = sum(1 for p in players if (p.get("age") or 99) < _YOUNG_THRESHOLD)
@@ -81,7 +82,42 @@ def compute_team_needs(
     return {
         "starter_slots_required": slots,
         "starter_eligible_count": counts,
-        "depth_score": dict(counts),
         "scarcity_signals": _scarcity_signals(slots, counts),
         "age_profile": _age_profile(players),
     }
+
+
+def compute_post_trade_snapshot(
+    players: List[Dict[str, Any]],
+    *,
+    roster_positions: List[str],
+) -> Dict[str, Any]:
+    """Post-trade starter depth and scarcity (same shape as key team-needs fields)."""
+    slots = _starter_slots(roster_positions)
+    counts = _starter_eligible_count(players)
+    return {
+        "starter_eligible_count": counts,
+        "scarcity_signals": _scarcity_signals(slots, counts),
+    }
+
+
+def compute_trade_impact(
+    before: List[Dict[str, Any]],
+    after: List[Dict[str, Any]],
+    *,
+    side_label: str,
+) -> List[str]:
+    """Human-readable deltas in starter-eligible counts per position."""
+    before_counts = _starter_eligible_count(before)
+    after_counts = _starter_eligible_count(after)
+    signals: List[str] = []
+    for pos in _PRIMARY_POSITIONS:
+        b = before_counts.get(pos, 0)
+        a = after_counts.get(pos, 0)
+        if a > b:
+            signals.append(f"{side_label} gains {pos} depth ({b} -> {a} starter-eligible)")
+        elif a < b:
+            signals.append(f"{side_label} loses {pos} depth ({b} -> {a} starter-eligible)")
+    if not signals:
+        signals.append(f"{side_label}: no change in QB/RB/WR/TE starter-eligible counts")
+    return signals

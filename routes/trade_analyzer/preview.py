@@ -11,6 +11,7 @@ from routes.trade_analyzer.request_schema import (
 from services.trade_analyzer._load_league import LeagueNotFound, load_league_bundle
 from services.trade_analyzer.context import build_context
 from services.trade_analyzer.prompt import SYSTEM_PROMPT, build_user_prompt
+from services.trade_analyzer.tokens import estimate_prompt_tokens
 
 from . import trade_analyzer_bp
 
@@ -34,7 +35,12 @@ def preview_trade():
 
     try:
         league_data = load_league_bundle(
-            req["league_id"], req["ktc"]["league_format"], req["ktc"].get("tep_level") or "")
+            req["league_id"],
+            req["ktc"]["league_format"],
+            req["ktc"].get("tep_level") or "",
+            season=req["season"],
+            is_redraft=bool(req["ktc"].get("is_redraft")),
+        )
     except LeagueNotFound as exc:
         return json_api_error("League not found", 404, details=str(exc), league_id=req["league_id"])
 
@@ -44,13 +50,14 @@ def preview_trade():
         return json_api_error(str(exc), 400)
 
     user_prompt = build_user_prompt(context, req.get("additional_context"))
-    estimated_tokens = max(1, (len(SYSTEM_PROMPT) + len(user_prompt)) // 4)
+    token_usage = estimate_prompt_tokens(SYSTEM_PROMPT, user_prompt)
 
     return jsonify({
         "context": context,
         "system_prompt": SYSTEM_PROMPT,
         "user_prompt": user_prompt,
-        "estimated_tokens": estimated_tokens,
+        "estimated_tokens": token_usage["prompt_tokens_estimated"],
+        "token_usage": token_usage,
         "provider_used": provider,
         "model_used": model,
     })

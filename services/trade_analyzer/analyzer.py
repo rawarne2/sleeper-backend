@@ -10,6 +10,7 @@ from services.trade_analyzer._load_league import LeagueNotFound, load_league_bun
 from services.trade_analyzer.context import build_context
 from services.trade_analyzer.parser import ParseError, parse_llm_response
 from services.trade_analyzer.prompt import SYSTEM_PROMPT, build_user_prompt
+from services.trade_analyzer.tokens import estimate_prompt_tokens
 from services.trade_analyzer.providers.base import (
     ProviderError, ProviderTimeout, ProviderUnavailable,
 )
@@ -43,7 +44,12 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
 
     try:
         league_data = load_league_bundle(
-            req["league_id"], req["ktc"]["league_format"], req["ktc"].get("tep_level") or "")
+            req["league_id"],
+            req["ktc"]["league_format"],
+            req["ktc"].get("tep_level") or "",
+            season=req["season"],
+            is_redraft=bool(req["ktc"].get("is_redraft")),
+        )
     except LeagueNotFound as exc:
         return AnalyzerOutcome(status_code=404, body={
             "status": "error", "error": "League not found",
@@ -58,6 +64,14 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
         })
 
     user_prompt = build_user_prompt(context, req.get("additional_context"))
+    token_usage = estimate_prompt_tokens(SYSTEM_PROMPT, user_prompt)
+    logger.info(
+        "trade_analyzer prompt_tokens_estimated=%s system_chars=%s user_chars=%s league_id=%s",
+        token_usage["prompt_tokens_estimated"],
+        token_usage["system_chars"],
+        token_usage["user_chars"],
+        req["league_id"],
+    )
 
     try:
         raw = provider.generate(SYSTEM_PROMPT, user_prompt, model=model, timeout_s=timeout_s)
@@ -86,8 +100,14 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
     body["provider_used"] = provider_name
     body["model_used"] = model
     body["elapsed_ms"] = elapsed_ms
+    body.update(token_usage)
     logger.info(
-        "trade_analyzer call provider=%s model=%s league_id=%s elapsed_ms=%s parse_ok=true",
-        provider_name, model, req["league_id"], elapsed_ms,
+        "trade_analyzer call provider=%s model=%s league_id=%s elapsed_ms=%s "
+        "prompt_tokens_estimated=%s parse_ok=true",
+        provider_name,
+        model,
+        req["league_id"],
+        elapsed_ms,
+        token_usage["prompt_tokens_estimated"],
     )
     return AnalyzerOutcome(status_code=200, body=body)
