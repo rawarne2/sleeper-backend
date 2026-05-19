@@ -28,17 +28,23 @@ def list_providers():
             entries.append({
                 "name": name,
                 "default_model": ta_policy.default_model_for(name),
+                "models": ta_policy.models_for_provider_listing(
+                    name, available=bool(available), instance=instance
+                ),
                 "available": bool(available),
                 "detail": detail,
             })
         except Exception as exc:
             entries.append({
-                "name": name, "default_model": "",
-                "available": False, "detail": f"factory error: {exc}",
+                "name": name,
+                "default_model": "",
+                "models": [],
+                "available": False,
+                "detail": f"factory error: {exc}",
             })
     return jsonify({
         "default_provider": ta_policy.effective_default_provider(),
-        "allows_client_provider_model_choice": not ta_policy.anthropic_only_mode(),
+        "allows_client_provider_model_choice": not ta_policy.production_routing_locked(),
         "providers": entries,
         "rate_limit": {
             "per_hour": int(os.getenv("TRADE_ANALYZER_RATE_LIMIT_PER_HOUR", "20")),
