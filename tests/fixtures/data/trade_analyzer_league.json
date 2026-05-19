@@ -25,6 +25,7 @@
      "ktc":{"age":24,"superflexValues":{"value":8200,"positionalRank":3,"overallTrend":80},"oneQBValues":null},
      "stats":{"average_points":18.0,"games_played":3}},
     {"playerName":"Christian McCaffrey","sleeper_player_id":"4035","position":"RB","team":"SF","years_exp":7,
+     "injury_status":"Out","status":"Inactive",
      "ktc":{"age":29,"superflexValues":{"value":6800,"positionalRank":6,"overallTrend":-50},"oneQBValues":null},
      "stats":{"average_points":17.5,"games_played":3}}
   ]

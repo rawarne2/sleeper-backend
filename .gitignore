@@ -39,3 +39,6 @@ notes*
 agents*
 
 litellm_config.yaml
+
+docs/
+.claude/

@@ -25,8 +25,11 @@ def test_preview_returns_context_shape(client, stubbed_league):
     resp = client.post("/api/trade-analyzer/preview", json=_BASE)
     assert resp.status_code == 200, resp.get_data(as_text=True)
     body = resp.get_json()
-    assert body["context"]["league"]["league_id"] == "1210364682523656192"
+    assert body["context"]["league"]["season"] == "2026"
+    assert "trade_summary" in body["context"]
+    assert "additional_context" not in body["context"]
     assert body["estimated_tokens"] > 0
+    assert body["token_usage"]["prompt_tokens_estimated"] > 0
 
 
 def test_preview_400_on_missing_field(client, stubbed_league):

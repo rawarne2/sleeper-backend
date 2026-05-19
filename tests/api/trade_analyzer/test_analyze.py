@@ -56,20 +56,20 @@ def test_analyze_400_when_unknown_provider(client, stubbed_league):
 
 
 def test_analyze_400_when_echo_in_vercel_production(client, monkeypatch, stubbed_league):
-    monkeypatch.delenv("TRADE_ANALYZER_ANTHROPIC_ONLY", raising=False)
+    monkeypatch.delenv("TRADE_ANALYZER_PRODUCTION_LOCK", raising=False)
     monkeypatch.setenv("VERCEL_ENV", "production")
     resp = client.post("/api/trade-analyzer/analyze", json=_BASE)
     assert resp.status_code == 400
     err = (resp.get_json() or {}).get("error", "")
-    assert "Anthropic" in err
+    assert "Gemini" in err
 
 
-def test_analyze_accepts_explicit_anthropic_in_vercel_production(
+def test_analyze_accepts_explicit_gemini_in_vercel_production(
     client, monkeypatch, stubbed_league,
 ):
-    monkeypatch.delenv("TRADE_ANALYZER_ANTHROPIC_ONLY", raising=False)
+    monkeypatch.delenv("TRADE_ANALYZER_PRODUCTION_LOCK", raising=False)
     monkeypatch.setenv("VERCEL_ENV", "production")
-    body = {**_BASE, "provider": "anthropic"}
+    body = {**_BASE, "provider": "gemini"}
     with patch("routes.trade_analyzer.analyze.run_analysis") as run:
         from services.trade_analyzer.analyzer import AnalyzerOutcome
 
