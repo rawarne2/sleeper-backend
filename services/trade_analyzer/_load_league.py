@@ -30,7 +30,9 @@ def load_league_bundle(
         raise LeagueNotFound(db_league.get("error") or "League not in DB")
 
     needed: Set[str] = _roster_player_ids(db_league)
-    players, _ts = _ktc_players_for_roster(league_format, tep_level or "", needed)
+    players, _ts = _ktc_players_for_roster(
+        league_format, tep_level or "", needed, is_redraft
+    )
 
     research_lt = _research_league_type_label(is_redraft)
     stats_by_pid = load_stats_with_trajectory(season, research_lt, needed)

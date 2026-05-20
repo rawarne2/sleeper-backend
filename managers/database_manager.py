@@ -1,10 +1,10 @@
 import json
 import os
 from datetime import datetime, UTC
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Set
 
-from sqlalchemy import text
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy import and_, text
+from sqlalchemy.orm import contains_eager, joinedload, selectinload
 
 from models.entities import (
     db,
@@ -76,49 +76,53 @@ class DatabaseManager:
             return False
 
     @staticmethod
-    def get_players_from_db(league_format: str) -> tuple[List[Player], Optional[datetime]]:
+    def get_players_from_db(
+        league_format: str, is_redraft: bool = False
+    ) -> tuple[List[Player], datetime | None]:
         """
         Retrieve players from database for specific configuration.
 
         Args:
             league_format: '1qb' or 'superflex'
+            is_redraft: Dynasty (False) vs redraft (True) KTC rankings
 
         Returns:
             Tuple of (players_list, last_updated_timestamp)
         """
-        # Query players with appropriate joins for ordering
-        # Filter to only return players that have values for the requested format
         if league_format == '1qb':
-            players = Player.query.join(PlayerKTCOneQBValues).order_by(
-                PlayerKTCOneQBValues.rank.asc()
-            ).all()
-        else:  # superflex
-            players = Player.query.join(PlayerKTCSuperflexValues).order_by(
-                PlayerKTCSuperflexValues.rank.asc()
-            ).all()
+            ktc_table = PlayerKTCOneQBValues
+        else:
+            ktc_table = PlayerKTCSuperflexValues
 
-        # Join already limits to rows with the requested KTC side; do not
-        # touch oneqb_values/superflex_values here (avoids uselist=False
-        # warnings if duplicate KTC child rows exist).
-        filtered_players = list(players)
+        players = (
+            Player.query.join(
+                ktc_table,
+                and_(
+                    Player.id == ktc_table.player_id,
+                    ktc_table.is_redraft.is_(is_redraft),
+                ),
+            )
+            .order_by(ktc_table.rank.asc())
+            .all()
+        )
 
         last_updated = max(
-            player.last_updated for player in filtered_players) if filtered_players else None
-        return filtered_players, last_updated
+            player.last_updated for player in players) if players else None
+        return players, last_updated
 
     @staticmethod
     def get_players_for_sleeper_ids(
-        league_format: str, sleeper_ids: Set[str]
-    ) -> tuple[List[Player], Optional[datetime]]:
+        league_format: str,
+        sleeper_ids: Set[str],
+        is_redraft: bool = False,
+    ) -> tuple[List[Player], datetime | None]:
         """
         Load Player rows for a bounded set of Sleeper IDs with the relevant
         KTC values eagerly loaded.
 
         Eager-loads only the side matching ``league_format`` (1qb or superflex)
-        via ``selectinload`` to avoid N+1 lazy lookups when callers later
-        access ``player.oneqb_values`` / ``player.superflex_values``. The
-        INNER JOIN on the same KTC table guarantees every returned Player has
-        values for that format.
+        for the requested dynasty/redraft mode. The INNER JOIN guarantees every
+        returned Player has values for that format and mode.
         """
         if not sleeper_ids:
             return [], None
@@ -128,16 +132,24 @@ class DatabaseManager:
 
         if league_format == '1qb':
             ktc_table = PlayerKTCOneQBValues
-            eager_load = selectinload(Player.oneqb_values)
+            rel = Player.oneqb_values
             order_col = PlayerKTCOneQBValues.rank
         else:
             ktc_table = PlayerKTCSuperflexValues
-            eager_load = selectinload(Player.superflex_values)
+            rel = Player.superflex_values
             order_col = PlayerKTCSuperflexValues.rank
 
         players = (
-            Player.query.options(eager_load)
-            .join(ktc_table)
+            Player.query.options(
+                contains_eager(rel),
+            )
+            .join(
+                ktc_table,
+                and_(
+                    Player.id == ktc_table.player_id,
+                    ktc_table.is_redraft.is_(is_redraft),
+                ),
+            )
             .filter(Player.sleeper_player_id.in_(id_list))
             .order_by(order_col.asc())
             .all()
@@ -239,7 +251,7 @@ class DatabaseManager:
 
                     if existing_player:
                         DatabaseManager._update_existing_player_with_merged_data(
-                            existing_player, player_data)
+                            existing_player, player_data, is_redraft)
                         if not existing_player.match_key:
                             existing_player.match_key = create_player_match_key(
                                 player_name, position)
@@ -634,7 +646,7 @@ class DatabaseManager:
             }
 
     @staticmethod
-    def cleanup_incomplete_data(league_format: str, is_redraft: bool, tep_level: Optional[str]) -> Dict[str, Any]:
+    def cleanup_incomplete_data(league_format: str, is_redraft: bool, tep_level: str | None) -> Dict[str, Any]:
         """
         Clean up potentially incomplete or corrupted data for a specific configuration.
 
@@ -656,35 +668,28 @@ class DatabaseManager:
 
             # Find records with missing critical data or missing value relationships
             if league_format == '1qb':
-                incomplete_records = Player.query.outerjoin(PlayerKTCOneQBValues).filter(
-                    db.or_(
-                        Player.player_name.is_(None),
-                        Player.player_name == '',
-                        Player.position.is_(None),
-                        Player.position == '',
-                        # Remove players that should have 1QB values but don't
-                        db.and_(
-                            # Only check Sleeper-based players
-                            Player.sleeper_player_id.isnot(None),
-                            PlayerKTCOneQBValues.id.is_(None)
-                        )
-                    )
-                ).all()
-            else:  # superflex
-                incomplete_records = Player.query.outerjoin(PlayerKTCSuperflexValues).filter(
-                    db.or_(
-                        Player.player_name.is_(None),
-                        Player.player_name == '',
-                        Player.position.is_(None),
-                        Player.position == '',
-                        # Remove players that should have Superflex values but don't
-                        db.and_(
-                            # Only check Sleeper-based players
-                            Player.sleeper_player_id.isnot(None),
-                            PlayerKTCSuperflexValues.id.is_(None)
-                        )
-                    )
-                ).all()
+                ktc_table = PlayerKTCOneQBValues
+            else:
+                ktc_table = PlayerKTCSuperflexValues
+
+            incomplete_records = Player.query.outerjoin(
+                ktc_table,
+                and_(
+                    Player.id == ktc_table.player_id,
+                    ktc_table.is_redraft.is_(is_redraft),
+                ),
+            ).filter(
+                db.or_(
+                    Player.player_name.is_(None),
+                    Player.player_name == '',
+                    Player.position.is_(None),
+                    Player.position == '',
+                    db.and_(
+                        Player.sleeper_player_id.isnot(None),
+                        ktc_table.id.is_(None),
+                    ),
+                )
+            ).all()
 
             incomplete_count = len(incomplete_records)
 
@@ -963,7 +968,7 @@ class DatabaseManager:
         return {'saved': saved_count, 'updated': updated_count}
 
     @staticmethod
-    def get_league_season_only(league_id: str) -> tuple[bool, Optional[str]]:
+    def get_league_season_only(league_id: str) -> tuple[bool, str | None]:
         """
         Cheap lookup for dashboard cache keying when ``season`` is omitted.
 
@@ -1386,122 +1391,57 @@ class DatabaseManager:
                     sleeper_data.get('full_name', 'Unknown'), sleeper_data.get('position', 'Unknown'))
 
     @staticmethod
-    def _update_existing_player_with_merged_data(existing_player: Player, merged_data: Dict[str, Any]) -> None:
+    def _update_existing_player_with_merged_data(
+        existing_player: Player,
+        merged_data: Dict[str, Any],
+        is_redraft: bool,
+    ) -> None:
         """
-        Update existing player with merged KTC and Sleeper data.
+        Update an existing player from a KTC refresh.
 
-        Args:
-            existing_player: Existing player record
-            merged_data: Merged KTC and Sleeper data
+        Sleeper-owned columns are never written here; use ``save_sleeper_data_to_db``
+        for profile/injury/search_rank updates. Only link ``sleeper_player_id`` when
+        the merge discovered a match and the row was not linked yet.
         """
-        birth_date = _parse_date(merged_data.get('birth_date'))
-        injury_start_date = _parse_date(merged_data.get('injury_start_date'))
-        number = _parse_int(merged_data.get('number'))
+        sleeper_id = merged_data.get('sleeper_player_id')
+        if sleeper_id and not existing_player.sleeper_player_id:
+            existing_player.sleeper_player_id = sleeper_id
 
-        # Update core fields (always preserve Sleeper name if available, don't overwrite with KTC data)
-        if merged_data.get('full_name'):
-            # Always use Sleeper's full_name if available (don't overwrite with KTC name)
-            existing_player.player_name = merged_data.get('full_name')
-        elif not existing_player.player_name:
-            # Only use KTC name if no existing name
-            existing_player.player_name = merged_data.get(
-                PLAYER_NAME_KEY, existing_player.player_name)
+        if not existing_player.sleeper_player_id:
+            if merged_data.get(PLAYER_NAME_KEY):
+                existing_player.player_name = merged_data[PLAYER_NAME_KEY]
+            if merged_data.get(POSITION_KEY):
+                existing_player.position = merged_data[POSITION_KEY]
+            if merged_data.get(TEAM_KEY):
+                existing_player.team = merged_data[TEAM_KEY]
 
-        existing_player.position = merged_data.get(
-            POSITION_KEY, existing_player.position)
-        existing_player.team = merged_data.get(TEAM_KEY, existing_player.team)
+        if merged_data.get('ktc_player_id') is not None:
+            existing_player.ktc_player_id = merged_data.get('ktc_player_id')
+        if merged_data.get(AGE_KEY) is not None:
+            existing_player.age = merged_data.get(AGE_KEY)
+        if merged_data.get(ROOKIE_KEY) is not None:
+            existing_player.rookie = merged_data.get(ROOKIE_KEY)
 
-        # Update KTC fields
-        existing_player.ktc_player_id = merged_data.get('ktc_player_id')
-        existing_player.age = merged_data.get(AGE_KEY)
-        existing_player.rookie = merged_data.get(ROOKIE_KEY, "No")
-        existing_player.slug = merged_data.get('slug')
-        existing_player.positionID = merged_data.get('positionID')
-        existing_player.seasonsExperience = merged_data.get(
-            'seasonsExperience')
-        existing_player.pickRound = merged_data.get('pickRound')
-        existing_player.pickNum = merged_data.get('pickNum')
-        existing_player.isFeatured = merged_data.get('isFeatured')
-        existing_player.isStartSitFeatured = merged_data.get(
-            'isStartSitFeatured')
-        existing_player.isTrending = merged_data.get('isTrending')
-        existing_player.isDevyReturningToSchool = merged_data.get(
-            'isDevyReturningToSchool')
-        existing_player.isDevyYearDecrement = merged_data.get(
-            'isDevyYearDecrement')
-        existing_player.teamLongName = merged_data.get('teamLongName')
-        existing_player.draftYear = merged_data.get('draftYear')
-        existing_player.byeWeek = merged_data.get('byeWeek')
-        existing_player.injury = merged_data.get('injury')
+        for ktc_key in (
+            'slug', 'positionID', 'seasonsExperience', 'pickRound', 'pickNum',
+            'isFeatured', 'isStartSitFeatured', 'isTrending',
+            'isDevyReturningToSchool', 'isDevyYearDecrement',
+            'teamLongName', 'draftYear', 'byeWeek', 'injury',
+        ):
+            if ktc_key in merged_data:
+                setattr(existing_player, ktc_key, merged_data[ktc_key])
 
-        # Update Sleeper fields
-        existing_player.sleeper_player_id = merged_data.get(
-            'sleeper_player_id')
-        existing_player.birth_date = birth_date
-        existing_player.height = merged_data.get('height')
-        existing_player.weight = merged_data.get('weight')
-        existing_player.college = merged_data.get('college')
-        existing_player.years_exp = merged_data.get('years_exp')
-        existing_player.number = number
-        existing_player.depth_chart_order = merged_data.get(
-            'depth_chart_order')
-        existing_player.depth_chart_position = merged_data.get(
-            'depth_chart_position')
-        # Handle fantasy_positions - ensure it's a JSON string
-        fantasy_positions = merged_data.get('fantasy_positions')
-        if isinstance(fantasy_positions, list):
-            fantasy_positions = json.dumps(fantasy_positions)
-        existing_player.fantasy_positions = fantasy_positions
-        existing_player.hashtag = merged_data.get('hashtag')
-        existing_player.search_rank = merged_data.get('search_rank')
-        existing_player.high_school = merged_data.get('high_school')
-        existing_player.rookie_year = merged_data.get('rookie_year')
-        existing_player.injury_status = merged_data.get('injury_status')
-        existing_player.injury_start_date = injury_start_date
-        existing_player.full_name = merged_data.get('full_name')
-        existing_player.status = merged_data.get('status')
-        existing_player.player_metadata = merged_data.get('player_metadata')
+        DatabaseManager._update_player_ktc_values(
+            existing_player, merged_data, is_redraft)
 
-        # Update additional Sleeper fields
-        existing_player.competitions = merged_data.get('competitions')
-        existing_player.injury_body_part = merged_data.get('injury_body_part')
-        existing_player.injury_notes = merged_data.get('injury_notes')
-        existing_player.team_changed_at = merged_data.get('team_changed_at')
-        existing_player.practice_participation = merged_data.get(
-            'practice_participation')
-        existing_player.search_first_name = merged_data.get(
-            'search_first_name')
-        existing_player.birth_state = merged_data.get('birth_state')
-        existing_player.oddsjam_id = merged_data.get('oddsjam_id')
-        existing_player.practice_description = merged_data.get(
-            'practice_description')
-        existing_player.opta_id = merged_data.get('opta_id')
-        # Ensure search_full_name is always saved (critical for player matching)
-        existing_player.search_full_name = merged_data.get('search_full_name')
-        existing_player.espn_id = merged_data.get('espn_id')
-        existing_player.team_abbr = merged_data.get('team_abbr')
-        existing_player.search_last_name = merged_data.get('search_last_name')
-        existing_player.sportradar_id = merged_data.get('sportradar_id')
-        existing_player.swish_id = merged_data.get('swish_id')
-        existing_player.birth_country = merged_data.get('birth_country')
-        existing_player.gsis_id = merged_data.get('gsis_id')
-        existing_player.pandascore_id = merged_data.get('pandascore_id')
-        existing_player.yahoo_id = merged_data.get('yahoo_id')
-        existing_player.fantasy_data_id = merged_data.get('fantasy_data_id')
-        existing_player.stats_id = merged_data.get('stats_id')
-        existing_player.news_updated = merged_data.get('news_updated')
-        existing_player.birth_city = merged_data.get('birth_city')
-        existing_player.rotoworld_id = merged_data.get('rotoworld_id')
-        existing_player.rotowire_id = merged_data.get('rotowire_id')
-
-        # Update KTC values
-        DatabaseManager._update_player_ktc_values(existing_player, merged_data)
-
-        # Update timestamp
         existing_player.last_updated = datetime.now(UTC)
 
-        logger.debug("Updated existing player with merged data: %s (%s)",
-                     merged_data.get(PLAYER_NAME_KEY, 'Unknown'), merged_data.get(POSITION_KEY, 'Unknown'))
+        logger.debug(
+            "Updated existing player KTC data (%s): %s (%s)",
+            "redraft" if is_redraft else "dynasty",
+            merged_data.get(PLAYER_NAME_KEY, 'Unknown'),
+            merged_data.get(POSITION_KEY, 'Unknown'),
+        )
 
     @staticmethod
     def _create_player_with_merged_data(merged_data: Dict[str, Any], league_format: str, is_redraft: bool) -> Player:
@@ -1597,7 +1537,8 @@ class DatabaseManager:
         db.session.add(new_player)
 
         # Add KTC values
-        DatabaseManager._update_player_ktc_values(new_player, merged_data)
+        DatabaseManager._update_player_ktc_values(
+            new_player, merged_data, is_redraft)
 
         logger.info("Created new player with merged data: %s (%s)",
                     merged_data.get(PLAYER_NAME_KEY, 'Unknown'), merged_data.get(POSITION_KEY, 'Unknown'))
@@ -1605,45 +1546,41 @@ class DatabaseManager:
         return new_player
 
     @staticmethod
-    def _update_player_ktc_values(player: Player, merged_data: Dict[str, Any]) -> None:
+    def _update_player_ktc_values(
+        player: Player,
+        merged_data: Dict[str, Any],
+        is_redraft: bool,
+    ) -> None:
         """
-        Update or create KTC values for a player.
-
-        Args:
-            player: Player record
-            merged_data: Merged data containing KTC values
+        Upsert KTC value rows for one dynasty/redraft mode without touching the
+        other mode's rows.
         """
-        # Update OneQB values if present
         if merged_data.get('oneqb_values'):
-            oneqb_data = merged_data['oneqb_values']
+            oneqb_data = dict(merged_data['oneqb_values'])
 
             if player.id is not None:
-                for row in list(
-                    PlayerKTCOneQBValues.query.filter_by(
-                        player_id=player.id
-                    ).all()
-                ):
-                    db.session.delete(row)
+                PlayerKTCOneQBValues.query.filter_by(
+                    player_id=player.id, is_redraft=is_redraft
+                ).delete(synchronize_session=False)
 
             oneqb_values = PlayerKTCOneQBValues(
                 player=player,
-                **oneqb_data
+                is_redraft=is_redraft,
+                **oneqb_data,
             )
             db.session.add(oneqb_values)
 
         if merged_data.get('superflex_values'):
-            superflex_data = merged_data['superflex_values']
+            superflex_data = dict(merged_data['superflex_values'])
 
             if player.id is not None:
-                for row in list(
-                    PlayerKTCSuperflexValues.query.filter_by(
-                        player_id=player.id
-                    ).all()
-                ):
-                    db.session.delete(row)
+                PlayerKTCSuperflexValues.query.filter_by(
+                    player_id=player.id, is_redraft=is_redraft
+                ).delete(synchronize_session=False)
 
             superflex_values = PlayerKTCSuperflexValues(
                 player=player,
-                **superflex_data
+                is_redraft=is_redraft,
+                **superflex_data,
             )
             db.session.add(superflex_values)

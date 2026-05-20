@@ -115,12 +115,22 @@ def _pick_asset(pick_id: str, ktc_value: int | None) -> Dict[str, Any]:
     }
 
 
-def _pick_owned_entry(pick: Dict[str, Any], league_format: str, tep_level: str) -> Dict[str, Any]:
+def _pick_owned_entry(
+    pick: Dict[str, Any],
+    league_format: str,
+    tep_level: str,
+    *,
+    is_redraft: bool = False,
+) -> Dict[str, Any]:
     ktc_value = pick.get("ktc_value")
     if ktc_value is None:
         try:
             resolved = resolve_pick_to_ktc(
-                pick["pick_id"], league_format=league_format, tep_level=tep_level)
+                pick["pick_id"],
+                league_format=league_format,
+                tep_level=tep_level,
+                is_redraft=is_redraft,
+            )
             if resolved is not None:
                 _, ktc_value = resolved
         except PickIdError:
@@ -146,6 +156,7 @@ def _filter_owned_picks(
     *,
     league_format: str,
     tep_level: str,
+    is_redraft: bool = False,
 ) -> List[Dict[str, Any]]:
     try:
         base_year = int(base_season)
@@ -166,15 +177,29 @@ def _filter_owned_picks(
             except PickIdError:
                 include = False
         if include:
-            out.append(_pick_owned_entry(pick, league_format, tep_level))
+            out.append(
+                _pick_owned_entry(
+                    pick, league_format, tep_level, is_redraft=is_redraft)
+            )
     return out
 
 
-def _trade_picks(pick_ids: List[str], league_format: str, tep_level: str) -> List[Dict[str, Any]]:
+def _trade_picks(
+    pick_ids: List[str],
+    league_format: str,
+    tep_level: str,
+    *,
+    is_redraft: bool = False,
+) -> List[Dict[str, Any]]:
     out = []
     for pid in pick_ids:
         try:
-            resolved = resolve_pick_to_ktc(pid, league_format=league_format, tep_level=tep_level)
+            resolved = resolve_pick_to_ktc(
+                pid,
+                league_format=league_format,
+                tep_level=tep_level,
+                is_redraft=is_redraft,
+            )
         except PickIdError as exc:
             raise ValueError(str(exc)) from exc
         ktc_value = resolved[1] if resolved else None
@@ -356,6 +381,7 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
             season,
             league_format=league_format,
             tep_level=tep,
+            is_redraft=is_redraft,
         )
         return {
             "manager": user_by_id.get(roster.get("owner_id"), "(unknown)"),
@@ -385,8 +411,10 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
 
     a_out = _trade_assets(a_out_ids, player_index, league_format, ownership)
     b_out = _trade_assets(b_out_ids, player_index, league_format, ownership)
-    a_out_picks = _trade_picks(req["side_a"].get("pick_ids") or [], league_format, tep)
-    b_out_picks = _trade_picks(req["side_b"].get("pick_ids") or [], league_format, tep)
+    a_out_picks = _trade_picks(
+        req["side_a"].get("pick_ids") or [], league_format, tep, is_redraft=is_redraft)
+    b_out_picks = _trade_picks(
+        req["side_b"].get("pick_ids") or [], league_format, tep, is_redraft=is_redraft)
 
     a_out = a_out + a_out_picks
     b_out = b_out + b_out_picks

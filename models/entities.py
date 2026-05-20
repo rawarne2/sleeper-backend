@@ -116,17 +116,24 @@ class Player(db.Model):
     last_updated = db.Column(db.DateTime, nullable=False,
                              default=lambda: datetime.now(UTC))
 
-    # Relationships
+    # Relationships (dynasty + redraft each have their own KTC value row per format)
     oneqb_values = db.relationship(
-        'PlayerKTCOneQBValues', backref='player', lazy=True, cascade='all, delete-orphan', uselist=False)
+        'PlayerKTCOneQBValues',
+        backref='player',
+        lazy=True,
+        cascade='all, delete-orphan',
+        uselist=True,
+    )
     superflex_values = db.relationship(
-        'PlayerKTCSuperflexValues', backref='player', lazy=True, cascade='all, delete-orphan', uselist=False)
+        'PlayerKTCSuperflexValues',
+        backref='player',
+        lazy=True,
+        cascade='all, delete-orphan',
+        uselist=True,
+    )
 
-    def _first_ktc_oneqb_row(self):
-        """
-        Return a single OneQB KTC row. Uses a query when possible so duplicate
-        DB rows (legacy bad upserts) do not trigger ``uselist=False`` warnings.
-        """
+    def _first_ktc_oneqb_row(self, is_redraft: bool = False):
+        """Return the OneQB KTC row for dynasty (default) or redraft."""
         from sqlalchemy.orm import object_session
 
         if self.id is None:
@@ -135,13 +142,17 @@ class Player(db.Model):
         if sess is not None:
             return (
                 sess.query(PlayerKTCOneQBValues)
-                .filter_by(player_id=self.id)
+                .filter_by(player_id=self.id, is_redraft=is_redraft)
                 .order_by(PlayerKTCOneQBValues.id)
                 .first()
             )
-        return self.oneqb_values
+        for row in self.oneqb_values or []:
+            if bool(row.is_redraft) == bool(is_redraft):
+                return row
+        return None
 
-    def _first_ktc_superflex_row(self):
+    def _first_ktc_superflex_row(self, is_redraft: bool = False):
+        """Return the Superflex KTC row for dynasty (default) or redraft."""
         from sqlalchemy.orm import object_session
 
         if self.id is None:
@@ -150,13 +161,16 @@ class Player(db.Model):
         if sess is not None:
             return (
                 sess.query(PlayerKTCSuperflexValues)
-                .filter_by(player_id=self.id)
+                .filter_by(player_id=self.id, is_redraft=is_redraft)
                 .order_by(PlayerKTCSuperflexValues.id)
                 .first()
             )
-        return self.superflex_values
+        for row in self.superflex_values or []:
+            if bool(row.is_redraft) == bool(is_redraft):
+                return row
+        return None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self, is_redraft: bool = False) -> Dict[str, Any]:
         """Convert player object to dictionary for API responses."""
         # Sleeper-based app: Sleeper fields at top level
         result = {
@@ -214,8 +228,8 @@ class Player(db.Model):
             'last_updated': format_instant_rfc3339_utc(self.last_updated),
         }
 
-        oqb = self._first_ktc_oneqb_row()
-        sfl = self._first_ktc_superflex_row()
+        oqb = self._first_ktc_oneqb_row(is_redraft)
+        sfl = self._first_ktc_superflex_row(is_redraft)
 
         # KTC data nested in ktc object
         ktc_data = {
@@ -612,9 +626,14 @@ class SleeperLeagueStats(db.Model):
 class PlayerKTCOneQBValues(db.Model):
     """KTC OneQB values for a player."""
     __tablename__ = 'player_ktc_oneqb_values'
+    __table_args__ = (
+        db.UniqueConstraint(
+            'player_id', 'is_redraft', name='uq_player_ktc_oneqb_values_player_redraft'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     player_id = db.Column(db.Integer, db.ForeignKey(
         'players.id'), nullable=False)
+    is_redraft = db.Column(db.Boolean, nullable=False, default=False)
 
     # Base values
     value = db.Column(db.Integer)
@@ -703,9 +722,14 @@ class PlayerKTCOneQBValues(db.Model):
 class PlayerKTCSuperflexValues(db.Model):
     """KTC Superflex values for a player."""
     __tablename__ = 'player_ktc_superflex_values'
+    __table_args__ = (
+        db.UniqueConstraint(
+            'player_id', 'is_redraft', name='uq_player_ktc_superflex_values_player_redraft'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     player_id = db.Column(db.Integer, db.ForeignKey(
         'players.id'), nullable=False)
+    is_redraft = db.Column(db.Boolean, nullable=False, default=False)
 
     # Base values
     value = db.Column(db.Integer)

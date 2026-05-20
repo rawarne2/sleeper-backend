@@ -69,7 +69,7 @@ def _copy_ktc_values_block(values_dict):
     return block
 
 
-def filter_players_by_format(players, league_format, tep_level):
+def filter_players_by_format(players, league_format, tep_level, is_redraft=False):
     """Helper function to filter players based on league format and TEP level."""
     filtered_players = []
     for player in players:
@@ -77,7 +77,7 @@ def filter_players_by_format(players, league_format, tep_level):
         # Avoid deepcopy: to_dict() already builds fresh dicts; we only need
         # shallow copies of the ktc value blocks we mutate.
         if hasattr(player, 'to_dict'):
-            player_dict = player.to_dict()
+            player_dict = player.to_dict(is_redraft=is_redraft)
         else:
             player_dict = dict(player)
 

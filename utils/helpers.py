@@ -2,7 +2,7 @@
 import logging
 import os
 from datetime import datetime, UTC
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from utils.constants import VALID_TEP_LEVELS
 
@@ -18,7 +18,7 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 
-def validate_parameters(is_redraft: str, league_format: str, tep_level: str) -> tuple[bool, str, Optional[str], Optional[str]]:
+def validate_parameters(is_redraft: str, league_format: str, tep_level: str) -> tuple[bool, str, str | None, str | None]:
     """
     Validate and normalize request parameters.
 
@@ -49,7 +49,7 @@ def validate_parameters(is_redraft: str, league_format: str, tep_level: str) -> 
         return False, '', None, 'Parameter validation error'
 
 
-def normalize_tep_level(tep_level: Optional[str]) -> Optional[str]:
+def normalize_tep_level(tep_level: str | None) -> str | None:
     """Normalize TEP level string to standard format."""
     if not tep_level or tep_level == "":
         return None
@@ -70,7 +70,7 @@ def create_player_match_key(player_name: str, position: str) -> str:
 
 
 def save_and_verify_database(database_manager, players_sorted: List[Dict[str, Any]], league_format: str,
-                             is_redraft: bool) -> tuple[int, Optional[str]]:
+                             is_redraft: bool) -> tuple[int, str | None]:
     """Save data to database and verify the operation."""
     try:
         logger.info("Starting database save operation...")
@@ -80,7 +80,7 @@ def save_and_verify_database(database_manager, players_sorted: List[Dict[str, An
 
         logger.info("Verifying database save operation...")
         verification_players, _ = database_manager.get_players_from_db(
-            league_format)
+            league_format, is_redraft)
 
         if len(verification_players) == 0:
             error_msg = f"Database verification failed: no players found after saving {added_count} players"
@@ -122,7 +122,7 @@ def ktc_write_unmatched_merge_report_enabled() -> bool:
 
 
 def perform_file_operations(file_manager, players_sorted: List[Dict[str, Any]], added_count: int,
-                            league_format: str, is_redraft: bool, tep_level: Optional[str]) -> tuple[bool, bool]:
+                            league_format: str, is_redraft: bool, tep_level: str | None) -> tuple[bool, bool]:
     """Perform file and S3 operations."""
     file_saved = False
     s3_uploaded = False

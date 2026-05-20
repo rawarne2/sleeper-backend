@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-from typing import Optional, Tuple
 
 from models.entities import Player
 from utils.constants import SLEEPER_POSITION_RDP
@@ -44,8 +43,17 @@ def _candidate_names(parsed: dict) -> list[str]:
     return out
 
 
-def _ktc_value(player: Player, league_format: str, tep_level: Optional[str]) -> Optional[int]:
-    rel = player.superflex_values if league_format == "superflex" else player.oneqb_values
+def _ktc_value(
+    player: Player,
+    league_format: str,
+    tep_level: str | None,
+    *,
+    is_redraft: bool = False,
+) -> int | None:
+    if league_format == "superflex":
+        rel = player._first_ktc_superflex_row(is_redraft)
+    else:
+        rel = player._first_ktc_oneqb_row(is_redraft)
     if rel is None:
         return None
     tep_field = {
@@ -59,8 +67,12 @@ def _ktc_value(player: Player, league_format: str, tep_level: Optional[str]) -> 
 
 
 def resolve_pick_to_ktc(
-    pick_id: str, *, league_format: str, tep_level: Optional[str],
-) -> Optional[Tuple[Player, Optional[int]]]:
+    pick_id: str,
+    *,
+    league_format: str,
+    tep_level: str | None,
+    is_redraft: bool = False,
+) -> tuple[Player, int | None] | None:
     """Return (Player row, ktc_value) or None when no KTC RDP row matches."""
     parsed = parse_pick_id(pick_id)
     for name in _candidate_names(parsed):
@@ -71,5 +83,6 @@ def resolve_pick_to_ktc(
             .first()
         )
         if row is not None:
-            return row, _ktc_value(row, league_format, tep_level)
+            return row, _ktc_value(
+                row, league_format, tep_level, is_redraft=is_redraft)
     return None

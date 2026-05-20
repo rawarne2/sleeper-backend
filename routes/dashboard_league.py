@@ -5,7 +5,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, UTC
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from flask import Blueprint, current_app, request, Response
 from sqlalchemy import func
@@ -72,8 +72,8 @@ def _ktc_values_block_for_dashboard(values, tep_level: str) -> Dict[str, Any]:
 
 
 def _player_to_dashboard_dict(
-    player: Player, league_format: str, tep_level: str
-) -> Optional[Dict[str, Any]]:
+    player: Player, league_format: str, tep_level: str, is_redraft: bool = False
+) -> Dict[str, Any] | None:
     """
     Slim per-player payload for the dashboard.
 
@@ -82,9 +82,15 @@ def _player_to_dashboard_dict(
     or pay for JSON parses the dashboard does not render.
     """
     if league_format == "superflex":
-        ktc_values = player.superflex_values
+        if hasattr(player, "_first_ktc_superflex_row"):
+            ktc_values = player._first_ktc_superflex_row(is_redraft)
+        else:
+            ktc_values = getattr(player, "superflex_values", None)
     else:
-        ktc_values = player.oneqb_values
+        if hasattr(player, "_first_ktc_oneqb_row"):
+            ktc_values = player._first_ktc_oneqb_row(is_redraft)
+        else:
+            ktc_values = getattr(player, "oneqb_values", None)
     if ktc_values is None:
         return None
 
@@ -129,7 +135,7 @@ def _roster_player_ids(league_payload: Dict[str, Any]) -> Set[str]:
     return ids
 
 
-def _ownership_entry(blob: Any) -> Optional[Dict[str, Any]]:
+def _ownership_entry(blob: Any) -> Dict[str, Any] | None:
     if not isinstance(blob, dict):
         return None
     owned = blob.get("owned")
@@ -163,7 +169,7 @@ def _load_ownership_and_meta(
     research_lt: str,
     roster_player_ids: Set[str],
     *,
-    timings: Optional[Dict[str, float]] = None,
+    timings: Dict[str, float] | None = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     t_q = time.perf_counter()
     # Ownership lives in research_data; points-only weekly rows must not drive this lookup.
@@ -231,7 +237,7 @@ def _load_player_stats(
     research_lt: str,
     roster_player_ids: Set[str],
     *,
-    timings: Optional[Dict[str, float]] = None,
+    timings: Dict[str, float] | None = None,
 ) -> Dict[str, Dict[str, Any]]:
     """Load aggregated season stats (avg, total, games) for roster player ids.
 
@@ -282,19 +288,22 @@ def _load_player_stats(
 
 def _ktc_players_for_roster(
     league_format: str,
-    tep_level: Optional[str],
+    tep_level: str | None,
     needed_ids: Set[str],
-) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    is_redraft: bool = False,
+) -> Tuple[List[Dict[str, Any]], str | None]:
     """Load slim dashboard player dicts from the DB for the roster's Sleeper IDs."""
     players, last_updated = DatabaseManager.get_players_for_sleeper_ids(
-        league_format, needed_ids
+        league_format, needed_ids, is_redraft
     )
     if not players:
         return [], None
 
     out: List[Dict[str, Any]] = []
     for p in players:
-        slim = _player_to_dashboard_dict(p, league_format, tep_level or "")
+        slim = _player_to_dashboard_dict(
+            p, league_format, tep_level or "", is_redraft
+        )
         if slim is not None:
             out.append(slim)
 
@@ -302,7 +311,7 @@ def _ktc_players_for_roster(
     return out, ts
 
 
-def _ensure_league_in_db(league_id: str) -> Optional[str]:
+def _ensure_league_in_db(league_id: str) -> str | None:
     """Fetch league from Sleeper API and persist it. Returns the season string on success."""
     try:
         league_data = SleeperScraper.scrape_league_data(league_id)
@@ -435,7 +444,7 @@ def get_dashboard_league(league_id: str):
         with flask_app.app_context():
             t = time.perf_counter()
             result = _ktc_players_for_roster(
-                league_format, tep_level, needed_ids
+                league_format, tep_level, needed_ids, is_redraft
             )
             own_timings["ms_run_players"] = (time.perf_counter() - t) * 1000
             return result
@@ -475,7 +484,11 @@ def get_dashboard_league(league_id: str):
             ktc_value = None
             try:
                 resolved = resolve_pick_to_ktc(
-                    p["pick_id"], league_format=league_format, tep_level=tep_level or "")
+                    p["pick_id"],
+                    league_format=league_format,
+                    tep_level=tep_level or "",
+                    is_redraft=is_redraft,
+                )
                 if resolved is not None:
                     _, ktc_value = resolved
             except PickIdError:

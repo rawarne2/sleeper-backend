@@ -510,7 +510,7 @@ def get_rankings():
         return resp
 
     players, last_updated = DatabaseManager.get_players_from_db(
-        league_format)
+        league_format, is_redraft)
 
     if not players:
         return json_api_error(
@@ -525,7 +525,7 @@ def get_rankings():
         )
 
     players_data = filter_players_by_format(
-        players, league_format, tep_level)
+        players, league_format, tep_level, is_redraft)
 
     payload = {
         'timestamp': format_instant_rfc3339_utc(last_updated),
