@@ -30,7 +30,6 @@ def test_analyze_happy_path_with_echo(client, stubbed_league):
     assert resp.status_code == 200, resp.get_data(as_text=True)
     body = resp.get_json()
     assert body["winner"] in ("side_a", "side_b", "even")
-    assert 0 <= body["fairness_score"] <= 100
     assert body["provider_used"] == "echo"
     assert body["elapsed_ms"] >= 0
 
@@ -70,11 +69,13 @@ def test_analyze_accepts_explicit_gemini_in_vercel_production(
     monkeypatch.delenv("TRADE_ANALYZER_PRODUCTION_LOCK", raising=False)
     monkeypatch.setenv("VERCEL_ENV", "production")
     body = {**_BASE, "provider": "gemini"}
-    with patch("routes.trade_analyzer.analyze.run_analysis") as run:
+    with patch("cache.rate_limiter.get_redis_client", return_value=None), patch(
+        "routes.trade_analyzer.analyze.run_analysis"
+    ) as run:
         from services.trade_analyzer.analyzer import AnalyzerOutcome
 
         run.return_value = AnalyzerOutcome(status_code=200, body={
-            "fairness_score": 50, "winner": "even", "summary_bullets": [],
+            "winner": "even", "summary_bullets": [],
             "side_a": {}, "side_b": {},
         })
         resp = client.post("/api/trade-analyzer/analyze", json=body)

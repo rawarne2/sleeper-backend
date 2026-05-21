@@ -1,11 +1,11 @@
 {
-  "fairness_score": 47,
   "winner": "side_b",
   "summary_bullets": [
     "Side A trades veteran QB depth for younger pick capital.",
     "Side B consolidates roster around proven production."
   ],
   "side_a": {
+    "trade_grade": "D+",
     "pros": ["Adds 2026 1st"],
     "cons": ["Loses elite QB tier"],
     "ktc_delta": {
@@ -22,6 +22,7 @@
     }
   },
   "side_b": {
+    "trade_grade": "B+",
     "pros": ["Adds elite QB"],
     "cons": ["Sends top pick"],
     "ktc_delta": {

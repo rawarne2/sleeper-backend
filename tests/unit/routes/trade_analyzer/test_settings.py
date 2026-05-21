@@ -81,3 +81,10 @@ def test_environment_provider_error_explicit_anthropic_rejected(prod_env):
     from services.trade_analyzer.policy import environment_provider_error
 
     assert environment_provider_error("anthropic") is not None
+
+
+def test_ollama_models_include_llama_dev_default(dev_env):
+    from services.trade_analyzer.policy import models_for_provider_listing
+
+    models = models_for_provider_listing("ollama", available=True, instance=None)
+    assert "llama3.1:8b" in models

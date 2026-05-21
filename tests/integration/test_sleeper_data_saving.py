@@ -139,12 +139,19 @@ def test_sleeper_data_saving_integration(app_context):
     assert josh_allen.full_name == 'Josh Allen'
     assert josh_allen.position == 'QB'
     assert josh_allen.team == 'BUF'
+    # Expanded Sleeper fields persist via the merged scraper output
+    assert josh_allen.espn_id == '3918298'
+    assert josh_allen.yahoo_id == '31007'
+    assert josh_allen.search_first_name == 'Josh'
+    assert josh_allen.birth_state == 'California'
+    assert josh_allen.news_updated == 1640995200000
 
     mccaffrey = Player.query.filter_by(sleeper_player_id='4035').first()
     assert mccaffrey is not None
     assert mccaffrey.full_name == 'Christian McCaffrey'
     assert mccaffrey.position == 'RB'
     assert mccaffrey.team == 'SF'
+    assert mccaffrey.gsis_id == '00-0033357'
 
 
 def test_sleeper_data_merge_with_existing_ktc(app_context):

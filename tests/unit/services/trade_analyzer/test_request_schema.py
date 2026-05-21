@@ -108,3 +108,26 @@ def test_rejects_unknown_provider():
     body = {**_VALID, "provider": "not_registered"}
     with pytest.raises(RequestValidationError, match="Unknown provider"):
         parse_trade_request(body)
+
+
+def test_is_tanking_defaults_false():
+    req = parse_trade_request(_VALID)
+    assert req["side_a"]["is_tanking"] is False
+    assert req["side_b"]["is_tanking"] is False
+
+
+def test_is_tanking_parsed_when_set():
+    body = {
+        **_VALID,
+        "side_a": {**_VALID["side_a"], "is_tanking": True},
+        "side_b": {**_VALID["side_b"], "is_tanking": False},
+    }
+    req = parse_trade_request(body)
+    assert req["side_a"]["is_tanking"] is True
+    assert req["side_b"]["is_tanking"] is False
+
+
+def test_rejects_non_bool_is_tanking():
+    body = {**_VALID, "side_a": {**_VALID["side_a"], "is_tanking": "yes"}}
+    with pytest.raises(RequestValidationError, match="is_tanking"):
+        parse_trade_request(body)

@@ -1,5 +1,6 @@
 """compute_team_needs tests."""
 from services.trade_analyzer.team_needs import (
+    _starter_slots,
     compute_post_trade_snapshot,
     compute_team_needs,
     compute_trade_impact,
@@ -10,9 +11,9 @@ def _player(name, pos, age):
     return {"name": name, "age": age, "position": pos}
 
 
-def test_starter_slots_required_handles_flex_and_super_flex():
-    needs = compute_team_needs([], roster_positions=["QB", "RB", "RB", "WR", "FLEX", "SUPER_FLEX", "BN"])
-    req = needs["starter_slots_required"]
+def test_starter_slots_helper_handles_flex_and_super_flex():
+    """starter_slots_required moved to league-wide _starter_slots (deduped from team_needs)."""
+    req = _starter_slots(["QB", "RB", "RB", "WR", "FLEX", "SUPER_FLEX", "BN"])
     assert req["QB"] == 1
     assert req["RB"] == 2
     assert req["WR"] == 1
@@ -20,10 +21,15 @@ def test_starter_slots_required_handles_flex_and_super_flex():
     assert req["SUPER_FLEX"] == 1
 
 
-def test_skips_bench_taxi_ir():
-    needs = compute_team_needs([], roster_positions=["QB", "BN", "TAXI", "IR"])
-    assert needs["starter_slots_required"]["QB"] == 1
-    assert "BN" not in needs["starter_slots_required"]
+def test_starter_slots_helper_skips_bench_taxi_ir():
+    req = _starter_slots(["QB", "BN", "TAXI", "IR"])
+    assert req["QB"] == 1
+    assert "BN" not in req
+
+
+def test_team_needs_omits_starter_slots_required():
+    needs = compute_team_needs([], roster_positions=["QB", "RB", "BN"])
+    assert "starter_slots_required" not in needs
 
 
 def test_starter_eligible_count():

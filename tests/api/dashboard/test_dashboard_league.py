@@ -192,15 +192,21 @@ def _fake_ktc_values():
     )
 
 
-def _fake_player(*, oneqb=None, superflex=None):
-    return SimpleNamespace(
+def _fake_player(*, oneqb=None, superflex=None, **overrides):
+    base = dict(
         id=42, player_name="Justin Jefferson", position="WR", team="MIN",
         sleeper_player_id="6794", full_name="Justin Jefferson",
         last_updated=None, injury_status=None, status="Active",
         birth_date=None, height="6'1\"", weight="195", college="LSU",
         years_exp=5, number=18, age=25.5,
         oneqb_values=oneqb, superflex_values=superflex,
+        pickRound=None, pickNum=None, isTrending=True,
+        draftYear=2020, byeWeek=6, injury=None,
+        injury_body_part=None, injury_notes=None, injury_start_date=None,
+        practice_participation=None, practice_description=None,
     )
+    base.update(overrides)
+    return SimpleNamespace(**base)
 
 
 def test_player_to_dashboard_dict_returns_none_when_no_format_values():
@@ -210,7 +216,7 @@ def test_player_to_dashboard_dict_returns_none_when_no_format_values():
 
 
 def test_player_to_dashboard_dict_superflex_with_tep_override():
-    p = _fake_player(superflex=_fake_ktc_values())
+    p = _fake_player(superflex=_fake_ktc_values(), pickRound=1, pickNum=22)
     out = _player_to_dashboard_dict(p, "superflex", "tep")
     assert out is not None
     assert out["sleeper_player_id"] == "6794"
@@ -221,6 +227,22 @@ def test_player_to_dashboard_dict_superflex_with_tep_override():
     assert sf["rank"] == 8
     assert sf["positionalRank"] == 1
     assert sf["tep"]["value"] == 8200
+    assert out["ktc"]["pickRound"] == 1
+    assert out["ktc"]["pickNum"] == 22
+    assert out["ktc"]["isTrending"] is True
+    assert out["ktc"]["draftYear"] == 2020
+    assert out["ktc"]["byeWeek"] == 6
+    assert out["ktc"]["is_redraft"] is False
+    assert "injury_body_part" in out
+    assert "practice_participation" in out
+
+
+def test_player_to_dashboard_dict_parses_ktc_injury_json():
+    p = _fake_player(superflex=_fake_ktc_values(),
+                     injury='{"injuryCode": "Q", "summary": "ankle"}')
+    out = _player_to_dashboard_dict(p, "superflex", "tep")
+    assert out is not None
+    assert out["ktc"]["injury"] == {"injuryCode": "Q", "summary": "ankle"}
 
 
 def test_player_to_dashboard_dict_oneqb_no_tep():
@@ -239,6 +261,35 @@ def test_ktc_values_block_tepp_override_skips_when_value_missing():
     block = _ktc_values_block_for_dashboard(values, "tepp")
     assert block["value"] == 8000  # base, unchanged
     assert block["rank"] == 10
+
+
+def test_dashboard_bundle_includes_bundle_season(client):
+    """Bundle exposes the resolved season so the dashboard can gate bye-week UI."""
+    from unittest.mock import patch
+
+    def fake_season(_):
+        return (True, "2026")
+
+    def fake_league(_):
+        return {
+            "status": "success",
+            "league": {"league_id": "Z", "season": "2026"},
+            "rosters": [], "users": [],
+        }
+
+    with patch("routes.dashboard_league.DatabaseManager.get_league_season_only", side_effect=fake_season), \
+         patch("routes.dashboard_league.DatabaseManager.get_league_data", side_effect=fake_league), \
+         patch("routes.dashboard_league._ktc_players_for_roster", return_value=([], None)), \
+         patch("routes.dashboard_league._load_ownership_and_meta",
+               return_value=({}, {"season": "2026", "week": 3, "league_type": 2, "last_updated": None})), \
+         patch("routes.dashboard_league._load_player_stats", return_value={}), \
+         patch("managers.sleeper_picks.compute_owned_picks", return_value={}):
+        r = client.get(
+            "/api/dashboard/league/Z?season=2026&league_format=superflex&is_redraft=false&tep_level=tep"
+        )
+    assert r.status_code == 200
+    data = r.get_json()["data"]
+    assert data.get("bundleSeason") == "2026"
 
 
 def test_dashboard_includes_picks_by_roster_block(client):
