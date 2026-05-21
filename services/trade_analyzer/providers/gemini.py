@@ -5,7 +5,12 @@ import os
 
 from services.trade_analyzer.output_schema import TRADE_ANALYZER_JSON_SCHEMA
 
-from .base import LLMProvider, ProviderError, ProviderTimeout, ProviderUnavailable
+from .base import (
+    LLMProvider,
+    ProviderError,
+    ProviderUnavailable,
+    map_provider_call_error,
+)
 
 
 def _api_key() -> str:
@@ -67,17 +72,7 @@ class GeminiProvider(LLMProvider):
                 config=config,
             )
         except Exception as exc:
-            name = type(exc).__name__
-            msg = str(exc).lower()
-            if (
-                "Timeout" in name
-                or "DeadlineExceeded" in name
-                or "deadline exceeded" in msg
-            ):
-                raise ProviderTimeout(
-                    f"Gemini timeout after {timeout_s}s: {exc}"
-                ) from exc
-            raise ProviderError(f"Gemini call failed: {exc}") from exc
+            map_provider_call_error(exc, provider="Gemini", timeout_s=timeout_s)
 
         text = getattr(resp, "text", None)
         if not isinstance(text, str) or not text.strip():

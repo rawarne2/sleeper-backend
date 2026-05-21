@@ -7,6 +7,7 @@ import pytest
 
 from services.trade_analyzer.providers.base import (
     ProviderError,
+    ProviderRateLimited,
     ProviderTimeout,
     ProviderUnavailable,
 )
@@ -149,6 +150,36 @@ def test_generate_requires_api_key(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     with pytest.raises(ProviderUnavailable):
         GeminiProvider().generate("sys", "user", model="gemini-2.5-flash", timeout_s=1)
+
+
+def test_generate_maps_429_to_rate_limited(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "stub-key")
+
+    class _TooManyRequests(Exception):
+        pass
+
+    class _FakeModels:
+        def generate_content(self, **_kw):
+            err = _TooManyRequests("429 Too Many Requests")
+            err.code = 429  # type: ignore[attr-defined]
+            raise err
+
+    class _FakeClient:
+        def __init__(self, *_, **__):
+            self.models = _FakeModels()
+
+    fake_genai = MagicMock()
+    fake_genai.Client = _FakeClient
+    fake_types = MagicMock()
+
+    with patch("services.trade_analyzer.providers.gemini._import_genai",
+               return_value=(fake_genai, fake_types)):
+        with pytest.raises(ProviderRateLimited) as exc_info:
+            GeminiProvider().generate(
+                "sys", "user", model="gemini-2.0-flash", timeout_s=10
+            )
+    assert "429" in str(exc_info.value)
+    assert exc_info.value.retry_after_seconds == 60
 
 
 def test_generate_raises_on_empty_text(monkeypatch):

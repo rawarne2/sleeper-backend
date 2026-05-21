@@ -14,7 +14,10 @@ from services.trade_analyzer.policy import trade_analyzer_debug_log_enabled
 from services.trade_analyzer.prompt import SYSTEM_PROMPT, build_user_prompt
 from services.trade_analyzer.tokens import estimate_prompt_tokens
 from services.trade_analyzer.providers.base import (
-    ProviderError, ProviderTimeout, ProviderUnavailable,
+    ProviderError,
+    ProviderRateLimited,
+    ProviderTimeout,
+    ProviderUnavailable,
 )
 from services.trade_analyzer.providers.registry import get_provider
 
@@ -87,14 +90,28 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
 
     try:
         raw = provider.generate(SYSTEM_PROMPT, user_prompt, model=model, timeout_s=timeout_s)
+    except ProviderRateLimited as exc:
+        retry_after = (
+            exc.retry_after_seconds
+            if isinstance(exc.retry_after_seconds, int) and exc.retry_after_seconds > 0
+            else 60
+        )
+        return AnalyzerOutcome(status_code=429, body={
+            "status": "error",
+            "error": str(exc),
+            "details": str(exc),
+            "provider_used": provider_name,
+            "model_used": model,
+            "retry_after_seconds": retry_after,
+        })
     except ProviderTimeout as exc:
         return AnalyzerOutcome(status_code=504, body={
-            "status": "error", "error": "Provider timeout", "details": str(exc),
+            "status": "error", "error": str(exc), "details": str(exc),
             "provider_used": provider_name, "model_used": model,
         })
     except ProviderError as exc:
         return AnalyzerOutcome(status_code=503, body={
-            "status": "error", "error": "Provider failure", "details": str(exc),
+            "status": "error", "error": str(exc), "details": str(exc),
             "provider_used": provider_name, "model_used": model,
         })
 
