@@ -53,6 +53,8 @@ Layered structure:
 - API instants are serialized as RFC 3339 with explicit `Z`/numeric offset (use `utils.datetime_serialization`).
 - `POST`/`PUT /api/sleeper/league/{id}` returns **404** on Sleeper scrape failure and **500** on persistence failure — not 200 with an error in the body. League refresh path is `POST /api/sleeper/league/{id}` (not `.../refresh`).
 - `POST /api/ktc/refresh` returns **202** with `job_id`/`poll_url` for async work; clients can pass `sync=1` to block. The `sleeper-dashboard` frontend does not poll status, so refresh-then-immediately-load races; if you change refresh semantics, account for that.
+- Trade analyzer slim LLM context and curl examples: `docs/trade-analyzer-payload.md`. Sample analyze: `provider: echo` or `tests/fixtures/data/trade_analyzer_echo.json` (no GET sample route).
+- **Trade analyzer perf:** Gemini uses the `google-genai` SDK with `thinking_budget=0` by default (raise via `TRADE_ANALYZER_GEMINI_THINKING_BUDGET` for deeper reasoning at +10–30s latency). All providers use the canonical `TRADE_ANALYZER_JSON_SCHEMA` for structured output. Provider health checks are cached in-process only (`services/trade_analyzer/health_cache.py`, 60s success / 5s failure) — there is intentionally no Redis or IndexedDB cache for analysis results so injuries/news flow through immediately. Ownership + `research_meta` are loaded once in `_load_league.py` and threaded through `build_context` and `load_stats_with_trajectory`'s `max_week` arg; do not requery `SleeperWeeklyData` from those callers.
 
 ## Maintenance / cron
 

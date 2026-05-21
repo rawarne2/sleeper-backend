@@ -126,7 +126,7 @@ paths:
                     type: string
                   status:
                     type: string
-                    enum: [ "queued", "running", "success", "error" ]
+                    enum: ["queued", "running", "success", "error"]
                   created_at:
                     type: string
                     nullable: true
@@ -579,7 +579,7 @@ paths:
                 league_type:
                   type: string
                   description: League type
-                  enum: [ "dynasty", "redraft" ]
+                  enum: ["dynasty", "redraft"]
                   default: "dynasty"
                 scoring_settings:
                   type: object
@@ -840,7 +840,13 @@ paths:
   /api/trade-analyzer/preview:
     post:
       tags: [Trade Analyzer]
-      summary: Build the analysis context without calling an LLM
+      summary: Build slim LLM context and prompts without calling a model
+      description: |
+        Returns the JSON context embedded in the analyze user prompt, plus system and user
+        prompt strings and token estimates. Context uses league-scoped KTC (single tep_level),
+        league.research_week with market_owned_pct/market_started_pct, trade.ktc_totals as the
+        value anchor, and per-side rosters without duplicate roster_by_position. See
+        docs/trade-analyzer-payload.md.
       operationId: previewTradeAnalysis
       requestBody:
         required: true
@@ -872,6 +878,9 @@ paths:
     post:
       tags: [Trade Analyzer]
       summary: Analyze a proposed trade via the configured LLM provider
+      description: |
+        Use provider echo for a deterministic sample response (tests/fixtures/data/trade_analyzer_echo.json)
+        without an external API key. Requires league data in the database.
       operationId: analyzeTrade
       requestBody:
         required: true
@@ -928,12 +937,13 @@ components:
     IsRedraft:
       name: is_redraft
       in: query
-      description: Ranking type - 'true' for redraft (current season only), 'false'
+      description:
+        Ranking type - 'true' for redraft (current season only), 'false'
         for dynasty (long-term player value)
       required: false
       schema:
         type: string
-        enum: [ "true", "false" ]
+        enum: ["true", "false"]
         default: "false"
       example: "false"
 
@@ -945,7 +955,7 @@ components:
       required: false
       schema:
         type: string
-        enum: [ "1qb", "superflex" ]
+        enum: ["1qb", "superflex"]
         default: "1qb"
       example: "superflex"
 
@@ -961,7 +971,7 @@ components:
       required: false
       schema:
         type: string
-        enum: [ "", "tep", "tepp", "teppp" ]
+        enum: ["", "tep", "tepp", "teppp"]
         default: ""
       example: "tep"
 
@@ -1018,7 +1028,7 @@ components:
             minimum: 1
             maximum: 18
           - type: string
-            enum: [ "all" ]
+            enum: ["all"]
         default: 1
       example: 1
 
@@ -1037,7 +1047,7 @@ components:
       required: false
       schema:
         type: string
-        enum: [ "dynasty", "redraft" ]
+        enum: ["dynasty", "redraft"]
         default: "dynasty"
       example: "dynasty"
 
@@ -1051,11 +1061,11 @@ components:
       properties:
         status:
           type: string
-          enum: [ "healthy", "unhealthy" ]
+          enum: ["healthy", "unhealthy"]
           description: Overall service health status
         database:
           type: string
-          enum: [ "connected", "connection_failed", "error" ]
+          enum: ["connected", "connection_failed", "error"]
           description: Database connection status
         timestamp:
           type: string
@@ -1078,7 +1088,7 @@ components:
       properties:
         status:
           type: string
-          enum: [ "error" ]
+          enum: ["error"]
         error:
           type: string
           description: Error message
@@ -1110,7 +1120,7 @@ components:
           description: Week number or the literal "all" for research refresh errors
         league_type:
           type: string
-          enum: [ "dynasty", "redraft" ]
+          enum: ["dynasty", "redraft"]
         parameters:
           type: object
           additionalProperties: true
@@ -1140,7 +1150,7 @@ components:
           description: Player name
         position:
           type: string
-          enum: [ "QB", "RB", "WR", "TE", "K", "DEF" ]
+          enum: ["QB", "RB", "WR", "TE", "K", "DEF"]
           description: Player position
         team:
           type: string
@@ -1195,7 +1205,7 @@ components:
           description: Player age
         rookie:
           type: string
-          enum: [ "Yes", "No" ]
+          enum: ["Yes", "No"]
           description: Whether player is a rookie
         oneQBValues:
           $ref: "#/components/schemas/PlayerValues"
@@ -1314,10 +1324,10 @@ components:
           type: boolean
         league_format:
           type: string
-          enum: [ "1qb", "superflex" ]
+          enum: ["1qb", "superflex"]
         tep_level:
           type: string
-          enum: [ "", "tep", "tepp", "teppp" ]
+          enum: ["", "tep", "tepp", "teppp"]
         count:
           type: integer
         players:
@@ -1358,7 +1368,7 @@ components:
           properties:
             overall_status:
               type: string
-              enum: [ "success", "partial_success", "error" ]
+              enum: ["success", "partial_success", "error"]
             dynasty:
               type: object
               properties:
@@ -1531,7 +1541,7 @@ components:
       properties:
         status:
           type: string
-          enum: [ "success" ]
+          enum: ["success"]
         data:
           type: object
           properties:
@@ -1547,7 +1557,7 @@ components:
                 $ref: "#/components/schemas/User"
         source:
           type: string
-          enum: [ "database", "sleeper_api" ]
+          enum: ["database", "sleeper_api"]
         database_saved:
           type: boolean
         timestamp:
@@ -1559,7 +1569,7 @@ components:
       properties:
         status:
           type: string
-          enum: [ "success" ]
+          enum: ["success"]
         league_id:
           type: string
         rosters:
@@ -1580,7 +1590,7 @@ components:
       properties:
         status:
           type: string
-          enum: [ "success" ]
+          enum: ["success"]
         league_id:
           type: string
         users:
@@ -1601,7 +1611,7 @@ components:
       properties:
         status:
           type: string
-          enum: [ "success", "partial_success", "error" ]
+          enum: ["success", "partial_success", "error"]
         timestamp:
           type: string
           format: date-time
@@ -1649,7 +1659,7 @@ components:
           type: integer
         league_type:
           type: string
-          enum: [ "dynasty", "redraft" ]
+          enum: ["dynasty", "redraft"]
         player_id:
           type: string
         research_data:
@@ -1664,14 +1674,14 @@ components:
       properties:
         status:
           type: string
-          enum: [ "success" ]
+          enum: ["success"]
         data:
           type: array
           items:
             $ref: "#/components/schemas/ResearchData"
         source:
           type: string
-          enum: [ "database", "sleeper_api" ]
+          enum: ["database", "sleeper_api"]
         database_saved:
           type: boolean
         timestamp:
@@ -1683,7 +1693,7 @@ components:
       properties:
         status:
           type: string
-          enum: [ "success" ]
+          enum: ["success"]
         message:
           type: string
           example: "Research data refreshed successfully"
@@ -1693,7 +1703,7 @@ components:
           type: integer
         league_type:
           type: string
-          enum: [ "dynasty", "redraft" ]
+          enum: ["dynasty", "redraft"]
         refresh_results:
           type: object
         data:
@@ -1704,7 +1714,7 @@ components:
             - type: object
         source:
           type: string
-          enum: [ "database", "sleeper_api" ]
+          enum: ["database", "sleeper_api"]
         database_saved:
           type: boolean
         timestamp:
@@ -1716,10 +1726,10 @@ components:
       properties:
         status:
           type: string
-          enum: [ "success" ]
+          enum: ["success"]
         data_type:
           type: string
-          enum: [ "weekly", "averages" ]
+          enum: ["weekly", "averages"]
         season:
           type: string
         week:
@@ -1753,7 +1763,7 @@ components:
       properties:
         status:
           type: string
-          enum: [ "success" ]
+          enum: ["success"]
         message:
           type: string
           example: "Weekly stats refreshed successfully"
@@ -1776,13 +1786,13 @@ components:
       properties:
         status:
           type: string
-          enum: [ "success" ]
+          enum: ["success"]
         message:
           type: string
           example: "League stats seeded successfully"
         action:
           type: string
-          enum: [ "created", "updated" ]
+          enum: ["created", "updated"]
         league_id:
           type: string
         league_name:
@@ -1797,29 +1807,39 @@ components:
       type: object
       properties:
         league_format: { type: string, enum: ["1qb", "superflex"] }
-        is_redraft:    { type: boolean }
-        tep_level:     { type: string, enum: ["", "tep", "tepp", "teppp"] }
+        is_redraft: { type: boolean }
+        tep_level: { type: string, enum: ["", "tep", "tepp", "teppp"] }
 
     TradeAnalyzerSide:
       type: object
       required: [roster_id]
       properties:
-        roster_id:  { type: integer }
+        roster_id: { type: integer }
         player_ids: { type: array, items: { type: string } }
-        pick_ids:   { type: array, items: { type: string, pattern: "^[0-9]{4}-r[0-9]+-(early|mid|late|pick[0-9]+)$" } }
+        pick_ids:
+          {
+            type: array,
+            items:
+              {
+                type: string,
+                pattern: "^[0-9]{4}-r[0-9]+-(early|mid|late|pick[0-9]+)$",
+              },
+          }
 
     TradeAnalyzerRequest:
       type: object
       required: [league_id, season, side_a, side_b]
       properties:
-        league_id:          { type: string }
-        season:             { type: string, pattern: "^[0-9]{4}$" }
-        ktc:                { $ref: "#/components/schemas/TradeAnalyzerKTC" }
-        side_a:             { $ref: "#/components/schemas/TradeAnalyzerSide" }
-        side_b:             { $ref: "#/components/schemas/TradeAnalyzerSide" }
+        league_id: { type: string }
+        season: { type: string, pattern: "^[0-9]{4}$" }
+        ktc: { $ref: "#/components/schemas/TradeAnalyzerKTC" }
+        side_a: { $ref: "#/components/schemas/TradeAnalyzerSide" }
+        side_b: { $ref: "#/components/schemas/TradeAnalyzerSide" }
         additional_context: { type: string, nullable: true }
-        provider:           { type: string, enum: ["ollama", "anthropic", "echo"] }
-        model:              { type: string }
+        provider:
+          type: string
+          description: "Registered providers include ollama, anthropic, gemini, echo (dev/test)."
+        model: { type: string }
 
     TradeAnalyzerProvidersResponse:
       type: object
@@ -1830,69 +1850,89 @@ components:
           items:
             type: object
             properties:
-              name:          { type: string }
+              name: { type: string }
               default_model: { type: string }
-              available:     { type: boolean }
-              detail:        { type: string }
+              available: { type: boolean }
+              detail: { type: string }
         rate_limit:
           type: object
           properties:
             per_hour: { type: integer }
-            key:      { type: string }
+            key: { type: string }
         enabled: { type: boolean }
 
     TradeAnalyzerPreviewResponse:
       type: object
       properties:
-        context:           { type: object }
-        system_prompt:     { type: string }
-        user_prompt:       { type: string }
-        estimated_tokens:  { type: integer }
-        provider_used:     { type: string }
-        model_used:        { type: string }
+        context:
+          type: object
+          description: |
+            Slim LLM payload. Top-level keys league, trade, side_a, side_b (no trade_summary;
+            no side_*_incoming — incoming is the other side's outgoing). league includes
+            starter_slots_required, bench_slots, research_week (not raw roster_positions).
+            trade holds side_*_outgoing and ktc_totals. Each side
+            has roster (starters/bench/reserve/taxi), owned_picks, team_needs_signals,
+            after_trade_snapshot, trade_impact, and always record. Roster players omit name,
+            position, and positional_tier (position is the group key). name only on roster
+            rows for players in the trade.
+            Picks use label + ktc_value only. Trade players include positional_tier, market_*;
+            injury from Sleeper (injury) and KTC (ktc.injury).
+        system_prompt: { type: string }
+        user_prompt: { type: string }
+        estimated_tokens: { type: integer }
+        token_usage:
+          type: object
+          properties:
+            prompt_tokens_estimated: { type: integer }
+            system_chars: { type: integer }
+            user_chars: { type: integer }
+        provider_used: { type: string }
+        model_used: { type: string }
 
     TradeAnalyzerSideResult:
       type: object
       properties:
+        trade_grade:
+          type: string
+          description: Letter grade A+ through F- for how well this manager did in the deal
         pros: { type: array, items: { type: string } }
         cons: { type: array, items: { type: string } }
         ktc_delta:
           type: object
           properties:
-            values_in:  { type: integer }
+            values_in: { type: integer }
             values_out: { type: integer }
-            net:        { type: integer }
+            net: { type: integer }
             per_asset:
               type: array
               items:
                 type: object
                 properties:
-                  name:      { type: string }
-                  value:     { type: integer }
+                  name: { type: string }
+                  value: { type: integer }
                   direction: { type: string, enum: ["in", "out"] }
         sleeper_breakdown:
           type: object
           properties:
-            stats_trajectory:     { type: array, items: { type: string } }
-            positional_impact:    { type: string }
+            stats_trajectory: { type: array, items: { type: string } }
+            positional_impact: { type: string }
             team_needs_addressed: { type: array, items: { type: string } }
 
     TradeAnalyzerResult:
       type: object
       properties:
-        fairness_score:  { type: integer, minimum: 0, maximum: 100 }
-        winner:          { type: string, enum: ["side_a", "side_b", "even"] }
+        winner: { type: string, enum: ["side_a", "side_b", "even"] }
         summary_bullets: { type: array, items: { type: string } }
-        side_a:          { $ref: "#/components/schemas/TradeAnalyzerSideResult" }
-        side_b:          { $ref: "#/components/schemas/TradeAnalyzerSideResult" }
+        side_a: { $ref: "#/components/schemas/TradeAnalyzerSideResult" }
+        side_b: { $ref: "#/components/schemas/TradeAnalyzerSideResult" }
         context_summary:
           type: object
           properties:
             side_a_team_needs: { type: array, items: { type: string } }
             side_b_team_needs: { type: array, items: { type: string } }
         provider_used: { type: string }
-        model_used:    { type: string }
-        elapsed_ms:    { type: integer }
+        model_used: { type: string }
+        elapsed_ms: { type: integer }
 
   examples:
     KTCRefreshExample:

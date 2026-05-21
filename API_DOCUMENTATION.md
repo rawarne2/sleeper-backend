@@ -69,6 +69,34 @@ GET /api/dashboard/league/{league_id}
 
 League bundle for the dashboard (rosters, merged players, research meta; optional per-player `stats` for weeks **1–17**). Params: `is_redraft`, `league_format`, `tep_level`, `season`. Vercel production: `REDIS_URL` required; responses include `X-Dashboard-League-Cache` and `Cache-Control`. Local: Redis optional.
 
+### Trade Analyzer (LLM trade evaluation)
+
+```
+GET  /api/trade-analyzer/providers
+POST /api/trade-analyzer/preview
+POST /api/trade-analyzer/analyze
+```
+
+- **providers** — Configured LLM backends, default provider, hourly rate limit, `enabled`.
+- **preview** — Returns `context`, `system_prompt`, `user_prompt`, `estimated_tokens`, `token_usage`, resolved `provider_used` / `model_used`. No LLM call.
+- **analyze** — Same request body; returns structured analysis (`winner`, `trade_grade`, `summary_bullets`, per-side `ktc_delta`, `sleeper_breakdown`, optional `context_summary`) plus timing/token metadata.
+- **Request:** `league_id`, `season`, `side_a` / `side_b`; optional `ktc`, `additional_context`, `provider`, `model`.
+- **League must exist in DB** (refresh league first). KTC rows must exist for the requested `league_format` / `tep_level`.
+- **Sample output without an API key:** `POST /analyze` with `"provider": "echo"`, or read `tests/fixtures/data/trade_analyzer_echo.json` (no GET sample route).
+- **User prompt context:** slim league block, `market_*` on trade and roster players + `league.research_week`, slim roster rows (`name` only for trade players) and pick `label` only, `trade.side_*_outgoing` + `ktc_totals` (no duplicate incoming lists or `trade_summary`), dual injury sources on trade assets. See [docs/trade-analyzer-payload.md](docs/trade-analyzer-payload.md).
+
+```bash
+curl -sS -X POST http://localhost:5001/api/trade-analyzer/preview \
+  -H "Content-Type: application/json" \
+  -d '{"league_id":"1210364682523656192","season":"2026","ktc":{"league_format":"superflex","is_redraft":false,"tep_level":"tep"},"side_a":{"roster_id":3,"player_ids":["4881"],"pick_ids":[]},"side_b":{"roster_id":7,"player_ids":["4034"],"pick_ids":[]},"provider":"echo"}'
+
+curl -sS -X POST http://localhost:5001/api/trade-analyzer/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"league_id":"1210364682523656192","season":"2026","ktc":{"league_format":"superflex","is_redraft":false,"tep_level":"tep"},"side_a":{"roster_id":3,"player_ids":["4881"],"pick_ids":[]},"side_b":{"roster_id":7,"player_ids":["4034"],"pick_ids":[]},"provider":"echo","model":"echo"}'
+```
+
+Env: `TRADE_ANALYZER_ENABLED`, `TRADE_ANALYZER_DEFAULT_PROVIDER`, `TRADE_ANALYZER_DEBUG_LOG`, rate limits — see `.env.example`.
+
 ### Maintenance (server-side secrets only)
 
 ```

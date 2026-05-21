@@ -112,21 +112,29 @@ curl "http://localhost:5001/api/ktc/rankings?league_format=superflex&is_redraft=
 
 Three endpoints under `/api/trade-analyzer`:
 
-- `GET /providers` — list configured LLM providers and their availability.
-- `POST /preview` — build the LLM-ready context (no model call); useful for debugging.
-- `POST /analyze` — run a proposed trade through the configured provider and return fairness score, winner, and per-side breakdown.
+- `GET /providers` — list configured LLM providers, models, rate limits, and `enabled`.
+- `POST /preview` — build slim LLM `context` + prompts (no model call).
+- `POST /analyze` — run the trade through the provider; returns winner, grades, and per-side breakdown.
+
+Request body: `league_id`, `season`, `side_a` / `side_b` (`roster_id`, `player_ids`, `pick_ids`); optional `ktc` (`league_format`, `tep_level`, `is_redraft`), `additional_context`, `provider`, `model`. League must be in the DB (`POST /api/sleeper/league/{id}`) with KTC merge for the requested format.
+
+The **user prompt** is compact JSON: single KTC variant (no `tep`/`tepp`/`teppp` nests), `league.research_week` + `market_*` on trade and roster players, slim roster rows (`name` only for trade players; no position/positional_tier), picks as `label` + `ktc_value`, `trade.side_*_outgoing` only (incoming = other side's outgoing), no `trade_summary`, full bench depth for player trades. See [docs/trade-analyzer-payload.md](docs/trade-analyzer-payload.md).
+
+Sample **analyze** shape without an API key: `provider: "echo"` (fixture in `tests/fixtures/data/trade_analyzer_echo.json`). There is no GET sample endpoint.
 
 ```bash
-curl -s -X POST http://localhost:5001/api/trade-analyzer/analyze \
+# Input context only (no LLM)
+curl -sS -X POST http://localhost:5001/api/trade-analyzer/preview \
   -H "Content-Type: application/json" \
-  -d '{
-    "league_id": "1333945997071515648",
-    "season": "2026",
-    "side_a": {"roster_id": 1, "player_ids": ["4881"], "pick_ids": []},
-    "side_b": {"roster_id": 2, "player_ids": ["4017"], "pick_ids": []},
-    "provider": "echo"
-  }'
+  -d '{"league_id":"1210364682523656192","season":"2026","ktc":{"league_format":"superflex","is_redraft":false,"tep_level":"tep"},"side_a":{"roster_id":3,"player_ids":["4881"],"pick_ids":[]},"side_b":{"roster_id":7,"player_ids":["4034"],"pick_ids":[]},"provider":"echo"}'
+
+# Example analyze response (echo provider)
+curl -sS -X POST http://localhost:5001/api/trade-analyzer/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"league_id":"1210364682523656192","season":"2026","ktc":{"league_format":"superflex","is_redraft":false,"tep_level":"tep"},"side_a":{"roster_id":3,"player_ids":["4881"],"pick_ids":[]},"side_b":{"roster_id":7,"player_ids":["4034"],"pick_ids":[]},"provider":"echo","model":"echo"}'
 ```
+
+`TRADE_ANALYZER_DEBUG_LOG=1` logs full system/user prompts on analyze.
 
 ## Available scripts
 

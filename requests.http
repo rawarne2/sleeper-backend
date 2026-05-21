@@ -133,6 +133,39 @@ GET {{BASE_URL}}/api/ktc/rankings?{{KTC_QS_SUPERFLEX_DYN_TEP}}
 POST {{BASE_URL}}/api/ktc/cleanup?{{KTC_QS_SUPERFLEX_DYN_TEP}}
 
 ### ============================================================================
+### Trade Analyzer (league must be in DB; echo = fixture response, no API key)
+### ============================================================================
+
+GET {{BASE_URL}}/api/trade-analyzer/providers
+
+### Preview — context + prompts, no LLM
+POST {{BASE_URL}}/api/trade-analyzer/preview
+Content-Type: application/json
+
+{
+  "league_id": "1210364682523656192",
+  "season": "2026",
+  "ktc": { "league_format": "superflex", "is_redraft": false, "tep_level": "tep" },
+  "side_a": { "roster_id": 3, "player_ids": ["4881"], "pick_ids": [] },
+  "side_b": { "roster_id": 7, "player_ids": ["4034"], "pick_ids": [] },
+  "provider": "echo"
+}
+
+### Analyze — use provider echo for sample output (see tests/fixtures/data/trade_analyzer_echo.json)
+POST {{BASE_URL}}/api/trade-analyzer/analyze
+Content-Type: application/json
+
+{
+  "league_id": "1210364682523656192",
+  "season": "2026",
+  "ktc": { "league_format": "superflex", "is_redraft": false, "tep_level": "tep" },
+  "side_a": { "roster_id": 3, "player_ids": ["4881"], "pick_ids": [] },
+  "side_b": { "roster_id": 7, "player_ids": ["4034"], "pick_ids": [] },
+  "provider": "echo",
+  "model": "echo"
+}
+
+### ============================================================================
 ### REFERENCE DATA (not executed)
 ### ============================================================================
 
