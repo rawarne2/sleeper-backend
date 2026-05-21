@@ -8,7 +8,9 @@ from typing import Any, Dict
 from data_types.trade_analyzer_types import TradeRequest
 from services.trade_analyzer._load_league import LeagueNotFound, load_league_bundle
 from services.trade_analyzer.context import build_context
+from services.trade_analyzer.health_cache import cached_health_check
 from services.trade_analyzer.parser import ParseError, parse_llm_response
+from services.trade_analyzer.policy import trade_analyzer_debug_log_enabled
 from services.trade_analyzer.prompt import SYSTEM_PROMPT, build_user_prompt
 from services.trade_analyzer.tokens import estimate_prompt_tokens
 from services.trade_analyzer.providers.base import (
@@ -35,7 +37,7 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
             "status": "error", "error": "Provider unavailable", "details": str(exc),
         })
 
-    available, detail = provider.health_check()
+    available, detail = cached_health_check(provider)
     if not available:
         return AnalyzerOutcome(status_code=503, body={
             "status": "error", "error": "Provider unavailable", "details": detail,
@@ -64,6 +66,16 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
         })
 
     user_prompt = build_user_prompt(context, req.get("additional_context"))
+    if trade_analyzer_debug_log_enabled():
+        logger.info(
+            "trade_analyzer debug parsed_request league_id=%s provider=%s model=%s: %s",
+            req["league_id"],
+            provider_name,
+            model,
+            req,
+        )
+        logger.info("trade_analyzer debug system_prompt:\n%s", SYSTEM_PROMPT)
+        logger.info("trade_analyzer debug user_prompt:\n%s", user_prompt)
     token_usage = estimate_prompt_tokens(SYSTEM_PROMPT, user_prompt)
     logger.info(
         "trade_analyzer prompt_tokens_estimated=%s system_chars=%s user_chars=%s league_id=%s",

@@ -10,87 +10,290 @@ from services.trade_analyzer.picks import (
     PickIdError, parse_pick_id, resolve_pick_to_ktc,
 )
 from services.trade_analyzer.team_needs import (
+    _starter_slots,
     compute_post_trade_snapshot,
     compute_team_needs,
     compute_trade_impact,
 )
-
-_PLAYER_KEYS = (
-    "name",
-    "position",
-    "team",
-    "age",
-    "years_exp",
-    "ktc_value",
-    "positional_rank",
-    "positional_tier",
-    "games_played",
-    "avg_points",
-    "trajectory",
-    "trend",
-    "market_owned_pct",
-    "market_started_pct",
-    "injury_status",
-    "status",
-)
+from utils.constants import PLAYER_NAME_KEY
 
 _OWNED_PICK_HORIZON_SEASONS = 2
 
+# Sleeper injury_status values treated as healthy; IR/PUP/Sus/etc. stay as injury signals.
+_HEALTHY_SLEEPER_INJURY_STATUSES = frozenset({"", "Active", "Healthy", "healthy"})
+# Roster status omitted when player has no injury signal from either source.
+_NEUTRAL_ROSTER_STATUSES = frozenset({None, "", "Active"})
 
-def _explicit_nulls(keys: tuple[str, ...], values: Dict[str, Any]) -> Dict[str, Any]:
-    return {k: values.get(k) for k in keys}
+_KTC_INJURY_DETAIL_KEYS = (
+    "injuryName",
+    "injuryArea",
+    "injuryReturn",
+    "injuryNotes",
+    "summary",
+)
+
+# KTC value subkeys to surface alongside the trade asset, minus the top-level duplicates
+# already on the player block (value -> ktc_value, positionalRank -> positional_rank,
+# overallTrend -> trend). overallTrendFormatted is dropped because the LLM can format itself.
+_KTC_VALUE_EXTRA_KEYS = (
+    "rank",
+    "overallTier",
+    "positionalTier",
+    "positionalTrend",
+    "overall7DayTrend",
+    "positional7DayTrend",
+    "startSitValue",
+    "kept",
+    "traded",
+    "cut",
+    "diff",
+    "isOutThisWeek",
+    "rawLiquidity",
+    "stdLiquidity",
+    "tradeCount",
+)
+
+_KTC_FLAG_KEYS = ("pickRound", "pickNum", "isTrending", "draftYear", "byeWeek")
+
+_NAME_KEYS = (PLAYER_NAME_KEY, "player_name", "full_name", "name")
 
 
-def _ktc_block(player: Dict[str, Any], league_format: str) -> Dict[str, Any] | None:
-    ktc = player.get("ktc") or {}
+def _display_name(player: Dict[str, Any]) -> str | None:
+    for key in _NAME_KEYS:
+        value = player.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return None
+
+
+def _trade_player_ids_from_request(req: TradeRequest) -> Set[str]:
+    ids: Set[str] = set()
+    for side_key in ("side_a", "side_b"):
+        for pid in (req[side_key].get("player_ids") or []):
+            s = str(pid).strip()
+            if s:
+                ids.add(s)
+    return ids
+
+
+def _roster_player_in_trade(
+    player: Dict[str, Any],
+    roster_pid: str,
+    trade_player_ids: Set[str],
+) -> bool:
+    if str(roster_pid).strip() in trade_player_ids:
+        return True
+    sid = player.get("sleeper_player_id")
+    return sid is not None and str(sid).strip() in trade_player_ids
+
+
+def _put_if_populated(out: Dict[str, Any], key: str, value: Any) -> None:
+    """Single-pass write: skips None/empty and the games_played/avg_points zero sentinel."""
+    if value is None or value == "":
+        return
+    if value in (0, 0.0) and key in ("games_played", "avg_points"):
+        return
+    out[key] = value
+
+
+def _sleeper_injury_status_meaningful(status: Any) -> bool:
+    if status is None:
+        return False
+    return str(status).strip() not in _HEALTHY_SLEEPER_INJURY_STATUSES
+
+
+def _meaningful_ktc_injury(injury: Any) -> bool:
+    """KTC ``Player.injury`` JSON — omit healthy-only ``injuryCode`` 1 blobs."""
+    if not isinstance(injury, dict) or not injury:
+        return False
+    if any(injury.get(k) for k in _KTC_INJURY_DETAIL_KEYS):
+        return True
+    code = injury.get("injuryCode")
+    try:
+        return int(code) != 1
+    except (TypeError, ValueError):
+        return code not in (None, "", 1, "1")
+
+
+def _ktc_block_slim(
+    values: Dict[str, Any] | None,
+    ktc_flags: Dict[str, Any],
+) -> Dict[str, Any] | None:
+    """KTC extras for trade assets — no tep/tepp/teppp nests; the top-level
+    ktc_value / positional_rank / trend already mirror values.value /
+    positionalRank / overallTrend, so those keys are intentionally omitted here.
+    """
+    if not values and not ktc_flags:
+        return None
+    out: Dict[str, Any] = {}
+    if isinstance(values, dict):
+        for k in _KTC_VALUE_EXTRA_KEYS:
+            v = values.get(k)
+            if v is not None:
+                out[k] = v
+    for flag in _KTC_FLAG_KEYS:
+        v = ktc_flags.get(flag)
+        if v is not None:
+            out[flag] = v
+    injury = ktc_flags.get("injury")
+    if _meaningful_ktc_injury(injury):
+        out["injury"] = injury
+    return out or None
+
+
+def _injury_block(player: Dict[str, Any]) -> Dict[str, Any] | None:
+    """Sleeper injury columns — only when at least one field is populated."""
+    out: Dict[str, Any] = {}
+    status = player.get("injury_status")
+    if _sleeper_injury_status_meaningful(status):
+        out["status"] = status
+    for src_key, out_key in (
+        ("injury_body_part", "body_part"),
+        ("injury_notes", "notes"),
+        ("injury_start_date", "start_date"),
+    ):
+        v = player.get(src_key)
+        if v not in (None, ""):
+            out[out_key] = v
+    return out or None
+
+
+def _has_injury_signal(player: Dict[str, Any], ktc_flags: Dict[str, Any]) -> bool:
+    return _sleeper_injury_status_meaningful(player.get("injury_status")) or _meaningful_ktc_injury(
+        ktc_flags.get("injury")
+    )
+
+
+def _headline_injury_status(player: Dict[str, Any], ktc_flags: Dict[str, Any]) -> str | None:
+    """Single injury label: Sleeper status first, else KTC injuryName."""
+    status = player.get("injury_status")
+    if _sleeper_injury_status_meaningful(status):
+        return str(status).strip()
+    ktc_inj = ktc_flags.get("injury")
+    if isinstance(ktc_inj, dict):
+        name = ktc_inj.get("injuryName")
+        if name:
+            return str(name)
+    return None
+
+
+def _trade_roster_status(player: Dict[str, Any], ktc_flags: Dict[str, Any]) -> str | None:
+    """Sleeper roster status (e.g. Inactive) — omit Active when there is no injury signal."""
+    status = player.get("status")
+    if status in _NEUTRAL_ROSTER_STATUSES:
+        return None
+    if not _has_injury_signal(player, ktc_flags):
+        return None
+    return status
+
+
+def _practice_block(player: Dict[str, Any]) -> Dict[str, Any] | None:
+    out: Dict[str, Any] = {}
+    for src_key, out_key in (
+        ("practice_participation", "participation"),
+        ("practice_description", "description"),
+    ):
+        v = player.get(src_key)
+        if v not in (None, ""):
+            out[out_key] = v
+    return out or None
+
+
+def _ktc_injury_payload(ktc_flags: Dict[str, Any]) -> Dict[str, Any] | None:
+    injury = ktc_flags.get("injury")
+    if not _meaningful_ktc_injury(injury):
+        return None
+    return dict(injury) if isinstance(injury, dict) else None
+
+
+def _values_for_format(ktc: Dict[str, Any], league_format: str) -> Dict[str, Any]:
     if league_format == "superflex":
-        return ktc.get("superflexValues") or None
-    return ktc.get("oneQBValues") or None
+        return ktc.get("superflexValues") or {}
+    return ktc.get("oneQBValues") or {}
 
 
-def _positional_tier_label(position: str | None, positional_rank: Any) -> str | None:
+def _positional_tier_label(pos_upper: str | None, positional_rank: Any) -> str | None:
     if positional_rank is None:
         return None
-    pos = (position or "UNK").upper()
     try:
         rank = int(positional_rank)
     except (TypeError, ValueError):
         return None
-    return f"{pos}{rank}"
+    return f"{pos_upper or 'UNK'}{rank}"
 
 
-def _player_min(
+def _ownership_pct(
+    player: Dict[str, Any],
+    ownership: Dict[str, Dict[str, Any]] | None,
+) -> Dict[str, Any]:
+    if not ownership:
+        return {}
+    sid = player.get("sleeper_player_id")
+    if sid is None:
+        return {}
+    return ownership.get(str(sid)) or {}
+
+
+def _player_trade(
     player: Dict[str, Any],
     league_format: str,
-    ownership: Dict[str, Dict[str, Any]] | None = None,
+    ownership: Dict[str, Dict[str, Any]] | None,
 ) -> Dict[str, Any]:
     ktc = player.get("ktc") or {}
-    values = _ktc_block(player, league_format) or {}
+    values = _values_for_format(ktc, league_format)
     stats = player.get("stats") or {}
     position = player.get("position")
     pos_upper = position.upper() if position else None
     pr = values.get("positionalRank")
-    pid = str(player.get("sleeper_player_id") or "")
-    own = (ownership or {}).get(pid) or {}
-    values_out = {
-        "name": player.get("playerName") or player.get("full_name"),
-        "position": pos_upper,
-        "team": player.get("team"),
-        "age": ktc.get("age"),
-        "years_exp": player.get("years_exp"),
-        "ktc_value": values.get("value"),
-        "positional_rank": pr,
-        "positional_tier": _positional_tier_label(pos_upper, pr),
-        "games_played": stats.get("games_played"),
-        "avg_points": stats.get("average_points"),
-        "trajectory": stats.get("trajectory"),
-        "trend": values.get("overallTrend"),
-        "market_owned_pct": own.get("owned"),
-        "market_started_pct": own.get("started"),
-        "injury_status": player.get("injury_status"),
-        "status": player.get("status"),
-    }
-    return _explicit_nulls(_PLAYER_KEYS, values_out)
+    own = _ownership_pct(player, ownership)
+
+    out: Dict[str, Any] = {}
+    _put_if_populated(out, "name", _display_name(player))
+    _put_if_populated(out, "position", pos_upper)
+    _put_if_populated(out, "team", player.get("team"))
+    _put_if_populated(out, "age", ktc.get("age"))
+    _put_if_populated(out, "years_exp", player.get("years_exp"))
+    _put_if_populated(out, "ktc_value", values.get("value"))
+    _put_if_populated(out, "positional_rank", pr)
+    _put_if_populated(out, "positional_tier", _positional_tier_label(pos_upper, pr))
+    _put_if_populated(out, "trend", values.get("overallTrend"))
+    _put_if_populated(out, "trajectory", stats.get("trajectory"))
+    _put_if_populated(out, "games_played", stats.get("games_played"))
+    _put_if_populated(out, "avg_points", stats.get("average_points"))
+    _put_if_populated(out, "market_owned_pct", own.get("owned"))
+    _put_if_populated(out, "market_started_pct", own.get("started"))
+    _put_if_populated(out, "injury_status", _headline_injury_status(player, ktc))
+    _put_if_populated(out, "status", _trade_roster_status(player, ktc))
+    _put_if_populated(out, "ktc", _ktc_block_slim(values, ktc))
+    _put_if_populated(out, "injury", _injury_block(player))
+    _put_if_populated(out, "practice", _practice_block(player))
+    _put_if_populated(out, "is_starter_latest", stats.get("is_starter_latest"))
+    return out
+
+
+def _player_roster(
+    player: Dict[str, Any],
+    league_format: str,
+    ownership: Dict[str, Dict[str, Any]] | None,
+    *,
+    include_name: bool = False,
+) -> Dict[str, Any]:
+    ktc = player.get("ktc") or {}
+    values = _values_for_format(ktc, league_format)
+    own = _ownership_pct(player, ownership)
+
+    out: Dict[str, Any] = {}
+    _put_if_populated(out, "ktc_value", values.get("value"))
+    _put_if_populated(out, "positional_rank", values.get("positionalRank"))
+    _put_if_populated(out, "age", ktc.get("age"))
+    _put_if_populated(out, "injury_status", _headline_injury_status(player, ktc))
+    _put_if_populated(out, "injury", _injury_block(player))
+    _put_if_populated(out, "ktc_injury", _ktc_injury_payload(ktc))
+    _put_if_populated(out, "market_owned_pct", own.get("owned"))
+    _put_if_populated(out, "market_started_pct", own.get("started"))
+    if include_name:
+        _put_if_populated(out, "name", _display_name(player))
+    return out
 
 
 def _pick_label(parsed: Dict[str, Any]) -> str:
@@ -104,15 +307,10 @@ def _pick_label(parsed: Dict[str, Any]) -> str:
 
 def _pick_asset(pick_id: str, ktc_value: int | None) -> Dict[str, Any]:
     parsed = parse_pick_id(pick_id)
-    return {
-        "pick_id": pick_id,
-        "kind": "pick",
-        "season": parsed["season"],
-        "round": parsed["round"],
-        "slot": parsed["slot"],
-        "label": _pick_label(parsed),
-        "ktc_value": ktc_value,
-    }
+    out: Dict[str, Any] = {"kind": "pick", "label": _pick_label(parsed)}
+    if ktc_value is not None:
+        out["ktc_value"] = ktc_value
+    return out
 
 
 def _pick_owned_entry(
@@ -138,15 +336,10 @@ def _pick_owned_entry(
     try:
         return _pick_asset(pick["pick_id"], ktc_value)
     except PickIdError:
-        return {
-            "pick_id": pick["pick_id"],
-            "kind": "pick",
-            "season": pick.get("season"),
-            "round": pick.get("round"),
-            "slot": pick.get("slot_bucket"),
-            "label": pick.get("pick_id"),
-            "ktc_value": ktc_value,
-        }
+        out: Dict[str, Any] = {"kind": "pick", "label": pick.get("pick_id")}
+        if ktc_value is not None:
+            out["ktc_value"] = ktc_value
+        return out
 
 
 def _filter_owned_picks(
@@ -164,10 +357,11 @@ def _filter_owned_picks(
         base_year = 0
     allowed_seasons = {str(base_year + i) for i in range(_OWNED_PICK_HORIZON_SEASONS)}
 
+    seen: Set[str] = set()
     out: List[Dict[str, Any]] = []
     for pick in picks:
         pid = pick.get("pick_id")
-        if not pid:
+        if not pid or pid in seen:
             continue
         include = pid in trade_pick_ids
         if not include:
@@ -177,6 +371,7 @@ def _filter_owned_picks(
             except PickIdError:
                 include = False
         if include:
+            seen.add(pid)
             out.append(
                 _pick_owned_entry(
                     pick, league_format, tep_level, is_redraft=is_redraft)
@@ -225,6 +420,10 @@ def _scoring_summary(scoring: Dict[str, Any]) -> str:
     return " + ".join(pieces) if pieces else "(unknown)"
 
 
+def _bench_slot_count(roster_positions: List[str]) -> int:
+    return sum(1 for slot in roster_positions or [] if (slot or "").upper() == "BN")
+
+
 def _trim_record(settings: Any) -> Dict[str, Any]:
     if not isinstance(settings, dict):
         return {"wins": None, "losses": None, "ties": None, "fpts": None}
@@ -252,36 +451,112 @@ def _find_roster(rosters: List[Dict[str, Any]], roster_id: int) -> Dict[str, Any
 
 
 def _index_players(players: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
-    return {p["sleeper_player_id"]: p for p in players if p.get("sleeper_player_id")}
+    out: Dict[str, Dict[str, Any]] = {}
+    for p in players:
+        sid = p.get("sleeper_player_id")
+        if sid is None:
+            continue
+        key = str(sid).strip()
+        if key:
+            out[key] = p
+    return out
 
 
 def _needs_player(player: Dict[str, Any]) -> Dict[str, Any]:
     ktc = player.get("ktc") or {}
     return {
-        "name": player.get("playerName") or player.get("full_name"),
+        "name": _display_name(player),
         "position": (player.get("position") or "").upper(),
         "age": ktc.get("age"),
     }
 
 
-def _roster_by_position(
-    roster_player_ids: List[str],
+def _trade_includes_players(req: TradeRequest) -> bool:
+    return bool(req["side_a"].get("player_ids") or req["side_b"].get("player_ids"))
+
+
+def _group_by_position(
+    pids: List[str],
     idx: Dict[str, Dict[str, Any]],
     league_format: str,
     ownership: Dict[str, Dict[str, Any]],
+    trade_player_ids: Set[str],
 ) -> Dict[str, List[Dict[str, Any]]]:
     grouped: Dict[str, List[Dict[str, Any]]] = {}
-    for pid in roster_player_ids:
-        p = idx.get(str(pid))
+    for pid in pids:
+        p = idx.get(pid)
         if not p:
             continue
         pos = (p.get("position") or "UNK").upper()
-        grouped.setdefault(pos, []).append(_player_min(p, league_format, ownership))
+        grouped.setdefault(pos, []).append(
+            _player_roster(
+                p,
+                league_format,
+                ownership,
+                include_name=_roster_player_in_trade(p, pid, trade_player_ids),
+            )
+        )
     return grouped
 
 
+def _roster_slot_groups(
+    roster: Dict[str, Any],
+    idx: Dict[str, Dict[str, Any]],
+    league_format: str,
+    ownership: Dict[str, Dict[str, Any]],
+    trade_player_ids: Set[str],
+    *,
+    minimal: bool,
+) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+    starter_set = {str(p) for p in (roster.get("starters") or [])}
+    reserve_set = {str(p) for p in (roster.get("reserve") or [])}
+    taxi_set = {str(p) for p in (roster.get("taxi") or [])}
+
+    starters: List[str] = []
+    bench: List[str] = []
+    reserve: List[str] = []
+    taxi: List[str] = []
+    seen: Set[str] = set()
+    for pid in (roster.get("players") or []):
+        s = str(pid)
+        if s in seen:
+            continue
+        seen.add(s)
+        if s in starter_set:
+            starters.append(s)
+        elif s in reserve_set:
+            reserve.append(s)
+        elif s in taxi_set:
+            taxi.append(s)
+        else:
+            bench.append(s)
+
+    if minimal:
+        return {
+            "starters": _group_by_position(
+                starters, idx, league_format, ownership, trade_player_ids
+            ),
+            "bench": {},
+            "reserve": {},
+            "taxi": {},
+        }
+    return {
+        "starters": _group_by_position(
+            starters, idx, league_format, ownership, trade_player_ids
+        ),
+        "bench": _group_by_position(
+            bench, idx, league_format, ownership, trade_player_ids
+        ),
+        "reserve": _group_by_position(
+            reserve, idx, league_format, ownership, trade_player_ids
+        ),
+        "taxi": _group_by_position(
+            taxi, idx, league_format, ownership, trade_player_ids
+        ),
+    }
+
+
 def _ownership_player_ids(rosters: List[Dict[str, Any]], req: TradeRequest) -> Set[str]:
-    """All roster + traded player ids for research ownership lookup."""
     ids: Set[str] = set()
     for side_key in ("side_a", "side_b"):
         side = req[side_key]
@@ -305,9 +580,10 @@ def _players_after_trade(
     outgoing = {str(x) for x in outgoing_ids}
     out: List[Dict[str, Any]] = []
     for pid in roster.get("players") or []:
-        if str(pid) in outgoing:
+        s = str(pid)
+        if s in outgoing:
             continue
-        p = player_index.get(str(pid))
+        p = player_index.get(s)
         if p:
             out.append(_needs_player(p))
     for pid in incoming_ids:
@@ -323,21 +599,15 @@ def _trade_assets(
     league_format: str,
     ownership: Dict[str, Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    out = []
+    out: List[Dict[str, Any]] = []
     for pid in player_ids:
         p = idx.get(str(pid))
         if not p:
             raise ValueError(f"Unknown player_id: {pid}")
-        block = _player_min(p, league_format, ownership)
+        block = _player_trade(p, league_format, ownership)
         block["kind"] = "player"
         out.append(block)
     return out
-
-
-def _asset_summary_label(asset: Dict[str, Any]) -> str:
-    if asset.get("kind") == "pick":
-        return str(asset.get("label") or asset.get("pick_id"))
-    return str(asset.get("name"))
 
 
 def _sum_ktc(items: List[Dict[str, Any]]) -> int:
@@ -357,12 +627,18 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
     is_redraft = bool(req["ktc"].get("is_redraft"))
     season = req["season"]
     roster_positions = league.get("roster_positions") or []
+    roster_minimal = not _trade_includes_players(req)
+    trade_player_ids = _trade_player_ids_from_request(req)
 
     picks_by_roster = compute_owned_picks(req["league_id"])
     research_lt = _research_league_type_label(is_redraft)
-    ownership, _ = _load_ownership_and_meta(
-        season, research_lt, _ownership_player_ids(rosters, req)
-    )
+    ownership = league_data.get("ownership")
+    research_meta = league_data.get("research_meta")
+    if ownership is None or research_meta is None:
+        ownership, research_meta = _load_ownership_and_meta(
+            season, research_lt, _ownership_player_ids(rosters, req)
+        )
+    research_week = research_meta.get("week") if isinstance(research_meta, dict) else None
 
     def _build_side(side_key: str, *, outgoing_ids: List[str], incoming_ids: List[str]) -> Dict[str, Any]:
         side = req[side_key]
@@ -383,15 +659,19 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
             tep_level=tep,
             is_redraft=is_redraft,
         )
+        roster_slots = _roster_slot_groups(
+            roster,
+            player_index,
+            league_format,
+            ownership,
+            trade_player_ids,
+            minimal=roster_minimal,
+        )
         return {
             "manager": user_by_id.get(roster.get("owner_id"), "(unknown)"),
             "record": _trim_record(roster.get("settings")),
-            "roster_by_position": _roster_by_position(
-                roster.get("players") or [],
-                player_index,
-                league_format,
-                ownership,
-            ),
+            "posture": "tanking" if side.get("is_tanking") else "contending",
+            "roster": roster_slots,
             "owned_picks": owned,
             "team_needs_signals": compute_team_needs(
                 before_needs, roster_positions=roster_positions
@@ -411,56 +691,41 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
 
     a_out = _trade_assets(a_out_ids, player_index, league_format, ownership)
     b_out = _trade_assets(b_out_ids, player_index, league_format, ownership)
-    a_out_picks = _trade_picks(
+    a_out += _trade_picks(
         req["side_a"].get("pick_ids") or [], league_format, tep, is_redraft=is_redraft)
-    b_out_picks = _trade_picks(
+    b_out += _trade_picks(
         req["side_b"].get("pick_ids") or [], league_format, tep, is_redraft=is_redraft)
 
-    a_out = a_out + a_out_picks
-    b_out = b_out + b_out_picks
-    a_in = b_out
-    b_in = a_out
-
+    a_out_sum = _sum_ktc(a_out)
+    b_out_sum = _sum_ktc(b_out)
     ktc_totals = {
-        "side_a": {
-            "out": _sum_ktc(a_out),
-            "in": _sum_ktc(a_in),
-            "net": _sum_ktc(a_in) - _sum_ktc(a_out),
-        },
-        "side_b": {
-            "out": _sum_ktc(b_out),
-            "in": _sum_ktc(b_in),
-            "net": _sum_ktc(b_in) - _sum_ktc(b_out),
-        },
+        "side_a": {"out": a_out_sum, "in": b_out_sum, "net": b_out_sum - a_out_sum},
+        "side_b": {"out": b_out_sum, "in": a_out_sum, "net": a_out_sum - b_out_sum},
     }
 
+    league_block: Dict[str, Any] = {
+        "season": season,
+        "name": league.get("name"),
+        "scoring_format_summary": _scoring_summary(league.get("scoring_settings") or {}),
+        "ktc": req["ktc"],
+        "league_type": research_lt,
+        "total_rosters": league_data.get("total_rosters"),
+        "starter_slots_required": _starter_slots(roster_positions),
+        "bench_slots": _bench_slot_count(roster_positions),
+    }
+    current_week = league.get("current_week")
+    if current_week is not None:
+        league_block["current_week"] = current_week
+    if research_week is not None:
+        league_block["research_week"] = int(research_week)
+
     return {
-        "league": {
-            "season": season,
-            "name": league.get("name"),
-            "roster_positions": roster_positions,
-            "scoring_format_summary": _scoring_summary(league.get("scoring_settings") or {}),
-            "ktc": req["ktc"],
-            "current_week": league.get("current_week"),
-            "league_type": research_lt,
-            "is_dynasty": not is_redraft,
-            "total_rosters": league_data.get("total_rosters"),
-        },
-        "trade_summary": {
-            "side_a_gives": [_asset_summary_label(a) for a in a_out],
-            "side_b_gives": [_asset_summary_label(a) for a in b_out],
-            "ktc_net": {
-                "side_a": ktc_totals["side_a"]["net"],
-                "side_b": ktc_totals["side_b"]["net"],
-            },
-        },
+        "league": league_block,
         "side_a": side_a,
         "side_b": side_b,
         "trade": {
             "side_a_outgoing": a_out,
-            "side_a_incoming": a_in,
             "side_b_outgoing": b_out,
-            "side_b_incoming": b_in,
             "ktc_totals": ktc_totals,
         },
     }

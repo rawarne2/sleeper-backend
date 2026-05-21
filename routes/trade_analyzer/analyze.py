@@ -1,7 +1,6 @@
 """POST /api/trade-analyzer/analyze."""
 from __future__ import annotations
 
-import logging
 import os
 
 from flask import jsonify, request
@@ -16,8 +15,6 @@ from services.trade_analyzer.analyzer import run_analysis
 
 from . import trade_analyzer_bp
 
-logger = logging.getLogger(__name__)
-
 
 def _enabled() -> bool:
     return (os.getenv("TRADE_ANALYZER_ENABLED", "true").strip().lower()
@@ -26,7 +23,8 @@ def _enabled() -> bool:
 
 def _timeout_for(provider: str) -> int:
     env_key = f"TRADE_ANALYZER_{provider.upper()}_TIMEOUT_SECONDS"
-    fallback = {"ollama": 120, "anthropic": 60, "gemini": 60, "groq": 30}.get(provider, 30)
+    fallback = {"ollama": 120, "anthropic": 60,
+                "gemini": 60, "groq": 30}.get(provider, 30)
     return int(os.getenv(env_key, str(fallback)))
 
 
@@ -34,7 +32,8 @@ def _rate_limit_key(req) -> str:
     mode = os.getenv("TRADE_ANALYZER_RATE_LIMIT_KEY", "ip").strip().lower()
     if mode == "league_id":
         return f"trade_analyzer:rl:v1:league:{req['league_id']}"
-    ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "0.0.0.0").split(",")[0].strip()
+    ip = (request.headers.get("X-Forwarded-For")
+          or request.remote_addr or "0.0.0.0").split(",")[0].strip()
     return f"trade_analyzer:rl:v1:ip:{ip}"
 
 
@@ -58,7 +57,8 @@ def analyze_trade():
 
     limiter = get_rate_limiter(
         limit=int(os.getenv("TRADE_ANALYZER_RATE_LIMIT_PER_HOUR", "20")),
-        window_s=int(os.getenv("TRADE_ANALYZER_RATE_LIMIT_WINDOW_SECONDS", "3600")),
+        window_s=int(
+            os.getenv("TRADE_ANALYZER_RATE_LIMIT_WINDOW_SECONDS", "3600")),
     )
     allowed, retry_after = limiter.check_and_record(_rate_limit_key(req))
     if not allowed:
@@ -73,6 +73,6 @@ def analyze_trade():
         body_model=req.get("model"),
     )
     timeout_s = _timeout_for(provider_name)
-
-    outcome = run_analysis(req, provider_name=provider_name, model=model, timeout_s=timeout_s)
+    outcome = run_analysis(req, provider_name=provider_name,
+                           model=model, timeout_s=timeout_s)
     return jsonify(outcome.body), outcome.status_code

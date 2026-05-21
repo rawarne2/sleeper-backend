@@ -44,8 +44,9 @@ def effective_default_provider() -> str:
 # Dev UI selectable models when TRADE_ANALYZER_{PROVIDER}_MODELS is unset.
 _STATIC_SELECTABLE_MODELS: dict[str, tuple[str, ...]] = {
     "anthropic": ("claude-sonnet-4-6", "claude-haiku-4-5"),
-    "gemini": ("gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"),
+    "gemini": ("gemini-2.5-flash", "gemini-2.0-flash"),
     "echo": ("echo",),
+    "ollama": ("qwen2.5:14b-instruct", "llama3.1:8b"),
 }
 
 
@@ -88,8 +89,13 @@ def models_for_provider_listing(
                 instance = get_provider("ollama")
             except Exception:
                 instance = None
-        list_fn = getattr(instance, "list_models", None) if instance is not None else None
-        raw_models = list(list_fn()) if callable(list_fn) else []
+        list_fn = getattr(instance, "list_models",
+                          None) if instance is not None else None
+        discovered = list(list_fn()) if callable(list_fn) else []
+        raw_models = list(_STATIC_SELECTABLE_MODELS.get("ollama", ()))
+        for name in discovered:
+            if name not in raw_models:
+                raw_models.append(name)
     else:
         raw_models = list(_STATIC_SELECTABLE_MODELS.get(provider, ()))
 
@@ -122,7 +128,8 @@ def client_model_selection_error(provider: str, model: str | None) -> str | None
     except Exception:
         available = False
         instance = None
-    allowed = models_for_provider_listing(prov, available=available, instance=instance)
+    allowed = models_for_provider_listing(
+        prov, available=available, instance=instance)
     if not allowed:
         return f"Provider {prov!r} has no selectable models right now."
     if chosen not in allowed:
@@ -172,3 +179,13 @@ def resolved_provider_and_model(
             mod = ""
     base = default_model_for(prov)
     return prov, mod if mod else base
+
+
+def trade_analyzer_debug_log_enabled() -> bool:
+    """When true, log parsed request and full LLM prompts (local dev only)."""
+
+    return (os.getenv("TRADE_ANALYZER_DEBUG_LOG") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )

@@ -1,7 +1,6 @@
 """Ollama LLM provider — local-only."""
 from __future__ import annotations
 
-import logging
 import os
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
@@ -9,8 +8,6 @@ from urllib.parse import urlparse, urlunparse
 from services.trade_analyzer.output_schema import TRADE_ANALYZER_JSON_SCHEMA
 
 from .base import LLMProvider, ProviderError, ProviderTimeout, ProviderUnavailable
-
-logger = logging.getLogger(__name__)
 
 _LOOPBACK_MARKERS = frozenset(("localhost", "127.0.0.1", "::1"))
 
@@ -72,30 +69,21 @@ class OllamaProvider(LLMProvider):
 
     def generate(self, system_prompt, user_prompt, *, model, timeout_s, **opts):
         client = _client()
-        chat_kw = dict(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            options={"temperature": 0.2},
-        )
         try:
             # Structured outputs (JSON Schema) prevent shape drift vs plain format="json".
-            resp = client.chat(**chat_kw, format=TRADE_ANALYZER_JSON_SCHEMA)
+            resp = client.chat(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                options={"temperature": 0.2},
+                format=TRADE_ANALYZER_JSON_SCHEMA,
+            )
         except TimeoutError as exc:
             raise ProviderTimeout(f"Ollama timeout after {timeout_s}s: {exc}") from exc
         except Exception as exc:
-            logger.warning(
-                "ollama: structured schema format failed (%s); retrying with format=json",
-                exc,
-            )
-            try:
-                resp = client.chat(**chat_kw, format="json")
-            except TimeoutError as exc2:
-                raise ProviderTimeout(f"Ollama timeout after {timeout_s}s: {exc2}") from exc2
-            except Exception as exc2:
-                raise ProviderError(f"Ollama call failed: {exc2}") from exc2
+            raise ProviderError(f"Ollama call failed: {exc}") from exc
 
         try:
             return resp["message"]["content"]

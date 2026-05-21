@@ -179,12 +179,29 @@ class SleeperScraper:
             player_metadata_json = json.dumps(
                 player_metadata) if player_metadata else None
 
-            # Validate string lengths to prevent database column overflow
+            competitions_raw = player_data.get('competitions')
+            if isinstance(competitions_raw, (list, dict)):
+                competitions_json = json.dumps(competitions_raw)
+            elif isinstance(competitions_raw, str):
+                competitions_json = competitions_raw
+            else:
+                competitions_json = None
+
+            team_changed_at = SleeperScraper._parse_team_changed_at(
+                player_data.get('team_changed_at')
+            )
+
+            news_updated = SleeperScraper._safe_int_parse(
+                player_data.get('news_updated'))
+            rotowire_id = SleeperScraper._safe_int_parse(
+                player_data.get('rotowire_id'))
+            swish_id = SleeperScraper._safe_int_parse(
+                player_data.get('swish_id'))
+
             return {
                 'sleeper_player_id': sleeper_id,
                 'full_name': SleeperScraper._truncate_string(player_data.get('full_name', ''), 100),
-                # 'first_name': SleeperScraper._truncate_string(player_data.get('first_name', ''), 50),
-                # 'last_name': SleeperScraper._truncate_string(player_data.get('last_name', ''), 50),
+                # first_name / last_name intentionally omitted: merge uses full_name + match_key
                 'position': (player_data.get('position') or '').upper(),
                 'team': SleeperScraper._truncate_string(player_data.get('team', ''), 10),
                 'birth_date': birth_date,
@@ -202,12 +219,40 @@ class SleeperScraper:
                 'rookie_year': rookie_year,
                 'injury_status': SleeperScraper._truncate_string(player_data.get('injury_status', ''), 50),
                 'injury_start_date': injury_start_date,
-                'status': SleeperScraper._truncate_string(
-                    str(player_data.get('status', '') or ''), 50
-                ),
-                # 'active': player_data.get('active', False),
-                # 'sport': SleeperScraper._truncate_string(player_data.get('sport', ''), 10),
-                'player_metadata': player_metadata_json
+                'injury_body_part': SleeperScraper._truncate_string(player_data.get('injury_body_part', ''), 50),
+                'injury_notes': player_data.get('injury_notes'),
+                'practice_participation': SleeperScraper._truncate_string(
+                    player_data.get('practice_participation', ''), 50),
+                'practice_description': SleeperScraper._truncate_string(
+                    player_data.get('practice_description', ''), 200),
+                'status': SleeperScraper._truncate_string(player_data.get('status'), 50),
+                # active / sport intentionally omitted: always-true / 'nfl' for persisted rows
+                'player_metadata': player_metadata_json,
+                'competitions': competitions_json,
+                'team_changed_at': team_changed_at,
+                'team_abbr': SleeperScraper._truncate_string(player_data.get('team_abbr', ''), 10),
+                'news_updated': news_updated,
+                'search_full_name': SleeperScraper._truncate_string(
+                    player_data.get('search_full_name', ''), 100),
+                'search_first_name': SleeperScraper._truncate_string(
+                    player_data.get('search_first_name', ''), 100),
+                'search_last_name': SleeperScraper._truncate_string(
+                    player_data.get('search_last_name', ''), 100),
+                'birth_city': SleeperScraper._truncate_string(player_data.get('birth_city', ''), 100),
+                'birth_state': SleeperScraper._truncate_string(player_data.get('birth_state', ''), 50),
+                'birth_country': SleeperScraper._truncate_string(player_data.get('birth_country', ''), 50),
+                'espn_id': SleeperScraper._truncate_string(player_data.get('espn_id'), 50),
+                'yahoo_id': SleeperScraper._truncate_string(player_data.get('yahoo_id'), 50),
+                'fantasy_data_id': SleeperScraper._truncate_string(player_data.get('fantasy_data_id'), 50),
+                'stats_id': SleeperScraper._truncate_string(player_data.get('stats_id'), 50),
+                'gsis_id': SleeperScraper._truncate_string(player_data.get('gsis_id'), 50),
+                'sportradar_id': SleeperScraper._truncate_string(player_data.get('sportradar_id'), 100),
+                'rotoworld_id': SleeperScraper._truncate_string(player_data.get('rotoworld_id'), 50),
+                'rotowire_id': rotowire_id,
+                'swish_id': swish_id,
+                'oddsjam_id': SleeperScraper._truncate_string(player_data.get('oddsjam_id'), 50),
+                'opta_id': SleeperScraper._truncate_string(player_data.get('opta_id'), 50),
+                'pandascore_id': SleeperScraper._truncate_string(player_data.get('pandascore_id'), 50),
             }
 
         except Exception as e:
@@ -261,11 +306,39 @@ class SleeperScraper:
             return None
 
     @staticmethod
-    def _truncate_string(value: str, max_length: int) -> str:
-        """Truncate string to prevent database column overflow."""
-        if not value:
+    def _truncate_string(value: Any, max_length: int) -> str:
+        """Coerce to ``str`` then truncate; ``None`` / ``''`` collapse to ``''``."""
+        if value is None or value == '':
             return ''
-        return value[:max_length] if len(value) > max_length else value
+        v = value if isinstance(value, str) else str(value)
+        return v[:max_length] if len(v) > max_length else v
+
+    @staticmethod
+    def _parse_team_changed_at(value: Any) -> Optional[datetime]:
+        """Parse Sleeper ``team_changed_at`` (ISO-8601 string or epoch ms)."""
+        if value is None or value == '':
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, (int, float)):
+            try:
+                return datetime.fromtimestamp(float(value) / 1000.0, tz=UTC)
+            except (OverflowError, OSError, ValueError):
+                return None
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            try:
+                normalized = text[:-1] + '+00:00' if text.endswith('Z') else text
+                return datetime.fromisoformat(normalized)
+            except ValueError:
+                pass
+            try:
+                return datetime.fromtimestamp(float(text) / 1000.0, tz=UTC)
+            except (ValueError, OverflowError, OSError):
+                return None
+        return None
 
     @staticmethod
     def scrape_sleeper_data() -> List[Dict[str, Any]]:

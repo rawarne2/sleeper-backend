@@ -77,10 +77,11 @@ def compute_team_needs(
     *,
     roster_positions: List[str],
 ) -> Dict[str, Any]:
+    """Per-side starter depth + age profile. ``starter_slots_required`` is league-wide
+    and lives on ``league.starter_slots_required``; it is intentionally not repeated here."""
     slots = _starter_slots(roster_positions)
     counts = _starter_eligible_count(players)
     return {
-        "starter_slots_required": slots,
         "starter_eligible_count": counts,
         "scarcity_signals": _scarcity_signals(slots, counts),
         "age_profile": _age_profile(players),

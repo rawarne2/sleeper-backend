@@ -5,8 +5,10 @@ from typing import Any, Dict, Set
 
 from managers.database_manager import DatabaseManager
 from routes.dashboard_league import (
+    _attach_research_latest,
     _attach_stats,
     _ktc_players_for_roster,
+    _load_ownership_and_meta,
     _research_league_type_label,
     _roster_player_ids,
 )
@@ -35,8 +37,19 @@ def load_league_bundle(
     )
 
     research_lt = _research_league_type_label(is_redraft)
-    stats_by_pid = load_stats_with_trajectory(season, research_lt, needed)
+    # Ownership + research_meta share a SELECT max(week) under the hood; load it
+    # once and thread through to player_stats and build_context so neither
+    # re-queries.
+    ownership, research_meta = _load_ownership_and_meta(
+        season, research_lt, needed
+    )
+    max_week = research_meta.get("week") if isinstance(research_meta, dict) else None
+
+    stats_by_pid = load_stats_with_trajectory(
+        season, research_lt, needed, max_week=max_week
+    )
     players = _attach_stats(players, stats_by_pid)
+    players = _attach_research_latest(players, ownership, research_meta)
 
     rosters = db_league.get("rosters") or []
     return {
@@ -45,4 +58,7 @@ def load_league_bundle(
         "users": db_league.get("users") or [],
         "players": players,
         "total_rosters": len(rosters),
+        # Pass-through so build_context can reuse instead of requerying.
+        "ownership": ownership,
+        "research_meta": research_meta,
     }

@@ -8,8 +8,7 @@ from datetime import datetime, UTC
 from typing import Any, Dict, List, Set, Tuple
 
 from flask import Blueprint, current_app, request, Response
-from sqlalchemy import func
-from sqlalchemy.sql.functions import count as sa_count
+from sqlalchemy import case, func
 
 from cache.redis_dashboard import (
     dashboard_league_cache_key,
@@ -71,6 +70,18 @@ def _ktc_values_block_for_dashboard(values, tep_level: str) -> Dict[str, Any]:
     return block
 
 
+def _safe_parse_json(raw: Any) -> Any:
+    """Parse a JSON string column; return ``None`` on missing/invalid input."""
+    if not raw:
+        return None
+    if not isinstance(raw, str):
+        return raw
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def _player_to_dashboard_dict(
     player: Player, league_format: str, tep_level: str, is_redraft: bool = False
 ) -> Dict[str, Any] | None:
@@ -104,6 +115,13 @@ def _player_to_dashboard_dict(
         "full_name": player.full_name,
         "last_updated": format_instant_rfc3339_utc(player.last_updated),
         "injury_status": player.injury_status,
+        "injury_body_part": getattr(player, "injury_body_part", None),
+        "injury_notes": getattr(player, "injury_notes", None),
+        "injury_start_date": (
+            player.injury_start_date.isoformat() if player.injury_start_date else None
+        ),
+        "practice_participation": getattr(player, "practice_participation", None),
+        "practice_description": getattr(player, "practice_description", None),
         "status": player.status,
         "birth_date": (
             player.birth_date.isoformat() if player.birth_date else None
@@ -115,6 +133,13 @@ def _player_to_dashboard_dict(
         "number": player.number,
         "ktc": {
             "age": player.age,
+            "pickRound": player.pickRound,
+            "pickNum": player.pickNum,
+            "isTrending": player.isTrending,
+            "draftYear": player.draftYear,
+            "byeWeek": player.byeWeek,
+            "injury": _safe_parse_json(player.injury),
+            "is_redraft": is_redraft,
             "oneQBValues": values_block if league_format == "1qb" else None,
             "superflexValues": values_block if league_format == "superflex" else None,
         },
@@ -243,6 +268,9 @@ def _load_player_stats(
 
     Uses ``SLEEPER_STATS_AGGREGATE_WEEK_*`` (weeks 1–17): week 18 is omitted so the
     last regular-season week does not skew stats (rests, tanking, etc.).
+
+    ``games_played`` counts only weeks with matchup ``points`` (research-only rows
+  with null points do not count — avoids GP=1 during pre-season research refresh).
     """
     if not roster_player_ids:
         return {}
@@ -256,7 +284,9 @@ def _load_player_stats(
         db.session.query(
             SleeperWeeklyData.player_id,
             func.sum(SleeperWeeklyData.points).label("total_points"),
-            sa_count(SleeperWeeklyData.id).label("games_played"),
+            func.sum(
+                case((SleeperWeeklyData.points.isnot(None), 1), else_=0)
+            ).label("games_played"),
         )
         .filter(
             SleeperWeeklyData.season == season,
@@ -336,6 +366,30 @@ def _attach_stats(
         pid = p.get("sleeper_player_id")
         if pid and pid in stats_by_pid:
             p["stats"] = stats_by_pid[pid]
+    return players_slim
+
+
+def _attach_research_latest(
+    players_slim: List[Dict[str, Any]],
+    ownership: Dict[str, Dict[str, Any]],
+    research_meta: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Annotate each player with ``research_latest`` (week + owned/started)."""
+    week = research_meta.get("week") if isinstance(research_meta, dict) else None
+    if week is None:
+        return players_slim
+    for p in players_slim:
+        pid = p.get("sleeper_player_id")
+        if not pid:
+            continue
+        entry = ownership.get(str(pid))
+        if not entry:
+            continue
+        p["research_latest"] = {
+            "week": int(week),
+            "owned": entry.get("owned"),
+            "started": entry.get("started"),
+        }
     return players_slim
 
 
@@ -472,6 +526,7 @@ def get_dashboard_league(league_id: str):
     ms_parallel = (time.perf_counter() - t_parallel) * 1000
 
     players = _attach_stats(players, player_stats)
+    players = _attach_research_latest(players, ownership, research_meta)
 
     from managers.sleeper_picks import compute_owned_picks
     from services.trade_analyzer.picks import resolve_pick_to_ktc, PickIdError
@@ -505,6 +560,7 @@ def get_dashboard_league(league_id: str):
         "researchMeta": research_meta,
         "ktcLastUpdated": ktc_last_updated,
         "picks_by_roster": picks_by_roster,
+        "bundleSeason": season,
     }
 
     t_json = time.perf_counter()

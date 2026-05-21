@@ -10,10 +10,14 @@ class KTCConfig(TypedDict, total=False):
     tep_level: Optional[Literal["", "tep", "tepp", "teppp"]]
 
 
-class TradeSide(TypedDict):
+class TradeSide(TypedDict, total=False):
     roster_id: int
     player_ids: List[str]
     pick_ids: List[str]
+    # Optional user-supplied posture override (dynasty only). Defaults to False
+    # ("contending") if absent. When True, the prompt treats this side as
+    # actively tanking — picks/youth weighted heavier, win-now veterans hurt.
+    is_tanking: bool
 
 
 class TradeRequest(TypedDict, total=False):

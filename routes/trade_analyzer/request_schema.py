@@ -51,7 +51,15 @@ def _parse_side(name: str, raw: Any) -> TradeSide:
             raise RequestValidationError(
                 f"{name}.pick_ids: invalid pick_id {pid!r} ({exc})",
             ) from exc
-    return {"roster_id": rid, "player_ids": player_ids, "pick_ids": pick_ids}
+    is_tanking = raw.get("is_tanking", False)
+    if not isinstance(is_tanking, bool):
+        raise RequestValidationError(f"{name}.is_tanking must be boolean")
+    return {
+        "roster_id": rid,
+        "player_ids": player_ids,
+        "pick_ids": pick_ids,
+        "is_tanking": is_tanking,
+    }
 
 
 def _parse_ktc(raw: Any) -> KTCConfig:

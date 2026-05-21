@@ -29,8 +29,14 @@ class AnthropicProvider(LLMProvider):
         try:
             msg = client.messages.create(
                 model=model,
-                max_tokens=4096,
-                system=system_prompt,
+                max_tokens=2048,
+                system=[
+                    {
+                        "type": "text",
+                        "text": system_prompt,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
                 messages=[{"role": "user", "content": user_prompt}],
                 timeout=timeout_s,
             )

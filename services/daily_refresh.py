@@ -7,12 +7,17 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, UTC
 from typing import Any, Dict, Iterable, List, Optional
 
 from cache.redis_dashboard import invalidate_dashboard_league
 from managers.database_manager import DatabaseManager
 from models.entities import SleeperLeague, SleeperLeagueStats, SleeperWeeklyData
 from models.extensions import db
+from routes.sleeper.research import (
+    _upsert_research_rows,
+    research_weeks_to_persist,
+)
 from scrapers.ktc_scraper import KTCScraper
 from scrapers.pipelines import scrape_and_save_all_ktc_data
 from scrapers.sleeper_scraper import SleeperScraper
@@ -45,6 +50,19 @@ def _league_id_to_season() -> Dict[str, str]:
     return {r[0]: str(r[1]) for r in rows if r and r[0] and r[1]}
 
 
+def _current_research_season(candidates: Optional[Iterable[str]] = None) -> str:
+    """Pick the active season for the retention policy: max(candidates) or calendar year."""
+    valid: List[str] = []
+    if candidates:
+        for s in candidates:
+            text = str(s).strip()
+            if len(text) == 4 and text.isdigit():
+                valid.append(text)
+    if valid:
+        return max(valid)
+    return str(datetime.now(UTC).year)
+
+
 def refresh_leagues(league_ids: List[str]) -> Dict[str, Any]:
     out: Dict[str, Any] = {"leagues": {}, "errors": [], "seasons": []}
     seasons_seen: set[str] = set()
@@ -75,7 +93,7 @@ def refresh_leagues(league_ids: List[str]) -> Dict[str, Any]:
 def persist_research(
     season: str, week: int = 1, league_type: str = "dynasty"
 ) -> Dict[str, Any]:
-    """Fetch research from Sleeper API and replace DB rows for season/week/league_type."""
+    """Upsert one week of research; matchup-derived columns are preserved."""
     research = SleeperScraper.scrape_research_data(season, week, league_type)
     if not research.get("success"):
         return {
@@ -91,32 +109,16 @@ def persist_research(
             "error": f"Unexpected research_data type: {type(raw).__name__}",
         }
 
-    SleeperWeeklyData.query.filter_by(
-        season=season, week=week, league_type=league_type
-    ).delete()
-
-    saved = 0
-    for player_id, player_data in raw.items():
-        try:
-            rec = SleeperWeeklyData(
-                season=season,
-                week=week,
-                league_type=league_type,
-                player_id=str(player_id),
-                research_data=json.dumps(player_data),
-            )
-            db.session.add(rec)
-            saved += 1
-        except Exception as e:
-            logger.error("Research save failed for %s: %s", player_id, e)
-
-    db.session.commit()
+    counts = _upsert_research_rows(season, int(week), league_type, raw)
     return {
         "status": "success",
         "season": season,
         "week": week,
         "league_type": league_type,
-        "saved_count": saved,
+        "saved_count": counts["saved_count"],
+        "inserted": counts["inserted"],
+        "updated": counts["updated"],
+        "skipped": counts["skipped"],
     }
 
 
@@ -258,32 +260,52 @@ def run_daily_refresh(
                 "No seasons available for research refresh; pass seasons explicitly "
                 "or ensure skip_leagues is false so seasons are derived from league data"
             )
+        current_season = _current_research_season(seas)
         for s in seas:
-            for lt in ("dynasty", "redraft"):
-                try:
-                    summary["research"].append(
-                        persist_research(s, week=week, league_type=lt)
-                    )
-                except Exception as e:
-                    logger.exception(
-                        "Research refresh failed for season %s league_type=%s", s, lt
-                    )
-                    summary["research"].append(
-                        {
-                            "status": "error",
-                            "season": s,
-                            "league_type": lt,
-                            "error": str(e),
-                        }
-                    )
-                    summary["errors"].append(
-                        {
-                            "step": "research",
-                            "season": s,
-                            "league_type": lt,
-                            "error": str(e),
-                        }
-                    )
+            weeks_for_season, truncated = research_weeks_to_persist(
+                s,
+                week_param=week,
+                fetch_all_weeks=False,
+                current_season=current_season,
+            )
+            if truncated:
+                logger.info(
+                    "Daily research retention applied season=%s requested_week=%s -> weeks=%s",
+                    s,
+                    week,
+                    weeks_for_season,
+                )
+            for wk in weeks_for_season:
+                for lt in ("dynasty", "redraft"):
+                    try:
+                        summary["research"].append(
+                            persist_research(s, week=wk, league_type=lt)
+                        )
+                    except Exception as e:
+                        logger.exception(
+                            "Research refresh failed for season %s week %s league_type=%s",
+                            s,
+                            wk,
+                            lt,
+                        )
+                        summary["research"].append(
+                            {
+                                "status": "error",
+                                "season": s,
+                                "week": wk,
+                                "league_type": lt,
+                                "error": str(e),
+                            }
+                        )
+                        summary["errors"].append(
+                            {
+                                "step": "research",
+                                "season": s,
+                                "week": wk,
+                                "league_type": lt,
+                                "error": str(e),
+                            }
+                        )
 
     if not skip_weekly_stats and lids:
         try:
