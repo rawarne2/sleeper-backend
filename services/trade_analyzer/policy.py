@@ -170,7 +170,11 @@ def resolved_provider_and_model(
     """Apply production policy before calling the analyzer."""
 
     if production_routing_locked():
-        return PRODUCTION_DEFAULT_PROVIDER, default_model_for(PRODUCTION_DEFAULT_PROVIDER)
+        allowed = set(_STATIC_SELECTABLE_MODELS.get(PRODUCTION_DEFAULT_PROVIDER, ()))
+        default = default_model_for(PRODUCTION_DEFAULT_PROVIDER)
+        requested = body_model.strip() if isinstance(body_model, str) else ""
+        model = requested if requested in allowed else default
+        return PRODUCTION_DEFAULT_PROVIDER, model
     prov = (body_provider or effective_default_provider()).strip().lower()
     mod = body_model.strip() if isinstance(body_model, str) else ""
     if mod:
