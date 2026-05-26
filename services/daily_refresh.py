@@ -31,7 +31,12 @@ REGULAR_SEASON_WEEKS = range(1, 19)  # Sleeper uses weeks 1..18 for regular seas
 
 
 def _league_ids_for_refresh() -> List[str]:
-    """All leagues persisted in the DB; if none yet, fall back to built-in defaults."""
+    """All league IDs persisted in the DB; fall back to built-in defaults if none.
+
+    Only league_id is needed here — season is resolved via the Sleeper API at
+    refresh time. Unlike _prewarm_dashboard_caches(), rows with NULL season are
+    still valid refresh targets.
+    """
     rows = SleeperLeague.query.with_entities(SleeperLeague.league_id).all()
     out = [r[0] for r in rows if r and r[0]]
     if out:
