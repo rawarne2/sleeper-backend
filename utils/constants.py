@@ -1,5 +1,6 @@
 """Shared constants and environment-derived configuration."""
 import os
+from typing import Final
 
 VALID_TEP_LEVELS = ['tep', 'tepp', 'teppp']
 
@@ -35,7 +36,7 @@ if DATABASE_URI and DATABASE_URI.startswith('postgres://'):
 
 # Example dynasty superflex league IDs used for seeding, examples, and fallback refresh.
 # Ordered newest-to-oldest season.
-EXAMPLE_LEAGUE_IDS: list[tuple[str, str]] = [
+EXAMPLE_LEAGUE_IDS: Final[list[tuple[str, str]]] = [
     ("1333945997071515648", "2026"),
     ("1210364682523656192", "2025"),
     ("1050831680350568448", "2024"),

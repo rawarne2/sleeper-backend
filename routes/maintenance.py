@@ -25,11 +25,9 @@ def _prewarm_dashboard_caches() -> Dict[str, Any]:
     rows = SleeperLeague.query.with_entities(
         SleeperLeague.league_id, SleeperLeague.season
     ).all()
-    leagues: list[tuple[str, str]] = (
-        [(r[0], str(r[1])) for r in rows if r[0] and r[1]]
-        if rows
-        else EXAMPLE_LEAGUE_IDS
-    )
+    leagues: list[tuple[str, str]] = [
+        (r[0], str(r[1])) for r in rows if r[0] and r[1]
+    ] or list(EXAMPLE_LEAGUE_IDS)
 
     client = current_app.test_client()
     results: List[Dict[str, Any]] = []
