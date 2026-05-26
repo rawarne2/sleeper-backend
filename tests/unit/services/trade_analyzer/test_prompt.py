@@ -12,7 +12,7 @@ def test_system_prompt_size_locked_in():
     window strategy, position-mate awareness) to produce defensible verdicts.
     This test catches accidental regrowth past the deliberate target.
     """
-    assert 9500 < len(SYSTEM_PROMPT) < 13000, (
+    assert 9500 < len(SYSTEM_PROMPT) < 14200, (
         f"SYSTEM_PROMPT is {len(SYSTEM_PROMPT)} chars; "
         f"if growth is intentional, raise the cap, otherwise tighten."
     )
@@ -27,6 +27,24 @@ def test_system_prompt_keeps_grade_guidance():
     assert "trade_grade" in SYSTEM_PROMPT
     # Allowed letter list must be present so model knows the valid set.
     assert "A+ A A-" in SYSTEM_PROMPT
+
+
+def test_system_prompt_allows_low_grades_for_both_sides():
+    """A trade can grade poorly for both teams when fit is wrong for everyone."""
+    assert "Lose-lose" in SYSTEM_PROMPT or "lose-lose" in SYSTEM_PROMPT.lower()
+    assert "BOTH sides" in SYSTEM_PROMPT or "both sides" in SYSTEM_PROMPT.lower()
+
+
+def test_system_prompt_defines_starter_eligibility_by_rank_and_start_pct():
+    """Starter-eligible requires high market_started_pct and position-specific rank bands."""
+    assert "Starter-eligible" in SYSTEM_PROMPT
+    assert "market_started_pct" in SYSTEM_PROMPT
+    assert "positional_rank" in SYSTEM_PROMPT
+    assert "starter-worthy ≤36" in SYSTEM_PROMPT  # WR flex demand
+    assert "starter-worthy ≤12" in SYSTEM_PROMPT  # TE + 1qb QB
+    assert "elite ≤6" in SYSTEM_PROMPT  # TE scarcity
+    assert "`superflex`" in SYSTEM_PROMPT
+    assert "starter-worthy ≤24" in SYSTEM_PROMPT
 
 
 def test_system_prompt_keeps_contention_window_rule():

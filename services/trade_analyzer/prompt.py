@@ -35,11 +35,26 @@ After the JSON, `ADDITIONAL USER CONTEXT:` carries free-form notes — high prio
 
 **Position scarcity is format-dependent.** In `superflex`, QBs are the deepest pool of league-winners — a startable QB2 typically outweighs an equal-KTC WR2. In `1qb`, the QB6–QB18 gap is small; RB/WR/TE depth drives outcomes. Adjust the lens even though KTC already partially reflects it.
 
-## Reliable starter (used by the contention rules below)
+## Positional rank & starter eligibility (used by contention rules below)
 
-A *reliable starter* meets ALL of: `positional_tier` inside the format's startable band (1qb: QB1–QB12, RB1–RB24, WR1–WR36, TE1–TE12; superflex: QB1–QB24 with same RB/WR/TE bands); `is_starter_latest` true OR `market_started_pct` ≥ 60%; `market_owned_pct` ≥ 85%; no active `Out`/`IR`/`PUP` and no multi-week KTC injury timeline; `games_played` ≥ 4 this season, or a rookie with a confirmed Week-1 starting role.
+Read `positional_rank` as the integer at the player's position (`positional_tier` WR12 → 12). Bands assume a typical **12-team dynasty** roster (2RB/2–3WR/1TE + flex); scale judgment slightly for 10- or 14-team leagues.
 
-A *high-end reliable starter* additionally sits in the top band (1qb QB1–QB6, superflex QB1–QB12, RB1–RB12, WR1–WR18, TE1–TE6) with non-negative `trajectory`.
+**Rank bands by position** (starter-worthy = realistic weekly lineup floor; borderline = flex/streamer only — never starter-eligible):
+- **QB — `1qb`:** elite ≤12, starter-worthy ≤12, borderline 13–24, not >24.
+- **QB — `superflex`:** elite ≤12, starter-worthy ≤24 (~2×12 teams), borderline 25–36, not >36.
+- **RB:** elite ≤12, starter-worthy ≤24 (~RB2 per team), borderline 25–36, not >36.
+- **WR:** elite ≤12, starter-worthy ≤36 (2–3 WR + flex usage), borderline 37–48, not >48.
+- **TE:** elite ≤6 (true TE1), starter-worthy ≤12 (league TE starters), borderline 13–24, not >24.
+
+**Starter-eligible** — use everywhere the prompt says starter-eligible, starter depth, or surplus stacking. BOTH required:
+1. **High starting rate:** `market_started_pct` ≥ 60% (do not substitute `is_starter_latest`, `market_owned_pct`, or KTC value).
+2. **Starter-worthy rank:** inside that position's starter-worthy band (`league_format` for QBs).
+
+Borderline and not starter-worthy tiers are never starter-eligible even with high `market_started_pct`. Rank alone without high start rate is not starter-eligible.
+
+**Reliable starter** (win-now / pick-compensation rules): starter-eligible PLUS no active `Out`/`IR`/`PUP`, no multi-week KTC injury timeline; `games_played` ≥ 4 this season, or a rookie with a confirmed Week-1 starting role.
+
+**High-end reliable starter:** reliable starter in that position's **elite** band with non-negative `trajectory`.
 
 Apply these labels literally — do not loosen them.
 
@@ -59,7 +74,7 @@ A 23-year-old has materially more dynasty currency than an equal-KTC older playe
 - `transition`: favor flexible assets — mid-20s WRs, near-term picks, established-but-not-aging RBs. A transition team shipping a reliable starter for picks is acceptable only when picks are near-term (current or next year) and the outgoing player is ≥ 28 RB / ≥ 30 WR/TE / ≥ 33 QB.
 
 **Tanking posture override** (dynasty only — ignore when `is_redraft=true`). `posture` is the user's explicit signal and beats auto-derived `contention_window` on conflict.
-- `posture=tanking`: actively losing this season for early picks. Incoming next-year (and same-year unresolved) picks gain a slot-upgrade premium — weight ~15–25% above raw KTC. Incoming proven win-now veterans HURT this side (they raise the floor and damage the tank). A tanker who acquires a current top-12 starter for future 1sts loses unless the player is also young (< 25) with long-horizon value.
+- `posture=tanking`: actively losing this season for early picks. Incoming next-year (and same-year unresolved) picks gain a slot-upgrade premium — weight ~15–25% above raw KTC. Incoming proven win-now veterans HURT this side (they raise the floor and damage the tank). A tanker who acquires a current **elite**-band starter-eligible player for future 1sts loses unless the player is also young (< 25) with long-horizon value.
 - `posture=contending` (default): no override; apply auto-derived `contention_window`. A stated `contending` posture with an auto-derived `rebuild` window is a real tension — weight current production but call out the window risk.
 - When the two sides have opposing postures, the natural flow is current production → tanker's outgoing side and picks + youth → tanker. Trades against this gradient need clear roster-fit justification to net positive.
 
@@ -77,7 +92,7 @@ A 23-year-old has materially more dynasty currency than an equal-KTC older playe
 - **Injury:** Sleeper `Out`/`IR`/`PUP` is a major value haircut, especially win-now sides. KTC `injury.injuryName` with an extended return timeline is a haircut even when Sleeper is Active. Late-week `DNP` is a strong negative for the next game. Chronic same-area issues (soft-tissue, concussion history) hit dynasty value harder than one-off injuries.
 - **Trajectory & trend:** positive `trajectory` + positive `trend` reinforces value going to that side. Negative both going to a contender is a red flag. When `games_played` < 4, weight `trajectory` lightly — single-week spikes are noise.
 - **Market sentiment gap:** unusually low `market_owned_pct` on a KTC-strong player suggests the market knows something KTC hasn't priced (depth chart shake-up, rumored suspension, role change). Flag the discrepancy.
-- **Volume vs efficiency:** sustainable volume (target share, snap share via `market_started_pct` and `is_starter_latest`) is more durable than per-touch efficiency. High `avg_points` on low `games_played` is suspicious — call it out.
+- **Volume vs efficiency:** sustainable volume is reflected in high `market_started_pct` for starter-eligible players; do not treat low start rate as a starter signal. High `avg_points` on low `games_played` is suspicious — call it out.
 - **Recency bias:** don't let 2–3 hot weeks redefine a season; don't let an early slump bury a player with track record. `trajectory` already encodes recent vs season.
 
 ## Grading
@@ -85,11 +100,13 @@ A 23-year-old has materially more dynasty currency than an equal-KTC older playe
 Calibrate `trade_grade` against `ktc_delta.net` AND fit:
 - **A range:** clear fleece — net advantage ~1500+ KTC with favorable fit, OR moderate KTC win with major contention-window alignment.
 - **B range:** modest KTC winner with positive fit, OR roughly even KTC with strong fit advantage.
-- **C range:** roughly even deals. Both sides usually land C+ to B-.
-- **D range:** the losing side of a real fleece — major KTC loss without contention-window compensation, major roster-fit damage (starter scarcity at a key position), OR a contender shipping a high-end reliable starter for a pick-only package.
+- **C range:** roughly even deals with acceptable fit for both sides. When KTC is flat and both teams' goals are served, both sides usually land C+ to B-.
+- **D range:** the losing side of a real fleece — major KTC loss without contention-window compensation, major roster-fit damage (starter scarcity at a key position), OR a contender shipping a high-end reliable starter for a pick-only package. Also use D (or worse) for a side when the package clearly fights their `contention_window`, `posture`, or roster needs even if KTC is only modestly negative.
 - **F range:** rare — catastrophic only (e.g., elite young player for end-of-roster filler).
 
-The winning side rarely drops below C-. Even trades usually grade C+ to B- on both sides — call it even when it is. Allowed letters best→worst: A+ A A- B+ B B- C+ C C- D+ D D- F+ F F-.
+**Lose-lose trades:** When the swap is misaligned with BOTH sides' stated goals (window, posture, scarcity, timeline) — even on roughly even KTC — grade BOTH sides in the D range or lower. Do not inflate grades because the market values are close; a trade that helps neither team execute their plan is a bad deal for everyone.
+
+The winning side rarely drops below C- unless fit is clearly wrong for them. Allowed letters best→worst: A+ A A- B+ B B- C+ C C- D+ D D- F+ F F-.
 
 ## Narrative
 
