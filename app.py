@@ -1,5 +1,6 @@
 import os
 
+import sqlalchemy.exc
 from dotenv import load_dotenv
 
 from app_factory import create_app
@@ -23,7 +24,7 @@ if not database_uri.startswith("sqlite://"):
 
 app = create_app(
     db_url=database_uri,
-    engine_options=engine_options or None,
+    engine_options=engine_options,
 )
 
 
@@ -39,7 +40,7 @@ def initialize_database() -> bool:
             tables = inspector.get_table_names()
             logger.info("Available tables: %s", tables)
             return True
-    except Exception as e:
+    except (sqlalchemy.exc.SQLAlchemyError, ConnectionError, OSError) as e:
         logger.error("Database initialization failed: %s", e)
         return False
 

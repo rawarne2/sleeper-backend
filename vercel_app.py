@@ -67,7 +67,7 @@ if not database_uri.startswith("sqlite://"):
 
 app = create_app(
     db_url=database_uri,
-    engine_options=engine_options or None,
+    engine_options=engine_options,
     swagger_host="sleeper-backend.vercel.app",
     swagger_schemes=["https"],
 )
