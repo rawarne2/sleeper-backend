@@ -303,8 +303,7 @@ class ManualPlayerMerger:
             ktc_fields = [
                 'slug', 'positionID', 'seasonsExperience',
                 'pickRound', 'pickNum', 'isFeatured', 'isStartSitFeatured', 'isTrending',
-                'isDevyReturningToSchool', 'isDevyYearDecrement', 'teamLongName',
-                'draftYear', 'byeWeek', 'injury'
+                'teamLongName', 'draftYear', 'byeWeek', 'injury'
             ]
 
             for field in ktc_fields:
