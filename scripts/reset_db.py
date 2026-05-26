@@ -6,7 +6,8 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from app import app, db
+from app import app
+from models.extensions import db
 
 def reset_db():
     with app.app_context():

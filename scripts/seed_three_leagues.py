@@ -105,7 +105,8 @@ def main() -> int:
         print("Use either --skip-nfl or --force-nfl, not both", file=sys.stderr)
         return 2
 
-    from app import app, db  # noqa: E402
+    from app import app  # noqa: E402
+    from models.extensions import db  # noqa: E402
     from managers.database_manager import DatabaseManager  # noqa: E402
     from models.entities import Player  # noqa: E402
     from scrapers.sleeper_scraper import SleeperScraper  # noqa: E402

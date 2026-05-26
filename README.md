@@ -113,6 +113,11 @@ flask --app app db upgrade
 POSTGRES_URL=<prod_url> flask --app vercel_app db upgrade
 ```
 
+**Existing production DB (schema already applied via raw SQL):** stamp to the baseline revision without running it:
+```bash
+POSTGRES_URL=<prod_url> flask --app vercel_app db stamp head
+```
+
 Raw SQL files in `sql/migrations/` remain for reference; use `flask db migrate` going forward.
 
 ## API quick try
