@@ -110,7 +110,7 @@ flask --app app db upgrade
 
 **Apply in production before deploying code that requires the schema change:**
 ```bash
-DATABASE_URL=<prod_url> flask --app app db upgrade
+POSTGRES_URL=<prod_url> flask --app vercel_app db upgrade
 ```
 
 Raw SQL files in `sql/migrations/` remain for reference; use `flask db migrate` going forward.

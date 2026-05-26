@@ -20,9 +20,9 @@ Operational scripts (run from repo root with venv active):
 - `scripts/cleanup_invalid_players.py` — dry run by default; `--execute` performs batched ORM deletes (cascades child KTC rows). Loads `.env` and unsets `TEST_DATABASE_URI` when `DATABASE_URL` is set so it targets the same DB as the app, not pytest SQLite.
 - `scripts/seed_three_leagues.py`, `scripts/manual_player_merge.py`, `scripts/ktc-scrape.py`, `scripts/reset_db.py`, `scripts/setup_postgres.py`.
 
-## Two Flask entrypoints
+## Flask entrypoints
 
-`app.py` (local) and `vercel_app.py` (serverless on Vercel) are intentionally separate and **must stay in sync** for blueprint registration, CORS, Compress, Swagger, and SQLAlchemy engine options:
+`app.py` (local) and `vercel_app.py` (serverless on Vercel) share blueprint registration, CORS, Compress, Swagger, and Flask-Migrate setup through `app_factory.py::create_app`. Each entrypoint is responsible only for its own DB URL resolution and `engine_options`:
 
 - `app.py` reads `TEST_DATABASE_URI` then `DATABASE_URL` (via `utils/constants.DATABASE_URI`); pooled engine with `pool_pre_ping`, `pool_recycle=3600`, `pool_size=10`.
 - `vercel_app.py` resolves the DB URL from the first set among `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `DATABASE_URL`, `POSTGRES_URL_NON_POOLING`; uses `NullPool` with `sslmode=require` and a 15s `statement_timeout`. It strips non-libpq query params from the URL and rewrites `postgres://` → `postgresql://`.
