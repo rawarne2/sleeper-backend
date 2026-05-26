@@ -22,6 +22,7 @@ from scrapers.ktc_scraper import KTCScraper
 from scrapers.pipelines import scrape_and_save_all_ktc_data
 from scrapers.sleeper_scraper import SleeperScraper
 from services.types import DailyRefreshSummary
+from utils.constants import EXAMPLE_LEAGUE_IDS
 from utils.helpers import setup_logging
 
 logger = setup_logging()
@@ -35,11 +36,7 @@ def _league_ids_for_refresh() -> List[str]:
     out = [r[0] for r in rows if r and r[0]]
     if out:
         return out
-    return [
-        "1333945997071515648",
-        "1210364682523656192",
-        "1050831680350568448",
-    ]
+    return [lid for lid, _ in EXAMPLE_LEAGUE_IDS]
 
 
 def _league_id_to_season() -> Dict[str, str]:

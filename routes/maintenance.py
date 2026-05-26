@@ -7,9 +7,11 @@ from typing import Any, Dict, List
 
 from flask import Blueprint, current_app, jsonify, request
 
+from models.entities import SleeperLeague
 from routes.helpers import json_api_error, with_error_handling
 from services.daily_refresh import run_daily_refresh
 from routes.ktc.rankings_cache import invalidate_rankings_cache
+from utils.constants import EXAMPLE_LEAGUE_IDS
 from utils.helpers import setup_logging
 
 maintenance_bp = Blueprint("maintenance", __name__,
@@ -17,23 +19,22 @@ maintenance_bp = Blueprint("maintenance", __name__,
 logger = setup_logging()
 
 
-_PREWARM_LEAGUES = [
-    ("1333945997071515648", "2026"),
-    ("1210364682523656192", "2025"),
-    ("1050831680350568448", "2024"),
-]
-
-
 def _prewarm_dashboard_caches() -> Dict[str, Any]:
-    """Hit the dashboard endpoint for the example leagues so Redis is warm.
+    """Hit the dashboard endpoint for every persisted league so Redis is warm."""
+    # Build league_id -> season map from DB; fall back to example leagues if DB empty.
+    rows = SleeperLeague.query.with_entities(
+        SleeperLeague.league_id, SleeperLeague.season
+    ).all()
+    leagues: list[tuple[str, str]] = (
+        [(r[0], str(r[1])) for r in rows if r[0] and r[1]]
+        if rows
+        else EXAMPLE_LEAGUE_IDS
+    )
 
-    Returns a summary dict with per-league status and a flag indicating whether
-    every prewarm request succeeded.
-    """
     client = current_app.test_client()
     results: List[Dict[str, Any]] = []
     failed = 0
-    for league_id, season in _PREWARM_LEAGUES:
+    for league_id, season in leagues:
         t0 = time.perf_counter()
         resp = client.get(
             f"/api/dashboard/league/{league_id}",
@@ -58,15 +59,11 @@ def _prewarm_dashboard_caches() -> Dict[str, Any]:
                 body = resp.get_json(force=True) or {}
             except Exception:
                 body = {}
-            detail = body.get("details") or body.get(
-                "error") or f"HTTP {resp.status_code}"
+            detail = body.get("details") or body.get("error") or f"HTTP {resp.status_code}"
             entry["error"] = detail
             logger.error(
                 "prewarm failed league_id=%s season=%s status=%s error=%s",
-                league_id,
-                season,
-                resp.status_code,
-                detail,
+                league_id, season, resp.status_code, detail,
             )
         results.append(entry)
     return {"results": results, "failed": failed, "total": len(results)}

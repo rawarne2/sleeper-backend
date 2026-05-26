@@ -32,3 +32,11 @@ DATABASE_URI = os.getenv(
 
 if DATABASE_URI and DATABASE_URI.startswith('postgres://'):
     DATABASE_URI = DATABASE_URI.replace('postgres://', 'postgresql://', 1)
+
+# Example dynasty superflex league IDs used for seeding, examples, and fallback refresh.
+# Ordered newest-to-oldest season.
+EXAMPLE_LEAGUE_IDS: list[tuple[str, str]] = [
+    ("1333945997071515648", "2026"),
+    ("1210364682523656192", "2025"),
+    ("1050831680350568448", "2024"),
+]
