@@ -19,6 +19,7 @@ Flask==3.1.1
 Flask-Compress==1.23
 Flask-Cors==5.0.0
 Flask-DebugToolbar==0.16.0
+Flask-Migrate==4.1.0
 Flask-SQLAlchemy==3.1.1
 google-genai==1.40.0
 greenlet==3.2.3

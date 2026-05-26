@@ -97,6 +97,24 @@ The app reads `DATABASE_URL` from the environment and connects directly to Supab
 
 SQLAlchemy supports **SQLite** (default local/tests) and **PostgreSQL** (Docker/Vercel). Set `DATABASE_URL` in `.env` for remote Postgres; see `.env.example`.
 
+## Database migrations
+
+Schema changes use Flask-Migrate (Alembic).
+
+**After changing a model, generate a migration:**
+```bash
+flask --app app db migrate -m "describe the change"
+# Review migrations/versions/<hash>_describe_the_change.py
+flask --app app db upgrade
+```
+
+**Apply in production before deploying code that requires the schema change:**
+```bash
+DATABASE_URL=<prod_url> flask --app app db upgrade
+```
+
+Raw SQL files in `sql/migrations/` remain for reference; use `flask db migrate` going forward.
+
 ## API quick try
 
 - **Docs:** `http://localhost:5001/docs/` (root redirects); **OpenAPI:** `/openapi.json`.
