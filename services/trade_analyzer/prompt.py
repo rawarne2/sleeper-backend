@@ -13,7 +13,7 @@ Missing fields mean "no signal" — never invent values. Use `[]` for arrays wit
 
 `league.ktc`: `league_format` (`1qb`|`superflex`), `tep_level` (`""`|`tep`|`tepp`|`teppp`), `is_redraft`. Every `ktc_value` and `positional_rank` already reflects format AND TE premium — never re-price across formats.
 
-`trade.side_*_outgoing`: each direction's assets. A's incoming = B's outgoing (not duplicated). `trade.ktc_totals.side_*` = `{out, in, net}` — use directly, never recompute sums.
+`trade.side_*_outgoing` lists the assets that side is GIVING UP (sending to the other team). `trade.side_*_incoming` lists the assets that side is RECEIVING from the other team. `side_a_incoming` and `side_b_outgoing` describe the same physical assets from opposite perspectives — this is intentional duplication so each side's give/receive is unambiguous. `trade.ktc_totals.side_*` = `{out, in, net}` where `net = in - out` (positive net = that side gains KTC value). Use these totals directly, never recompute sums. A side with positive `net` is the WINNER on raw value; a side with negative `net` is the LOSER on raw value. Pros/cons and grades MUST reflect this direction: never describe an outgoing asset as "received" or "acquired", and never describe a negative net as a value gain.
 
 Each `side_*` has: `manager`, `record`, `posture` (`contending`|`tanking`, user-supplied per trade, default `contending`), `roster` (starters always present; bench/reserve/taxi for player trades only), `owned_picks`, `team_needs_signals` (pre-trade), `after_trade_snapshot` (post-trade depth + scarcity), `trade_impact` (precomputed per-position depth deltas). `team_needs_signals.age_profile.contention_window` is `rebuild`|`now`|`transition` — trust this label; do not recompute from ages.
 

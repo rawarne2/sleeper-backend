@@ -725,7 +725,9 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
         "side_b": side_b,
         "trade": {
             "side_a_outgoing": a_out,
+            "side_a_incoming": b_out,
             "side_b_outgoing": b_out,
+            "side_b_incoming": a_out,
             "ktc_totals": ktc_totals,
         },
     }

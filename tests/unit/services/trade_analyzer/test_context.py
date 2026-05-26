@@ -257,13 +257,12 @@ def test_context_trade_assets_and_totals(league_fixture):
     assert b["net"] == 920
 
 
-def test_context_drops_trade_summary_and_incoming(league_fixture):
-    """trade_summary and side_*_incoming are duplicates of trade.* and intentionally omitted."""
+def test_context_includes_explicit_incoming_assets(league_fixture):
+    """side_*_incoming mirrors the other side's outgoing so each direction is unambiguous."""
     ctx = build_context(_req(["4881"], ["4034"]), league_data=league_fixture)
     assert "trade_summary" not in ctx
-    assert "side_a_incoming" not in ctx["trade"]
-    assert "side_b_incoming" not in ctx["trade"]
-    # Net info lives only on trade.ktc_totals
+    assert ctx["trade"]["side_a_incoming"] == ctx["trade"]["side_b_outgoing"]
+    assert ctx["trade"]["side_b_incoming"] == ctx["trade"]["side_a_outgoing"]
     assert ctx["trade"]["ktc_totals"]["side_a"]["net"] == -920
 
 

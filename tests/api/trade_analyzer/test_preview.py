@@ -28,10 +28,9 @@ def test_preview_returns_context_shape(client, stubbed_league):
     ctx = body["context"]
     assert ctx["league"]["season"] == "2026"
     assert "additional_context" not in ctx
-    # trade_summary and side_*_incoming are intentionally dropped (duplicates of trade.*)
     assert "trade_summary" not in ctx
-    assert "side_a_incoming" not in ctx["trade"]
-    assert "side_b_incoming" not in ctx["trade"]
+    assert ctx["trade"]["side_a_incoming"] == ctx["trade"]["side_b_outgoing"]
+    assert ctx["trade"]["side_b_incoming"] == ctx["trade"]["side_a_outgoing"]
     assert "ktc_totals" in ctx["trade"]
     assert body["estimated_tokens"] > 0
     assert body["token_usage"]["prompt_tokens_estimated"] > 0
