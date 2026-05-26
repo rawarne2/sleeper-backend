@@ -1360,7 +1360,6 @@ class DatabaseManager:
         for ktc_key in (
             'slug', 'positionID', 'seasonsExperience', 'pickRound', 'pickNum',
             'isFeatured', 'isStartSitFeatured', 'isTrending',
-            'isDevyReturningToSchool', 'isDevyYearDecrement',
             'teamLongName', 'draftYear', 'byeWeek', 'injury',
         ):
             if ktc_key in merged_data:
@@ -1411,8 +1410,6 @@ class DatabaseManager:
             isFeatured=merged_data.get('isFeatured'),
             isStartSitFeatured=merged_data.get('isStartSitFeatured'),
             isTrending=merged_data.get('isTrending'),
-            isDevyReturningToSchool=merged_data.get('isDevyReturningToSchool'),
-            isDevyYearDecrement=merged_data.get('isDevyYearDecrement'),
             teamLongName=merged_data.get('teamLongName'),
             draftYear=merged_data.get('draftYear'),
             byeWeek=merged_data.get('byeWeek'),

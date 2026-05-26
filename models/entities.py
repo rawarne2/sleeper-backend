@@ -105,8 +105,6 @@ class Player(db.Model):
     isFeatured = db.Column(db.Boolean)
     isStartSitFeatured = db.Column(db.Boolean)
     isTrending = db.Column(db.Boolean)
-    isDevyReturningToSchool = db.Column(db.Boolean)
-    isDevyYearDecrement = db.Column(db.Boolean)
     teamLongName = db.Column(db.String(100))
     draftYear = db.Column(db.Integer)
     byeWeek = db.Column(db.Integer)
@@ -244,8 +242,6 @@ class Player(db.Model):
             'isFeatured': self.isFeatured,
             'isStartSitFeatured': self.isStartSitFeatured,
             'isTrending': self.isTrending,
-            'isDevyReturningToSchool': self.isDevyReturningToSchool,
-            'isDevyYearDecrement': self.isDevyYearDecrement,
             'teamLongName': self.teamLongName,
             'draftYear': self.draftYear,
             'byeWeek': self.byeWeek,

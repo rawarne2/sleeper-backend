@@ -36,9 +36,6 @@ class KTCPlayerData:
     isFeatured: Optional[bool] = None
     isStartSitFeatured: Optional[bool] = None
     isTrending: Optional[bool] = None
-    isDevyReturningToSchool: Optional[bool] = None
-    isDevyYearDecrement: Optional[bool] = None
-
     # Team info
     teamLongName: Optional[str] = None
     byeWeek: Optional[int] = None

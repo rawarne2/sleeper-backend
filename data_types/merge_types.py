@@ -82,8 +82,6 @@ class MergedPlayerData:
     isFeatured: Optional[bool] = None
     isStartSitFeatured: Optional[bool] = None
     isTrending: Optional[bool] = None
-    isDevyReturningToSchool: Optional[bool] = None
-    isDevyYearDecrement: Optional[bool] = None
     teamLongName: Optional[str] = None
     draftYear: Optional[int] = None
     byeWeek: Optional[int] = None
