@@ -1,6 +1,8 @@
+from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 
 from utils.helpers import save_and_verify_database, setup_logging
+from services.valuations import registry
 
 logger = setup_logging()
 
@@ -185,3 +187,62 @@ def scrape_and_save_all_ktc_data(ktc_scraper, database_manager) -> Dict[str, Any
         results['overall_status'] = 'error'
         results['error'] = str(e)
         return results
+
+
+def ingest_valuations(source_keys, *, season, league_format, league_settings):
+    """Fetch each source, resolve players to canonical ids, write append-only snapshots.
+
+    Players resolve by Sleeper id (FantasyCalc + Sleeper provide it), name as fallback;
+    KTC rows carry the canonical Player.id as external_id. PICK/RDP rows are skipped
+    (picks are KTC-only in v1). Fail-soft per source.
+    """
+    from models.entities import Player, ValueSnapshot, ValueSource
+    from models.extensions import db
+    from services.valuations.resolver import build_sleeper_index, build_name_index, resolve_player_id
+
+    players = Player.query.all()
+    sleeper_index = build_sleeper_index(players)
+    name_index = build_name_index(players)
+    results = {}
+    for key in source_keys:
+        try:
+            source = registry.get_source(key)
+            rows = source.fetch(season=season, league_format=league_format,
+                                league_settings=league_settings)
+        except Exception as exc:  # noqa: BLE001 - fail-soft per source
+            results[key] = f"error: {exc}"
+            continue
+
+        written = 0
+        for row in rows:
+            if (row.position or "").upper() in ("PICK", "RDP"):
+                continue  # picks are KTC-only in v1
+            if row.source_key == "ktc":
+                try:
+                    player_id = int(row.external_id)
+                except (TypeError, ValueError):
+                    player_id = None
+            else:
+                player_id = resolve_player_id(
+                    sleeper_id=row.sleeper_id, name=row.name, position=row.position,
+                    sleeper_index=sleeper_index, name_index=name_index)
+            if player_id is None:
+                continue  # drop unmatched, never guess
+            db.session.add(ValueSnapshot(
+                player_id=player_id, pick_key=None, source_key=row.source_key,
+                league_format=league_format, metric_key=row.metric_key,
+                metric_value=row.metric_value, rank=row.rank,
+                as_of=row.as_of or datetime.now(UTC), raw_json=None,
+            ))
+            written += 1
+
+        meta = source.meta
+        src_row = ValueSource.query.get(meta.key)
+        if src_row is None:
+            src_row = ValueSource(source_key=meta.key, display_name=meta.display_name,
+                                  kind=meta.kind, attribution_url=meta.attribution_url)
+            db.session.add(src_row)
+        src_row.last_synced_at = datetime.now(UTC)
+        db.session.commit()
+        results[key] = f"{written} snapshots"
+    return results
