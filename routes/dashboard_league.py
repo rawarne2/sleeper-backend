@@ -25,6 +25,7 @@ from utils.constants import (
     SLEEPER_STATS_AGGREGATE_WEEK_MAX,
     SLEEPER_STATS_AGGREGATE_WEEK_MIN,
 )
+from services.valuations.latest import latest_player_values
 from utils.datetime_serialization import format_instant_rfc3339_utc
 from utils.helpers import validate_parameters
 
@@ -83,7 +84,8 @@ def _safe_parse_json(raw: Any) -> Any:
 
 
 def _player_to_dashboard_dict(
-    player: Player, league_format: str, tep_level: str, is_redraft: bool = False
+    player: Player, league_format: str, tep_level: str, is_redraft: bool = False,
+    values_by_player_id: Dict[int, Dict[str, Any]] | None = None,
 ) -> Dict[str, Any] | None:
     """
     Slim per-player payload for the dashboard.
@@ -106,7 +108,7 @@ def _player_to_dashboard_dict(
         return None
 
     values_block = _ktc_values_block_for_dashboard(ktc_values, tep_level or "")
-    return {
+    result = {
         "id": player.id,
         PLAYER_NAME_KEY: player.player_name,
         "position": player.position,
@@ -144,6 +146,10 @@ def _player_to_dashboard_dict(
             "superflexValues": values_block if league_format == "superflex" else None,
         },
     }
+
+    vmap = values_by_player_id or {}
+    result["values"] = vmap.get(player.id) or {"blended": None, "sources": {}, "projection": {}}
+    return result
 
 
 def _roster_player_ids(league_payload: Dict[str, Any]) -> Set[str]:
@@ -321,6 +327,7 @@ def _ktc_players_for_roster(
     tep_level: str | None,
     needed_ids: Set[str],
     is_redraft: bool = False,
+    values_by_player_id: Dict[int, Dict[str, Any]] | None = None,
 ) -> Tuple[List[Dict[str, Any]], str | None]:
     """Load slim dashboard player dicts from the DB for the roster's Sleeper IDs."""
     players, last_updated = DatabaseManager.get_players_for_sleeper_ids(
@@ -332,7 +339,8 @@ def _ktc_players_for_roster(
     out: List[Dict[str, Any]] = []
     for p in players:
         slim = _player_to_dashboard_dict(
-            p, league_format, tep_level or "", is_redraft
+            p, league_format, tep_level or "", is_redraft,
+            values_by_player_id=values_by_player_id,
         )
         if slim is not None:
             out.append(slim)
@@ -491,6 +499,7 @@ def get_dashboard_league(league_id: str):
 
     needed_ids = _roster_player_ids(db_league)
     research_lt = _research_league_type_label(is_redraft)
+    player_values = latest_player_values(league_format)
     own_timings: Dict[str, float] = {}
     flask_app = current_app._get_current_object()
 
@@ -498,7 +507,8 @@ def get_dashboard_league(league_id: str):
         with flask_app.app_context():
             t = time.perf_counter()
             result = _ktc_players_for_roster(
-                league_format, tep_level, needed_ids, is_redraft
+                league_format, tep_level, needed_ids, is_redraft,
+                values_by_player_id=player_values,
             )
             own_timings["ms_run_players"] = (time.perf_counter() - t) * 1000
             return result
@@ -548,7 +558,12 @@ def get_dashboard_league(league_id: str):
                     _, ktc_value = resolved
             except PickIdError:
                 pass
-            out.append({**p, "ktc_value": ktc_value})
+            pick_values_block = (
+                {"blended": float(ktc_value), "sources": {"ktc": {"value": float(ktc_value)}}, "projection": {}}
+                if ktc_value is not None
+                else {"blended": None, "sources": {}, "projection": {}}
+            )
+            out.append({**p, "ktc_value": ktc_value, "values": pick_values_block})
         picks_by_roster[str(rid)] = out
 
     body: Dict[str, Any] = {
