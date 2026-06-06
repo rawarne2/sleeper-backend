@@ -65,6 +65,7 @@ class FantasyCalcSource(ValuationSource):
             name = p.get("name") or ""
             position = p.get("position") or ""
             team = p.get("maybeTeam")
+            sleeper_id = str(p["sleeperId"]) if p.get("sleeperId") else None
             for api_key, metric_key in _METRICS.items():
                 if item.get(api_key) is None:
                     continue
@@ -73,6 +74,7 @@ class FantasyCalcSource(ValuationSource):
                     position=position, team=team, metric_key=metric_key,
                     metric_value=float(item[api_key]),
                     rank=item.get("overallRank") if metric_key == "value" else None,
+                    sleeper_id=sleeper_id,
                     as_of=now, raw=item if metric_key == "value" else {},
                 ))
         return rows

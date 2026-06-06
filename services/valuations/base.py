@@ -32,6 +32,7 @@ class ValuationRow:
     metric_key: str            # value|redraft_value|proj_ros|proj_week|trade_frequency|volatility
     metric_value: Optional[float]
     rank: Optional[int] = None
+    sleeper_id: Optional[str] = None   # canonical Sleeper player_id when the source provides it
     as_of: Optional[datetime] = None
     raw: dict[str, Any] = field(default_factory=dict)
 

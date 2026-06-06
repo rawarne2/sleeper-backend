@@ -23,7 +23,9 @@ def test_fetch_parses_players_and_picks():
     assert by_metric[("1234", "value")].metric_value == 8000
     assert by_metric[("1234", "redraft_value")].metric_value == 9500
     assert by_metric[("1234", "trade_frequency")].metric_value == 0.004
-    # pick row present
-    assert any(r.external_id == "9001" and r.name == "2026 Mid 1st" for r in rows)
+    # FantasyCalc gives the canonical Sleeper id directly -> exact join, no fuzzy matching
+    assert by_metric[("1234", "value")].sleeper_id == "4984"
+    # pick row present (real FantasyCalc pick-name format)
+    assert any(r.external_id == "9001" and r.name == "2026 Pick 1.01" for r in rows)
     # superflex -> numQbs=2 passed to the API
     assert g.call_args.kwargs["params"]["numQbs"] == 2
