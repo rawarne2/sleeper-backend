@@ -1,6 +1,7 @@
 """Blueprint registration for the Flask app."""
 from flask import Flask
 
+import services.valuations.sources  # noqa: F401 -- registers default valuation sources
 from .dashboard_league import dashboard_bp
 from .health import health_bp
 from .ktc.bulk import ktc_bulk_bp
@@ -11,6 +12,7 @@ from .sleeper.players import sleeper_players_bp
 from .sleeper.research import sleeper_research_bp
 from .sleeper.stats import sleeper_stats_bp
 from .trade_analyzer import trade_analyzer_bp
+from .valuations import valuations_bp
 
 
 def register_blueprints(app: Flask) -> None:
@@ -25,3 +27,4 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(maintenance_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(trade_analyzer_bp)
+    app.register_blueprint(valuations_bp)

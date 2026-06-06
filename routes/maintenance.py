@@ -181,6 +181,17 @@ def nightly_sync():
             summary.setdefault("errors", []).append(
                 {"step": "prewarm", "error": str(e)})
 
+    try:
+        from datetime import datetime, UTC
+        from scrapers.pipelines import ingest_valuations
+        current_season = str(datetime.now(UTC).year)
+        for fmt in ("superflex", "1qb"):
+            ingest_valuations(["ktc", "fantasycalc", "sleeper_proj"],
+                              season=current_season,
+                              league_format=fmt, league_settings={})
+    except Exception as exc:  # noqa: BLE001 - never fail the cron on valuation ingest
+        current_app.logger.warning("valuation ingest skipped: %s", exc)
+
     return jsonify({"status": "success", "summary": summary})
 
 
