@@ -22,6 +22,7 @@ _PER_ASSET: Dict[str, Any] = {
         "name": {"type": "string"},
         "value": {"type": "integer"},
         "direction": {"type": "string", "enum": ["in", "out"]},
+        "sources": {"type": "object"},   # optional per-asset {ktc, fantasycalc}
     },
     "required": ["name", "value", "direction"],
 }

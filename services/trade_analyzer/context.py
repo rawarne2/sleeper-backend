@@ -1,6 +1,7 @@
 """Build the LLM-ready analysis context."""
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, List, Set
 
 from data_types.trade_analyzer_types import TradeRequest
@@ -254,6 +255,7 @@ def _player_trade(
     _put_if_populated(out, "age", ktc.get("age"))
     _put_if_populated(out, "years_exp", player.get("years_exp"))
     _put_if_populated(out, "ktc_value", values.get("value"))
+    _put_if_populated(out, "blended_value", (player.get("values") or {}).get("blended"))
     _put_if_populated(out, "positional_rank", pr)
     _put_if_populated(out, "positional_tier", _positional_tier_label(pos_upper, pr))
     _put_if_populated(out, "trend", values.get("overallTrend"))
@@ -305,11 +307,21 @@ def _pick_label(parsed: Dict[str, Any]) -> str:
     return f"{parsed['season']} {slot.title()} {ordinal}"
 
 
-def _pick_asset(pick_id: str, ktc_value: int | None) -> Dict[str, Any]:
+def _pick_asset(
+    pick_id: str,
+    ktc_value: int | None,
+    blended_value: float | None = None,
+) -> Dict[str, Any]:
     parsed = parse_pick_id(pick_id)
     out: Dict[str, Any] = {"kind": "pick", "label": _pick_label(parsed)}
     if ktc_value is not None:
         out["ktc_value"] = ktc_value
+    # blended_value falls back to ktc_value when not explicitly supplied
+    effective_blended = blended_value if blended_value is not None else (
+        float(ktc_value) if ktc_value is not None else None
+    )
+    if effective_blended is not None:
+        out["blended_value"] = effective_blended
     return out
 
 
@@ -614,6 +626,26 @@ def _sum_ktc(items: List[Dict[str, Any]]) -> int:
     return sum(int(x.get("ktc_value") or 0) for x in items)
 
 
+def _sum_blended(items: List[Dict[str, Any]]) -> float:
+    """Sum each asset's blended_value, falling back to ktc_value when blended is None."""
+    total = 0.0
+    for x in items:
+        v = x.get("blended_value")
+        if v is None:
+            v = x.get("ktc_value") or 0
+        total += float(v)
+    return round(total, 1)
+
+
+def _consensus_totals(a_out: List[Dict[str, Any]], b_out: List[Dict[str, Any]]) -> Dict[str, Any]:
+    a = _sum_blended(a_out)
+    b = _sum_blended(b_out)
+    return {
+        "side_a": {"out": a, "in": b, "net": round(b - a, 1)},
+        "side_b": {"out": b, "in": a, "net": round(a - b, 1)},
+    }
+
+
 def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str, Any]:
     league = league_data["league"]
     rosters = league_data.get("rosters") or []
@@ -702,6 +734,8 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
         "side_a": {"out": a_out_sum, "in": b_out_sum, "net": b_out_sum - a_out_sum},
         "side_b": {"out": b_out_sum, "in": a_out_sum, "net": a_out_sum - b_out_sum},
     }
+    anchor = os.getenv("TRADE_ANALYZER_ANCHOR", "blended")
+    consensus_totals = _consensus_totals(a_out, b_out)
 
     league_block: Dict[str, Any] = {
         "season": season,
@@ -729,5 +763,7 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
             "side_b_outgoing": b_out,
             "side_b_incoming": a_out,
             "ktc_totals": ktc_totals,
+            "consensus_totals": consensus_totals,
+            "anchor": anchor,
         },
     }
