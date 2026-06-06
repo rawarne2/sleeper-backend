@@ -1,0 +1,11 @@
+[
+  {"player": {"id": 1234, "name": "Josh Allen", "position": "QB", "maybeTeam": "BUF"},
+   "value": 8000, "redraftValue": 9500, "overallRank": 3, "positionRank": 1,
+   "trend30Day": 120, "maybeMovingStandardDeviation": 150.0, "maybeTradeFrequency": 0.004},
+  {"player": {"id": 5678, "name": "Bijan Robinson", "position": "RB", "maybeTeam": "ATL"},
+   "value": 7600, "redraftValue": 8100, "overallRank": 5, "positionRank": 1,
+   "trend30Day": -40, "maybeMovingStandardDeviation": 90.0, "maybeTradeFrequency": 0.006},
+  {"player": {"id": 9001, "name": "2026 Mid 1st", "position": "PICK", "maybeTeam": null},
+   "value": 5000, "redraftValue": 0, "overallRank": 40, "positionRank": 10,
+   "trend30Day": 0, "maybeMovingStandardDeviation": 0.0, "maybeTradeFrequency": 0.002}
+]
