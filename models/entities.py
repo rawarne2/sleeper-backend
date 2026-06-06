@@ -809,3 +809,40 @@ class PlayerKTCSuperflexValues(db.Model):
                 'positionalTier': self.teppp_positional_tier
             }
         }
+
+
+class ValueSnapshot(db.Model):
+    """Append-only per-source valuation/projection snapshot.
+
+    Exactly one of player_id / pick_key is set. Append-only: never updated.
+    """
+    __tablename__ = "value_snapshots"
+
+    id = db.Column(db.Integer, primary_key=True)
+    player_id = db.Column(db.Integer, db.ForeignKey("players.id"), nullable=True, index=True)
+    pick_key = db.Column(db.String(40), nullable=True, index=True)  # e.g. "2026-r1-mid"
+    source_key = db.Column(db.String(30), nullable=False, index=True)
+    league_format = db.Column(db.String(20), nullable=False)  # "1qb" | "superflex"
+    metric_key = db.Column(db.String(30), nullable=False)     # value|redraft_value|proj_ros|proj_week|trade_frequency|volatility
+    metric_value = db.Column(db.Float)
+    rank = db.Column(db.Integer)
+    as_of = db.Column(db.DateTime, nullable=False)
+    raw_json = db.Column(db.Text)
+
+    __table_args__ = (
+        db.Index(
+            "ix_value_snapshots_latest",
+            "player_id", "source_key", "league_format", "metric_key", "as_of",
+        ),
+    )
+
+
+class ValueSource(db.Model):
+    """Provenance registry: one row per known source (drives UI legend/last-updated)."""
+    __tablename__ = "value_sources"
+
+    source_key = db.Column(db.String(30), primary_key=True)
+    display_name = db.Column(db.String(80), nullable=False)
+    kind = db.Column(db.String(20), nullable=False)  # "trade_value" | "projection"
+    attribution_url = db.Column(db.String(200))
+    last_synced_at = db.Column(db.DateTime)
