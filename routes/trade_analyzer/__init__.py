@@ -8,3 +8,4 @@ trade_analyzer_bp = Blueprint(
 from . import providers as _providers  # noqa: F401
 from . import preview as _preview  # noqa: F401
 from . import analyze as _analyze  # noqa: F401
+from . import feedback as _feedback  # noqa: F401,E402
