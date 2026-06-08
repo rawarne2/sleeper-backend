@@ -38,16 +38,6 @@ _KTC_DELTA: Dict[str, Any] = {
     "required": ["values_in", "values_out", "net", "per_asset"],
 }
 
-_SLEEPER_BREAKDOWN: Dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "stats_trajectory": {"type": "array", "items": {"type": "string"}},
-        "positional_impact": {"type": "string"},
-        "team_needs_addressed": {"type": "array", "items": {"type": "string"}},
-    },
-    "required": ["stats_trajectory", "positional_impact", "team_needs_addressed"],
-}
-
 _SIDE: Dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -55,9 +45,8 @@ _SIDE: Dict[str, Any] = {
         "pros": {"type": "array", "items": {"type": "string"}},
         "cons": {"type": "array", "items": {"type": "string"}},
         "ktc_delta": _KTC_DELTA,
-        "sleeper_breakdown": _SLEEPER_BREAKDOWN,
     },
-    "required": ["trade_grade", "pros", "cons", "ktc_delta", "sleeper_breakdown"],
+    "required": ["trade_grade", "pros", "cons", "ktc_delta"],
 }
 
 _CONTEXT_SUMMARY: Dict[str, Any] = {
@@ -72,7 +61,7 @@ TRADE_ANALYZER_JSON_SCHEMA: Dict[str, Any] = {
     "type": "object",
     "properties": {
         "winner": {"type": "string", "enum": ["side_a", "side_b", "even"]},
-        "summary_bullets": {"type": "array", "items": {"type": "string"}},
+        "summary_bullets": {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 2},
         "side_a": _SIDE,
         "side_b": _SIDE,
         "context_summary": _CONTEXT_SUMMARY,

@@ -14,11 +14,6 @@
         {"name": "Josh Allen", "value": 9120, "direction": "out"},
         {"name": "2026 Mid 1st", "value": 4200, "direction": "in"}
       ]
-    },
-    "sleeper_breakdown": {
-      "stats_trajectory": ["Allen trending +2.3 vs season"],
-      "positional_impact": "QB depth thinned",
-      "team_needs_addressed": ["future picks"]
     }
   },
   "side_b": {
@@ -31,11 +26,6 @@
         {"name": "Josh Allen", "value": 9120, "direction": "in"},
         {"name": "2026 Mid 1st", "value": 4200, "direction": "out"}
       ]
-    },
-    "sleeper_breakdown": {
-      "stats_trajectory": ["Allen on heater"],
-      "positional_impact": "QB room upgraded",
-      "team_needs_addressed": ["starting QB"]
     }
   },
   "context_summary": {

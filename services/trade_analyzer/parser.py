@@ -155,13 +155,13 @@ def _coerce_str_list(value: Any) -> list[str]:
 def _side_looks_like_bare_ktc_delta(side: Dict[str, Any]) -> bool:
     if side.get("ktc_delta") is not None:
         return False
-    if any(k in side for k in ("trade_grade", "pros", "cons", "sleeper_breakdown", "sleeper_data")):
+    if any(k in side for k in ("trade_grade", "pros", "cons", "sleeper_data")):
         return False
     return any(k in side for k in ("values_in", "values_out", "net", "per_asset"))
 
 
 def _normalize_side_fields(side: Dict[str, Any]) -> None:
-    """Canonical side: trade_grade, pros, cons, ktc_delta, sleeper_breakdown."""
+    """Canonical side: trade_grade, pros, cons, ktc_delta."""
     grades = side.pop("grades", None)
     if isinstance(grades, dict):
         for key, val in grades.items():
@@ -198,9 +198,6 @@ def _normalize_side_fields(side: Dict[str, Any]) -> None:
         "net": int(delta.get("net") or 0),
         "per_asset": per_asset if isinstance(per_asset, list) else [],
     }
-
-    if "sleeper_data" in side and "sleeper_breakdown" not in side:
-        side["sleeper_breakdown"] = side.pop("sleeper_data")
 
     side["pros"] = _coerce_str_list(side.get("pros"))
     side["cons"] = _coerce_str_list(side.get("cons"))
@@ -258,11 +255,6 @@ def _side_stub(
             "values_out": int(exp.get("out") or 0),
             "net": int(exp.get("net") or 0),
             "per_asset": [],
-        },
-        "sleeper_breakdown": {
-            "stats_trajectory": [],
-            "positional_impact": "",
-            "team_needs_addressed": [],
         },
     }
 
