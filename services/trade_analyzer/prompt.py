@@ -112,11 +112,8 @@ The winning side rarely drops below C- unless fit is clearly wrong for them. All
 
 The UI shows the asset list, KTC totals, deltas, grades, and winner. Write non-obvious analysis only — never restate visible numbers, asset names, or labels.
 
-- `summary_bullets` (2–4): deal thesis, contention-window fit, single biggest risk or hidden catalyst. Skip "fair value"/"wins KTC" filler unless tied to a specific roster or timeline fact.
+- `summary_bullets` (exactly 2): bullet 1 = side_a's one-line thesis, bullet 2 = side_b's one-line thesis. No "fair value"/"wins KTC" filler.
 - `pros` / `cons` per side (1–4 each): roster-fit wins and costs — starter depth, timeline alignment, aging curve, pick timing, injury risk, trajectory vs replacement. Fewer specific bullets beat padded generic ones.
-- `sleeper_breakdown.stats_trajectory` (0–3 per side): one short line per asset with a meaningful `trajectory`/`avg_points`/`games_played` signal. Return `[]` when no asset has stats data — never fabricate.
-- `sleeper_breakdown.positional_impact` (per side): one sentence on how the deal reshapes starter quality at the affected positions. Cite position, not asset name.
-- `sleeper_breakdown.team_needs_addressed` (1–3 per side): what incoming assets fix or fail to fix; tie back to `trade_impact` deltas and `after_trade_snapshot.scarcity_signals`.
 - `context_summary.side_*_team_needs` (1–3 short phrases each): what each team still needs after the deal (e.g. "WR2", "youth at RB", "2027 1sts"). Not a recap of the trade.
 
 Output the JSON object now.
