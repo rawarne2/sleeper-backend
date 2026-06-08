@@ -846,3 +846,23 @@ class ValueSource(db.Model):
     kind = db.Column(db.String(20), nullable=False)  # "trade_value" | "projection"
     attribution_url = db.Column(db.String(200))
     last_synced_at = db.Column(db.DateTime)
+
+
+class TradeFeedback(db.Model):
+    """One row per rated/skipped trade analysis. Written only on user submit/skip."""
+    __tablename__ = "trade_feedback"
+
+    id = db.Column(db.String(36), primary_key=True)  # = analysis_id (uuid)
+    client_id = db.Column(db.String(64), index=True)
+    league_id = db.Column(db.String(20), index=True)
+    provider = db.Column(db.String(40))
+    model = db.Column(db.String(80))
+    request_json = db.Column(db.Text)
+    context_json = db.Column(db.Text)
+    response_json = db.Column(db.Text)
+    agree_winner = db.Column(db.String(12), nullable=False, index=True)  # agree|disagree|unsure|skipped
+    user_grade = db.Column(db.String(2))
+    note = db.Column(db.Text)
+    context_available = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, nullable=False)
+    feedback_at = db.Column(db.DateTime, nullable=False)
