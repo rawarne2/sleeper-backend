@@ -96,3 +96,10 @@ def test_analyze_429_when_rate_limited(client, monkeypatch, stubbed_league):
     assert r1.status_code == 200
     r2 = client.post("/api/trade-analyzer/analyze", json=_BASE)
     assert r2.status_code == 429
+
+
+def test_analyze_returns_analysis_id(client, stubbed_league):
+    resp = client.post("/api/trade-analyzer/analyze", json=_BASE)
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    body = resp.get_json()
+    assert isinstance(body.get("analysis_id"), str) and len(body["analysis_id"]) >= 8

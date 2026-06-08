@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
+from datetime import UTC, datetime
 from typing import Any, Dict
 
 from data_types.trade_analyzer_types import TradeRequest
@@ -20,6 +22,7 @@ from services.trade_analyzer.providers.base import (
     ProviderUnavailable,
 )
 from services.trade_analyzer.providers.registry import get_provider
+from services.trade_analyzer.feedback_store import stash_analysis
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +129,8 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
 
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     body = dict(parsed)
+    analysis_id = uuid.uuid4().hex
+    body["analysis_id"] = analysis_id
     body["provider_used"] = provider_name
     body["model_used"] = model
     body["elapsed_ms"] = elapsed_ms
@@ -139,4 +144,13 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
         elapsed_ms,
         token_usage["prompt_tokens_estimated"],
     )
+    stash_analysis(analysis_id, {
+        "request": req,
+        "context": context,
+        "response": parsed,
+        "provider": provider_name,
+        "model": model,
+        "league_id": req.get("league_id"),
+        "created_at": datetime.now(UTC).isoformat(),
+    })
     return AnalyzerOutcome(status_code=200, body=body)
