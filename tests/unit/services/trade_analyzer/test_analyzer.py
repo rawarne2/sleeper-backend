@@ -37,7 +37,7 @@ def test_run_analysis_maps_provider_rate_limit_to_429(league_fixture):
         return_value=league_fixture,
     ), patch(
         "services.trade_analyzer.analyzer.build_context",
-        return_value={"trade": {"ktc_totals": {}}},
+        return_value={"trade": {"consensus_totals": {}}},
     ):
         outcome = run_analysis(
             _minimal_req(),

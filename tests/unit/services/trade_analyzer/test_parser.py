@@ -13,8 +13,8 @@ def _ok():
     return {
         "winner": "even",
         "summary_bullets": ["x"],
-        "side_a": {"ktc_delta": {"values_in": 100, "values_out": 100, "net": 0, "per_asset": []}},
-        "side_b": {"ktc_delta": {"values_in": 100, "values_out": 100, "net": 0, "per_asset": []}},
+        "side_a": {"value_delta": {"values_in": 100, "values_out": 100, "net": 0, "per_asset": []}},
+        "side_b": {"value_delta": {"values_in": 100, "values_out": 100, "net": 0, "per_asset": []}},
     }
 
 
@@ -78,8 +78,8 @@ def test_recovers_trade_details_blob():
     }
     p = parse_llm_response(raw, expected_totals=totals)
     assert p["winner"] == "side_a"
-    assert p["side_a"]["ktc_delta"]["net"] == 20
-    assert p["side_b"]["ktc_delta"]["net"] == -20
+    assert p["side_a"]["value_delta"]["net"] == 20
+    assert p["side_b"]["value_delta"]["net"] == -20
 
 
 def test_raises_on_invalid_json():
@@ -141,7 +141,7 @@ def test_fallback_trade_grade_when_missing():
     assert p["side_b"]["trade_grade"] == "D+"
 
 
-def test_merge_expected_ktc_when_side_blocks_empty():
+def test_merge_expected_value_delta_when_side_blocks_empty():
     raw = (
         '{"winner":"side_a","summary_bullets":["x"],"side_a":{},"side_b":{}}'
     )
@@ -150,10 +150,10 @@ def test_merge_expected_ktc_when_side_blocks_empty():
         "side_b": {"in": 2000, "out": 5000, "net": -3000},
     }
     p = parse_llm_response(raw, expected_totals=totals)
-    assert p["side_a"]["ktc_delta"]["values_in"] == 5000
-    assert p["side_a"]["ktc_delta"]["values_out"] == 2000
-    assert p["side_a"]["ktc_delta"]["net"] == 3000
-    assert p["side_b"]["ktc_delta"]["net"] == -3000
+    assert p["side_a"]["value_delta"]["values_in"] == 5000
+    assert p["side_a"]["value_delta"]["values_out"] == 2000
+    assert p["side_a"]["value_delta"]["net"] == 3000
+    assert p["side_b"]["value_delta"]["net"] == -3000
 
 
 def test_fallback_trade_grade_even_trade():
@@ -179,12 +179,12 @@ def test_recovers_trade_details_includes_grades():
     assert p["side_b"]["trade_grade"] in {"D+", "D", "D-", "C-", "C"}
 
 
-def test_hoists_pros_cons_from_nested_ktc_delta():
+def test_hoists_pros_cons_from_nested_value_delta():
     raw = (
         '{"winner":"even","summary_bullets":["x"],'
-        '"side_a":{"ktc_delta":{"values_in":100,"values_out":80,"net":20,'
+        '"side_a":{"value_delta":{"values_in":100,"values_out":80,"net":20,'
         '"pros":["Pick timing fits rebuild"],"cons":["QB depth cost"],'
-        '"per_asset":[]}},"side_b":{"ktc_delta":{"values_in":80,"values_out":100,'
+        '"per_asset":[]}},"side_b":{"value_delta":{"values_in":80,"values_out":100,'
         '"net":-20,"pros":["Adds starter"],"cons":["Sends pick"],"per_asset":[]}}}'
     )
     p = parse_llm_response(raw)
@@ -197,22 +197,33 @@ def test_unwraps_grades_object():
     raw = (
         '{"winner":"side_a","summary_bullets":["x"],'
         '"side_a":{"grades":{"trade_grade":"B+","pros":["Win"],"cons":["Risk"],'
-        '"ktc_delta":{"values_in":10,"values_out":5,"net":5,"per_asset":[]}}},'
+        '"value_delta":{"values_in":10,"values_out":5,"net":5,"per_asset":[]}}},'
         '"side_b":{}}'
     )
     p = parse_llm_response(raw)
     assert p["side_a"]["trade_grade"] == "B+"
     assert p["side_a"]["pros"] == ["Win"]
-    assert p["side_a"]["ktc_delta"]["net"] == 5
+    assert p["side_a"]["value_delta"]["net"] == 5
+
+
+def test_normalizes_legacy_ktc_delta_alias():
+    raw = (
+        '{"winner":"even","summary_bullets":["x","y"],'
+        '"side_a":{"ktc_delta":{"values_in":10,"values_out":5,"net":5,"per_asset":[]}},'
+        '"side_b":{"ktc_delta":{"values_in":5,"values_out":10,"net":-5,"per_asset":[]}}}'
+    )
+    p = parse_llm_response(raw)
+    assert "ktc_delta" not in p["side_a"]
+    assert p["side_a"]["value_delta"]["net"] == 5
 
 
 def test_numeric_drift_logged_not_raised():
     payload = _ok()
-    payload["side_a"]["ktc_delta"]["values_in"] = 1000
+    payload["side_a"]["value_delta"]["values_in"] = 1000
     raw = json.dumps(payload)
     p = parse_llm_response(
         raw,
         expected_totals={"side_a": {"in": 100, "out": 100, "net": 0},
                          "side_b": {"in": 100, "out": 100, "net": 0}},
     )
-    assert p["side_a"]["ktc_delta"]["values_in"] == 1000
+    assert p["side_a"]["value_delta"]["values_in"] == 1000

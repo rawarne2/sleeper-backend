@@ -119,7 +119,9 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
         })
 
     try:
-        parsed = parse_llm_response(raw, expected_totals=context["trade"]["ktc_totals"])
+        parsed = parse_llm_response(
+            raw, expected_totals=context["trade"]["consensus_totals"],
+        )
     except ParseError as exc:
         return AnalyzerOutcome(status_code=502, body={
             "status": "error", "error": "LLM returned invalid JSON",

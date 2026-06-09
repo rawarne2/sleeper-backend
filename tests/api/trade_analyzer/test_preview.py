@@ -31,7 +31,8 @@ def test_preview_returns_context_shape(client, stubbed_league):
     assert "trade_summary" not in ctx
     assert ctx["trade"]["side_a_incoming"] == ctx["trade"]["side_b_outgoing"]
     assert ctx["trade"]["side_b_incoming"] == ctx["trade"]["side_a_outgoing"]
-    assert "ktc_totals" in ctx["trade"]
+    assert "consensus_totals" in ctx["trade"]
+    assert "ktc_totals" not in ctx["trade"]
     assert body["estimated_tokens"] > 0
     assert body["token_usage"]["prompt_tokens_estimated"] > 0
 

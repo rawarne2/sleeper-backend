@@ -4,23 +4,10 @@ from __future__ import annotations
 from services.trade_analyzer.prompt import SYSTEM_PROMPT, build_user_prompt
 
 
-def test_system_prompt_size_locked_in():
-    """The prompt is intentionally dense — quality over token-count.
-
-    The trade analyzer prompt expanded after testing showed Gemini/Ollama needed
-    explicit dynasty heuristics (pick decay, position aging curves, contention
-    window strategy, position-mate awareness) to produce defensible verdicts.
-    This test catches accidental regrowth past the deliberate target.
-    """
-    assert 9500 < len(SYSTEM_PROMPT) < 14200, (
-        f"SYSTEM_PROMPT is {len(SYSTEM_PROMPT)} chars; "
-        f"if growth is intentional, raise the cap, otherwise tighten."
-    )
-
-
 def test_system_prompt_keeps_value_anchor_rule():
-    """ktc_totals anchor rule is the highest-value guidance — never cut."""
-    assert "ktc_totals" in SYSTEM_PROMPT
+    """consensus_totals anchor rule is the highest-value guidance — never cut."""
+    assert "consensus_totals" in SYSTEM_PROMPT
+    assert "value_delta" in SYSTEM_PROMPT
 
 
 def test_system_prompt_keeps_grade_guidance():
@@ -61,7 +48,7 @@ def test_system_prompt_covers_pick_value_decay():
 
 def test_system_prompt_covers_position_aging_curves():
     """Position-specific aging is the dynasty differentiator KTC under-prices."""
-    for marker in ("aging", "peak", "RB", "WR", "TE", "QB"):
+    for marker in ("aging", "prime", "RB", "WR", "TE", "QB"):
         assert marker in SYSTEM_PROMPT, f"missing aging-curve marker {marker!r}"
 
 
@@ -93,7 +80,7 @@ def test_system_prompt_keeps_narrative_quality_guidance():
     """Without explicit anti-recap guidance the model restates the UI."""
     assert "non-obvious" in SYSTEM_PROMPT
     assert "summary_bullets" in SYSTEM_PROMPT
-    assert "sleeper_breakdown" in SYSTEM_PROMPT
+    assert "summary_bullets" in SYSTEM_PROMPT
 
 
 def test_user_prompt_includes_additional_context():

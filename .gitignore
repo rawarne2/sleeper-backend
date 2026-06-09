@@ -40,3 +40,6 @@ agents*
 
 docs/
 .claude/
+
+# Eval harness reports (keep results/.gitkeep)
+evals/trade_analyzer/results/*.json

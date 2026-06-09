@@ -152,8 +152,19 @@ def _coerce_str_list(value: Any) -> list[str]:
     return out
 
 
-def _side_looks_like_bare_ktc_delta(side: Dict[str, Any]) -> bool:
-    if side.get("ktc_delta") is not None:
+_DELTA_KEYS = ("value_delta", "valueDelta", "ktc_delta", "ktcDelta")
+
+
+def _delta_raw(side: Dict[str, Any]) -> Dict[str, Any]:
+    for key in _DELTA_KEYS:
+        raw = side.get(key)
+        if isinstance(raw, dict):
+            return dict(raw)
+    return {}
+
+
+def _side_looks_like_bare_value_delta(side: Dict[str, Any]) -> bool:
+    if _delta_raw(side):
         return False
     if any(k in side for k in ("trade_grade", "pros", "cons", "sleeper_data")):
         return False
@@ -161,16 +172,16 @@ def _side_looks_like_bare_ktc_delta(side: Dict[str, Any]) -> bool:
 
 
 def _normalize_side_fields(side: Dict[str, Any]) -> None:
-    """Canonical side: trade_grade, pros, cons, ktc_delta."""
+    """Canonical side: trade_grade, pros, cons, value_delta."""
     grades = side.pop("grades", None)
     if isinstance(grades, dict):
         for key, val in grades.items():
             if key not in side or side.get(key) in (None, [], ""):
                 side[key] = val
 
-    if _side_looks_like_bare_ktc_delta(side):
+    if _side_looks_like_bare_value_delta(side):
         per = side.pop("per_asset", [])
-        side["ktc_delta"] = {
+        side["value_delta"] = {
             "values_in": int(side.pop("values_in", 0) or 0),
             "values_out": int(side.pop("values_out", 0) or 0),
             "net": int(side.pop("net", 0) or 0),
@@ -181,8 +192,9 @@ def _normalize_side_fields(side: Dict[str, Any]) -> None:
         if side.get("trade_grade") in (None, "") and alt in side:
             side["trade_grade"] = side.pop(alt)
 
-    delta_raw = side.get("ktc_delta")
-    delta = dict(delta_raw) if isinstance(delta_raw, dict) else {}
+    delta = _delta_raw(side)
+    for legacy in _DELTA_KEYS:
+        side.pop(legacy, None)
 
     for key in ("pros", "cons"):
         if not _coerce_str_list(side.get(key)) and key in delta:
@@ -192,7 +204,7 @@ def _normalize_side_fields(side: Dict[str, Any]) -> None:
             side["trade_grade"] = delta[alt]
 
     per_asset = delta.get("per_asset")
-    side["ktc_delta"] = {
+    side["value_delta"] = {
         "values_in": int(delta.get("values_in") or 0),
         "values_out": int(delta.get("values_out") or 0),
         "net": int(delta.get("net") or 0),
@@ -250,7 +262,7 @@ def _side_stub(
         "trade_grade": trade_grade,
         "pros": [],
         "cons": [],
-        "ktc_delta": {
+        "value_delta": {
             "values_in": int(exp.get("in") or 0),
             "values_out": int(exp.get("out") or 0),
             "net": int(exp.get("net") or 0),
@@ -313,10 +325,10 @@ def _recover_trade_details_shape(
     return out
 
 
-def _merge_expected_ktc(
+def _merge_expected_value_delta(
     parsed: Dict[str, Any], expected_totals: Optional[Dict[str, Dict[str, int]]]
 ) -> None:
-    """Fill ktc_delta from request totals when the model omits numeric side blocks."""
+    """Fill value_delta from request totals when the model omits numeric side blocks."""
     if not expected_totals:
         return
     for side_key in ("side_a", "side_b"):
@@ -324,9 +336,7 @@ def _merge_expected_ktc(
         if not isinstance(side, dict):
             side = {}
             parsed[side_key] = side
-        delta = side.get("ktc_delta")
-        if not isinstance(delta, dict):
-            delta = {}
+        delta = _delta_raw(side)
         exp = expected_totals.get(side_key) or {}
         has_values = any(
             delta.get(k) not in (None, 0)
@@ -334,7 +344,9 @@ def _merge_expected_ktc(
         )
         if has_values:
             continue
-        side["ktc_delta"] = {
+        for legacy in _DELTA_KEYS:
+            side.pop(legacy, None)
+        side["value_delta"] = {
             "values_in": int(exp.get("in") or 0),
             "values_out": int(exp.get("out") or 0),
             "net": int(exp.get("net") or 0),
@@ -346,7 +358,8 @@ def _check_drift(parsed: Dict[str, Any], expected_totals: Optional[Dict[str, Dic
     if not expected_totals:
         return
     for side in ("side_a", "side_b"):
-        delta = (parsed.get(side) or {}).get("ktc_delta") or {}
+        side_obj = parsed.get(side) or {}
+        delta = _delta_raw(side_obj) if isinstance(side_obj, dict) else {}
         expected = expected_totals.get(side) or {}
         for k_obs, k_exp in (("values_in", "in"), ("values_out", "out"), ("net", "net")):
             obs = delta.get(k_obs)
@@ -427,7 +440,7 @@ def parse_llm_response(
             parsed[side_key] = side
         _normalize_side_fields(side)
     _normalize_side_grades(parsed)
-    _merge_expected_ktc(parsed, expected_totals)
+    _merge_expected_value_delta(parsed, expected_totals)
 
     _check_drift(parsed, expected_totals)
     return parsed

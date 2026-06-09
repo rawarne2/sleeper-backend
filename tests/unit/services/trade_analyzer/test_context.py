@@ -247,8 +247,8 @@ def test_context_trade_assets_and_totals(league_fixture):
     assert out["kind"] == "player"
     assert out["position"] == "QB"
     assert ctx["trade"]["side_b_outgoing"][0]["name"] == "Bijan Robinson"
-    a = ctx["trade"]["ktc_totals"]["side_a"]
-    b = ctx["trade"]["ktc_totals"]["side_b"]
+    a = ctx["trade"]["consensus_totals"]["side_a"]
+    b = ctx["trade"]["consensus_totals"]["side_b"]
     assert a["out"] == 9120
     assert a["in"] == 8200
     assert a["net"] == -920
@@ -263,7 +263,7 @@ def test_context_includes_explicit_incoming_assets(league_fixture):
     assert "trade_summary" not in ctx
     assert ctx["trade"]["side_a_incoming"] == ctx["trade"]["side_b_outgoing"]
     assert ctx["trade"]["side_b_incoming"] == ctx["trade"]["side_a_outgoing"]
-    assert ctx["trade"]["ktc_totals"]["side_a"]["net"] == -920
+    assert ctx["trade"]["consensus_totals"]["side_a"]["net"] == -920
 
 
 def test_context_omits_additional_context_in_json(league_fixture):

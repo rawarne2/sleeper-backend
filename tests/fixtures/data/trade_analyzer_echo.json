@@ -8,7 +8,7 @@
     "trade_grade": "D+",
     "pros": ["Adds 2026 1st"],
     "cons": ["Loses elite QB tier"],
-    "ktc_delta": {
+    "value_delta": {
       "values_in": 12100, "values_out": 13320, "net": -1220,
       "per_asset": [
         {"name": "Josh Allen", "value": 9120, "direction": "out"},
@@ -20,7 +20,7 @@
     "trade_grade": "B+",
     "pros": ["Adds elite QB"],
     "cons": ["Sends top pick"],
-    "ktc_delta": {
+    "value_delta": {
       "values_in": 13320, "values_out": 12100, "net": 1220,
       "per_asset": [
         {"name": "Josh Allen", "value": 9120, "direction": "in"},

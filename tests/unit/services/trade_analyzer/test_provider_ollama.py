@@ -69,7 +69,7 @@ def test_generate_passes_canonical_schema_as_format():
 
 
 def test_output_schema_includes_nested_side_shape():
-    """Canonical schema constrains side trade_grade enum and nested ktc_delta shape."""
+    """Canonical schema constrains side trade_grade enum and nested value_delta shape."""
     from services.trade_analyzer.output_schema import TRADE_ANALYZER_JSON_SCHEMA
 
     schema = TRADE_ANALYZER_JSON_SCHEMA
@@ -79,9 +79,9 @@ def test_output_schema_includes_nested_side_shape():
     grade = side_a["properties"]["trade_grade"]
     assert "enum" in grade
     assert "A+" in grade["enum"] and "F-" in grade["enum"]
-    ktc = side_a["properties"]["ktc_delta"]
-    assert ktc["type"] == "object"
-    assert {"values_in", "values_out", "net"} <= set(ktc["properties"].keys())
+    value_delta = side_a["properties"]["value_delta"]
+    assert value_delta["type"] == "object"
+    assert {"values_in", "values_out", "net"} <= set(value_delta["properties"].keys())
     # Same constraints applied to side_b.
     side_b = schema["properties"]["side_b"]
     assert side_b == side_a

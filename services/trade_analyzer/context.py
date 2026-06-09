@@ -730,12 +730,14 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
 
     a_out_sum = _sum_ktc(a_out)
     b_out_sum = _sum_ktc(b_out)
-    ktc_totals = {
+    ktc_only_totals = {
         "side_a": {"out": a_out_sum, "in": b_out_sum, "net": b_out_sum - a_out_sum},
         "side_b": {"out": b_out_sum, "in": a_out_sum, "net": a_out_sum - b_out_sum},
     }
     anchor = os.getenv("TRADE_ANALYZER_ANCHOR", "blended")
-    consensus_totals = _consensus_totals(a_out, b_out)
+    consensus_totals = (
+        ktc_only_totals if anchor == "ktc" else _consensus_totals(a_out, b_out)
+    )
 
     league_block: Dict[str, Any] = {
         "season": season,
@@ -762,7 +764,6 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
             "side_a_incoming": b_out,
             "side_b_outgoing": b_out,
             "side_b_incoming": a_out,
-            "ktc_totals": ktc_totals,
             "consensus_totals": consensus_totals,
             "anchor": anchor,
         },

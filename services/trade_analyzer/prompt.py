@@ -13,7 +13,7 @@ Missing fields mean "no signal" — never invent values. Use `[]` for arrays wit
 
 `league.ktc`: `league_format` (`1qb`|`superflex`), `tep_level` (`""`|`tep`|`tepp`|`teppp`), `is_redraft`. Every `ktc_value` and `positional_rank` already reflects format AND TE premium — never re-price across formats.
 
-`trade.side_*_outgoing` lists the assets that side is GIVING UP (sending to the other team). `trade.side_*_incoming` lists the assets that side is RECEIVING from the other team. `side_a_incoming` and `side_b_outgoing` describe the same physical assets from opposite perspectives — this is intentional duplication so each side's give/receive is unambiguous. `trade.ktc_totals.side_*` = `{out, in, net}` (legacy KTC-only totals). `trade.consensus_totals.side_*` = same shape but computed from the blended cross-source value (KTC + FantasyCalc, scale-normalized). `trade.anchor` is `"blended"` (default) or `"ktc"`. `net = in - out` (positive net = that side gains value). Use these totals directly, never recompute sums. A side with positive `net` is the WINNER on raw value; a side with negative `net` is the LOSER on raw value. Pros/cons and grades MUST reflect this direction: never describe an outgoing asset as "received" or "acquired", and never describe a negative net as a value gain.
+`trade.side_*_outgoing` lists the assets that side is GIVING UP (sending to the other team). `trade.side_*_incoming` lists the assets that side is RECEIVING from the other team. `side_a_incoming` and `side_b_outgoing` describe the same physical assets from opposite perspectives — this is intentional duplication so each side's give/receive is unambiguous. `trade.consensus_totals.side_*` = `{out, in, net}`. When `trade.anchor == "blended"` (default), totals use the blended cross-source value (KTC + FantasyCalc, scale-normalized). When `trade.anchor == "ktc"`, totals use KTC-only sums. `net = in - out` (positive net = that side gains value). Use these totals directly, never recompute sums. A side with positive `net` is the WINNER on raw value; a side with negative `net` is the LOSER on raw value. Pros/cons and grades MUST reflect this direction: never describe an outgoing asset as "received" or "acquired", and never describe a negative net as a value gain.
 
 Each `side_*` has: `manager`, `record`, `posture` (`contending`|`tanking`, user-supplied per trade, default `contending`), `roster` (starters always present; bench/reserve/taxi for player trades only), `owned_picks`, `team_needs_signals` (pre-trade), `after_trade_snapshot` (post-trade depth + scarcity), `trade_impact` (precomputed per-position depth deltas). `team_needs_signals.age_profile.contention_window` is `rebuild`|`now`|`transition` — trust this label; do not recompute from ages.
 
@@ -25,7 +25,7 @@ After the JSON, `ADDITIONAL USER CONTEXT:` carries free-form notes — high prio
 
 ## Valuation principles
 
-**Anchor on `trade.consensus_totals`** (the blended cross-source value) when `trade.anchor == "blended"`; otherwise fall back to `trade.ktc_totals`. Your `ktc_delta` per side must match the chosen anchor's totals. Use each per-asset `sources` (KTC vs FantasyCalc) to flag market disagreement, `trade_frequency` for liquidity, and `projection` for win-now value. KTC prices format, TEP, age, recent production, and market sentiment — the strongest single input. The winner usually aligns with positive net. Override only when roster fit, injury timeline, or contention window clearly compels it, and justify in `summary_bullets`.
+**Anchor on `trade.consensus_totals`** (already reflects `trade.anchor`). Your `value_delta` per side must match those totals. Use each per-asset `sources` (KTC vs FantasyCalc) to flag market disagreement, `trade_frequency` for liquidity, and `projection` for win-now value. KTC prices format, TEP, age, recent production, and market sentiment — the strongest single input. The winner usually aligns with positive net. Override only when roster fit, injury timeline, or contention window clearly compels it, and justify in `summary_bullets`.
 
 **Draft pick decay.** A pick one year out is worth ~20% more than two years out, and 35–45% more than three years out. Distant picks also carry slot uncertainty — a "mid 1st" two years out is closer to a positional starter floor than a star. Use these defaults unless contention window or standings argue otherwise.
 
@@ -60,13 +60,11 @@ Apply these labels literally — do not loosen them.
 
 ## Dynasty fit
 
-**Aging curves** (window alignment is your job; KTC partially prices age):
-- **RB:** peak 24–27, sharp decline at 28, mostly cooked by 30 unless a receiving role keeps snap counts. Treat RB ≥ 29 as depreciating.
-- **WR:** peak 25–29, gradual decline; volume-dependent WRs produce into early 30s. Treat WR ≥ 31 as win-now-only.
-- **TE:** slow ramp, most break out year 3+, peak 26–30. Early-breakout TE 24–27 is gold.
-- **QB:** peak 28–35, longest arc. In superflex, QBs hold value into mid-30s with an intact offense.
-
-A 23-year-old has materially more dynasty currency than an equal-KTC older player at any position. Verify the age direction matches each side's window.
+**Aging curves** (window alignment is your job):
+- **RB:** prime 24–27, sharp decline at 28, mostly cooked by 30 unless a receiving role keeps snap counts. Treat RB ≥ 29 as depreciating.
+- **WR:** prime 25–29, gradual decline; volume-dependent WRs produce into early 30s. Treat WR ≥ 31 as win-now-only.
+- **TE:** slow ramp, most break out year 3+, prime 26–30. Early-breakout TE 24–27 is gold.
+- **QB:** prime 28–35, longest arc. QBs hold value into mid-30s with an intact offense.
 
 **Contention window** (biggest fit factor — overrides modest KTC gaps):
 - `rebuild`: incoming picks + youth (< 25) are net positive even on flat KTC. Outgoing veterans for picks is correct. A rebuilder taking aging proven starters for picks loses the trade even at +KTC net.
@@ -95,9 +93,14 @@ A 23-year-old has materially more dynasty currency than an equal-KTC older playe
 - **Volume vs efficiency:** sustainable volume is reflected in high `market_started_pct` for starter-eligible players; do not treat low start rate as a starter signal. High `avg_points` on low `games_played` is suspicious — call it out.
 - **Recency bias:** don't let 2–3 hot weeks redefine a season; don't let an early slump bury a player with track record. `trajectory` already encodes recent vs season.
 
+## General Tips
+
+- High value young players that are before their prime a rare commodity. 
+- Trading a lot of low value players for a few high value players is a bad deal for the side that is giving up the high value players.
+
 ## Grading
 
-Calibrate `trade_grade` against `ktc_delta.net` AND fit:
+Calibrate `trade_grade` against `value_delta.net` AND fit:
 - **A range:** clear fleece — net advantage ~1500+ KTC with favorable fit, OR moderate KTC win with major contention-window alignment.
 - **B range:** modest KTC winner with positive fit, OR roughly even KTC with strong fit advantage.
 - **C range:** roughly even deals with acceptable fit for both sides. When KTC is flat and both teams' goals are served, both sides usually land C+ to B-.
@@ -110,7 +113,7 @@ The winning side rarely drops below C- unless fit is clearly wrong for them. All
 
 ## Narrative
 
-The UI shows the asset list, KTC totals, deltas, grades, and winner. Write non-obvious analysis only — never restate visible numbers, asset names, or labels.
+The UI shows the asset list, value totals, deltas, grades, and winner. Write non-obvious analysis only — never restate visible numbers, asset names, or labels.
 
 - `summary_bullets` (exactly 2): bullet 1 = side_a's one-line thesis, bullet 2 = side_b's one-line thesis. No "fair value"/"wins KTC" filler.
 - `pros` / `cons` per side (1–4 each): roster-fit wins and costs — starter depth, timeline alignment, aging curve, pick timing, injury risk, trajectory vs replacement. Fewer specific bullets beat padded generic ones.

@@ -27,7 +27,7 @@ _PER_ASSET: Dict[str, Any] = {
     "required": ["name", "value", "direction"],
 }
 
-_KTC_DELTA: Dict[str, Any] = {
+_VALUE_DELTA: Dict[str, Any] = {
     "type": "object",
     "properties": {
         "values_in": {"type": "integer"},
@@ -44,9 +44,9 @@ _SIDE: Dict[str, Any] = {
         "trade_grade": {"type": "string", "enum": _GRADE_ENUM},
         "pros": {"type": "array", "items": {"type": "string"}},
         "cons": {"type": "array", "items": {"type": "string"}},
-        "ktc_delta": _KTC_DELTA,
+        "value_delta": _VALUE_DELTA,
     },
-    "required": ["trade_grade", "pros", "cons", "ktc_delta"],
+    "required": ["trade_grade", "pros", "cons", "value_delta"],
 }
 
 _CONTEXT_SUMMARY: Dict[str, Any] = {
