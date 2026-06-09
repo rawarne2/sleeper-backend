@@ -14,5 +14,5 @@ CREATE TABLE IF NOT EXISTS rag_documents (
 
 CREATE INDEX IF NOT EXISTS ix_rag_documents_corpus ON rag_documents(corpus);
 
-CREATE INDEX IF NOT EXISTS ix_rag_documents_embedding
-  ON rag_documents USING ivfflat (embedding vector_cosine_ops) WITH (lists = 32);
+-- Skip ivfflat until the corpus is large (1000+ rows). Exact search is fine for
+-- strategy KB + feedback at v1 scale; avoids "ivfflat index created with little data" recall warning.

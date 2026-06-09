@@ -2,6 +2,13 @@
 """Backfill feedback corpus rows into pgvector."""
 from __future__ import annotations
 
+import os
+import sys
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
 from app import app
 from services.trade_analyzer.rag.embeddings.registry import get_embedding_provider
 from services.trade_analyzer.rag.ingest import backfill_feedback
