@@ -14,6 +14,7 @@ from services.trade_analyzer.health_cache import cached_health_check
 from services.trade_analyzer.parser import ParseError, parse_llm_response
 from services.trade_analyzer.policy import trade_analyzer_debug_log_enabled
 from services.trade_analyzer.prompt import SYSTEM_PROMPT, build_user_prompt
+from services.trade_analyzer.rag.config import trade_analyzer_rag_enabled
 from services.trade_analyzer.tokens import estimate_prompt_tokens
 from services.trade_analyzer.providers.base import (
     ProviderError,
@@ -71,7 +72,20 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
             "status": "error", "error": str(exc),
         })
 
-    user_prompt = build_user_prompt(context, req.get("additional_context"))
+    retrieved = None
+    rag_chunks = 0
+    if trade_analyzer_rag_enabled():
+        try:
+            from services.trade_analyzer.rag.query import build_rag_query
+            from services.trade_analyzer.rag.retrieve import retrieve_context
+
+            retrieved = retrieve_context(build_rag_query(context, req))
+            rag_chunks = len(retrieved)
+        except Exception:
+            logger.warning("trade_analyzer rag retrieval failed", exc_info=True)
+    user_prompt = build_user_prompt(
+        context, req.get("additional_context"), retrieved=retrieved,
+    )
     if trade_analyzer_debug_log_enabled():
         logger.info(
             "trade_analyzer debug parsed_request league_id=%s provider=%s model=%s: %s",
@@ -84,10 +98,12 @@ def run_analysis(req: TradeRequest, *, provider_name: str, model: str, timeout_s
         logger.info("trade_analyzer debug user_prompt:\n%s", user_prompt)
     token_usage = estimate_prompt_tokens(SYSTEM_PROMPT, user_prompt)
     logger.info(
-        "trade_analyzer prompt_tokens_estimated=%s system_chars=%s user_chars=%s league_id=%s",
+        "trade_analyzer prompt_tokens_estimated=%s system_chars=%s user_chars=%s "
+        "rag_chunks_retrieved=%s league_id=%s",
         token_usage["prompt_tokens_estimated"],
         token_usage["system_chars"],
         token_usage["user_chars"],
+        rag_chunks,
         req["league_id"],
     )
 

@@ -162,12 +162,89 @@ def run_gold_eval(*, league_fixture: Optional[Dict[str, Any]] = None) -> Dict[st
     }
 
 
+def run_rag_eval(*, league_fixture: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    import os
+
+    with _GOLD_SET.open(encoding="utf-8") as fh:
+        gold = json.load(fh)
+
+    if league_fixture is None:
+        league_fixture = _load_fixture("trade_analyzer_league.json")
+
+    baseline_cases: List[Dict[str, Any]] = []
+    rag_cases: List[Dict[str, Any]] = []
+    baseline_winner_hits = 0
+    baseline_winner_total = 0
+    rag_winner_hits = 0
+    rag_winner_total = 0
+    baseline_structural_hits = 0
+    baseline_structural_total = 0
+    rag_structural_hits = 0
+    rag_structural_total = 0
+
+    for case in gold.get("cases") or []:
+        if case.get("kind") != "live_echo" or not case.get("expected_winner"):
+            continue
+        prev = os.environ.get("TRADE_ANALYZER_RAG")
+        try:
+            os.environ["TRADE_ANALYZER_RAG"] = "0"
+            base_row = _run_live_echo_case(case, league_fixture)
+            base_row["rag_flag"] = "0"
+            baseline_cases.append(base_row)
+            if base_row["status_code"] == 200:
+                baseline_structural_total += 1
+                if base_row["structural_valid"]:
+                    baseline_structural_hits += 1
+                baseline_winner_total += 1
+                if base_row["winner_match"]:
+                    baseline_winner_hits += 1
+
+            os.environ["TRADE_ANALYZER_RAG"] = "1"
+            rag_row = _run_live_echo_case(case, league_fixture)
+            rag_row["rag_flag"] = "1"
+            rag_cases.append(rag_row)
+            if rag_row["status_code"] == 200:
+                rag_structural_total += 1
+                if rag_row["structural_valid"]:
+                    rag_structural_hits += 1
+                rag_winner_total += 1
+                if rag_row["winner_match"]:
+                    rag_winner_hits += 1
+        finally:
+            if prev is None:
+                os.environ.pop("TRADE_ANALYZER_RAG", None)
+            else:
+                os.environ["TRADE_ANALYZER_RAG"] = prev
+
+    return {
+        "mode": "rag",
+        "baseline_cases": baseline_cases,
+        "rag_cases": rag_cases,
+        "gold_winner_match_rate_baseline": (
+            baseline_winner_hits / baseline_winner_total if baseline_winner_total else None
+        ),
+        "gold_winner_match_rate_rag": (
+            rag_winner_hits / rag_winner_total if rag_winner_total else None
+        ),
+        "structural_validity_rate_baseline": (
+            baseline_structural_hits / baseline_structural_total
+            if baseline_structural_total
+            else None
+        ),
+        "structural_validity_rate_rag": (
+            rag_structural_hits / rag_structural_total if rag_structural_total else None
+        ),
+        "gold_winner_scored_count": baseline_winner_total,
+    }
+
+
 def run_all_eval() -> Dict[str, Any]:
     return {
         "modes": {
             "structural": run_structural_eval(),
             "feedback": run_feedback_eval(),
             "gold": run_gold_eval(),
+            "rag": run_rag_eval(),
         }
     }
 
@@ -192,6 +269,10 @@ def _print_block(label: str, block: Dict[str, Any]) -> None:
         "structural_scored_count",
         "gold_winner_match_rate",
         "gold_winner_scored_count",
+        "gold_winner_match_rate_baseline",
+        "gold_winner_match_rate_rag",
+        "structural_validity_rate_baseline",
+        "structural_validity_rate_rag",
     ):
         if key in block and block[key] is not None:
             val = block[key]
@@ -216,7 +297,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Trade analyzer eval harness")
     parser.add_argument(
         "--mode",
-        choices=("structural", "feedback", "gold", "all"),
+        choices=("structural", "feedback", "gold", "rag", "all"),
         default="all",
     )
     parser.add_argument("--out", type=Path, default=_DEFAULT_OUT)
@@ -228,6 +309,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         report = run_feedback_eval()
     elif args.mode == "gold":
         report = run_gold_eval()
+    elif args.mode == "rag":
+        report = run_rag_eval()
     else:
         report = run_all_eval()
 

@@ -93,3 +93,18 @@ def test_user_prompt_handles_none_additional_context():
     out = build_user_prompt({"trade": {}}, None)
     assert "ADDITIONAL USER CONTEXT" in out
     assert "(none)" in out
+
+
+def test_user_prompt_includes_retrieved_context_before_additional():
+    from services.trade_analyzer.rag.retrieve import RetrievedChunk
+
+    chunks = [RetrievedChunk("strategy_kb", "grading", "Grade against fit", 0.8)]
+    out = build_user_prompt({"trade": {}}, "notes", retrieved=chunks)
+    assert out.index("RETRIEVED CONTEXT") < out.index("ADDITIONAL USER CONTEXT")
+    assert "[strategy_kb/grading]" in out
+    assert "notes" in out
+
+
+def test_user_prompt_omits_retrieved_when_empty():
+    out = build_user_prompt({"trade": {}}, None, retrieved=[])
+    assert "RETRIEVED CONTEXT" not in out

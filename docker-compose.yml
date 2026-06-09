@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: sleeper-postgres
     environment:
       - POSTGRES_DB=sleeper_db
@@ -69,6 +69,11 @@ services:
       - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
       - TRADE_ANALYZER_ENABLED=${TRADE_ANALYZER_ENABLED:-true}
       - TRADE_ANALYZER_DEFAULT_PROVIDER=${TRADE_ANALYZER_DEFAULT_PROVIDER:-ollama}
+      - TRADE_ANALYZER_RAG=${TRADE_ANALYZER_RAG:-0}
+      - TRADE_ANALYZER_EMBEDDING_PROVIDER=${TRADE_ANALYZER_EMBEDDING_PROVIDER:-ollama}
+      - TRADE_ANALYZER_EMBEDDING_MODEL=${TRADE_ANALYZER_EMBEDDING_MODEL:-nomic-embed-text}
+      - TRADE_ANALYZER_RAG_TOP_K=${TRADE_ANALYZER_RAG_TOP_K:-5}
+      - TRADE_ANALYZER_RAG_MIN_SCORE=${TRADE_ANALYZER_RAG_MIN_SCORE:-0.55}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
     extra_hosts:

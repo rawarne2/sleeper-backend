@@ -60,4 +60,9 @@ def save_feedback(*, analysis_id: str, client_id: str, league_id: Optional[str],
     )
     db.session.merge(row)  # idempotent on re-submit for same analysis_id
     db.session.commit()
+    try:
+        from services.trade_analyzer.rag.ingest import ingest_feedback_row
+        ingest_feedback_row(row)
+    except Exception:
+        pass
     return row

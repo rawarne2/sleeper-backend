@@ -848,6 +848,20 @@ class ValueSource(db.Model):
     last_synced_at = db.Column(db.DateTime)
 
 
+class RagDocument(db.Model):
+    """Embedded chunk for trade-analyzer RAG (strategy KB or feedback corpus)."""
+    __tablename__ = "rag_documents"
+
+    id = db.Column(db.String(36), primary_key=True)
+    corpus = db.Column(db.String(40), nullable=False, index=True)
+    source_id = db.Column(db.String(64), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    metadata_ = db.Column("metadata", db.JSON, nullable=False, default=dict)
+    created_at = db.Column(db.DateTime, nullable=False)
+
+    __table_args__ = (db.UniqueConstraint("corpus", "source_id", name="uq_rag_documents_corpus_source"),)
+
+
 class TradeFeedback(db.Model):
     """One row per rated/skipped trade analysis. Written only on user submit/skip."""
     __tablename__ = "trade_feedback"
