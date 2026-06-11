@@ -124,6 +124,7 @@ Raw SQL files in `sql/migrations/` remain for reference; use `flask db migrate` 
 
 - **Docs:** `http://localhost:5001/docs/` (root redirects); **OpenAPI:** `/openapi.json`.
 - **KTC refresh:** `POST`/`PUT /api/ktc/refresh` usually returns **202** (background job); add `sync=1` to block, or poll `GET /api/ktc/refresh/status/{job_id}`.
+- **Player universe:** `GET /api/players/all` — full player universe in the unified dashboard shape (no league_id required); query params `league_format`, `is_redraft`, `tep_level`, `season`.
 
 ```bash
 curl http://localhost:5001/api/ktc/health
