@@ -86,6 +86,7 @@ def _safe_parse_json(raw: Any) -> Any:
 def _player_to_dashboard_dict(
     player: Player, league_format: str, tep_level: str, is_redraft: bool = False,
     values_by_player_id: Dict[int, Dict[str, Any]] | None = None,
+    ktc_rows_by_id: Dict[int, Any] | None = None,
 ) -> Dict[str, Any] | None:
     """
     Slim per-player payload for the dashboard.
@@ -93,8 +94,14 @@ def _player_to_dashboard_dict(
     Avoids ``Player.to_dict()`` and only reads the KTC values relationship for
     the requested format, so we never trigger a lazy lookup on the unused side
     or pay for JSON parses the dashboard does not render.
+
+    ``ktc_rows_by_id`` lets bulk callers (e.g. /api/players/all) pre-load every
+    KTC values row for the format in one query and pass them in, avoiding the
+    per-player lookup in ``_first_ktc_*_row`` (an N+1 over the whole universe).
     """
-    if league_format == "superflex":
+    if ktc_rows_by_id is not None:
+        ktc_values = ktc_rows_by_id.get(player.id)
+    elif league_format == "superflex":
         if hasattr(player, "_first_ktc_superflex_row"):
             ktc_values = player._first_ktc_superflex_row(is_redraft)
         else:

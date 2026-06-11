@@ -21,6 +21,7 @@ from typing import Optional, Tuple
 from cache.redis_dashboard import (
     invalidate_dashboard_league_caches_for_ktc_dimensions,
 )
+from cache.redis_players_all import redis_invalidate_players_all
 from cache.redis_rankings import (
     redis_get_rankings_bytes,
     redis_invalidate_rankings,
@@ -109,6 +110,7 @@ def invalidate_rankings_cache(
             for k in keys_to_delete:
                 _cache.pop(k, None)
     redis_invalidate_rankings(is_redraft, league_format, tep_norm)
+    redis_invalidate_players_all()
     invalidate_dashboard_league_caches_for_ktc_dimensions(
         is_redraft, league_format, tep_norm
     )
