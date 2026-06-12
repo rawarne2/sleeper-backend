@@ -12,7 +12,14 @@ from cache.redis_players_all import (
 )
 from models.entities import Player, PlayerKTCOneQBValues, PlayerKTCSuperflexValues
 from models.extensions import db
-from routes.dashboard_league import _player_to_dashboard_dict
+from routes.dashboard_league import (
+    _attach_research_latest,
+    _attach_stats,
+    _load_ownership_and_meta,
+    _load_player_stats,
+    _player_to_dashboard_dict,
+    _research_league_type_label,
+)
 from routes.helpers import json_api_error, with_error_handling
 from services.valuations.latest import latest_player_values
 from utils.datetime_serialization import utc_now_rfc3339
@@ -93,7 +100,18 @@ def get_all_players():
         if d is not None:
             out.append(d)
 
-    resp = jsonify({
+    # When a season is supplied, attach season stats + research ownership using the
+    # same bulk (non-N+1) loaders the dashboard bundle uses.
+    research_meta = None
+    if season_param:
+        research_lt = _research_league_type_label(is_redraft)
+        all_ids = {d["sleeper_player_id"] for d in out if d.get("sleeper_player_id")}
+        stats_by_pid = _load_player_stats(season_param, research_lt, all_ids)
+        ownership, research_meta = _load_ownership_and_meta(season_param, research_lt, all_ids)
+        _attach_stats(out, stats_by_pid)
+        _attach_research_latest(out, ownership, research_meta)
+
+    payload = {
         "status": "success",
         "timestamp": utc_now_rfc3339(),
         "league_format": league_format,
@@ -101,7 +119,10 @@ def get_all_players():
         "tep_level": tep,
         "count": len(out),
         "players": out,
-    })
+    }
+    if research_meta is not None:
+        payload["researchMeta"] = research_meta
+    resp = jsonify(payload)
     redis_set_players_all_bytes(is_redraft, league_format, tep, season_param, resp.get_data())
     resp.headers["X-Players-All-Cache"] = "MISS"
     return resp
