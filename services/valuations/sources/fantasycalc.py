@@ -35,6 +35,10 @@ def _num_teams(league_settings: dict[str, Any]) -> int:
         return 12
 
 
+def _config_key(num_teams: int, num_qbs: int, ppr: float) -> str:
+    return f"{num_teams}-{num_qbs}-{ppr}"
+
+
 class FantasyCalcSource(ValuationSource):
     meta = SourceMeta(
         key="fantasycalc",
@@ -44,11 +48,15 @@ class FantasyCalcSource(ValuationSource):
     )
 
     def fetch(self, *, season, league_format, league_settings) -> list[ValuationRow]:
+        num_qbs = 2 if league_format == "superflex" else _num_qbs(league_settings)
+        num_teams = _num_teams(league_settings)
+        ppr = _ppr(league_settings)
+        cfg = _config_key(num_teams, num_qbs, ppr)
         params = {
             "isDynasty": "true",
-            "numQbs": 2 if league_format == "superflex" else _num_qbs(league_settings),
-            "numTeams": _num_teams(league_settings),
-            "ppr": _ppr(league_settings),
+            "numQbs": num_qbs,
+            "numTeams": num_teams,
+            "ppr": ppr,
         }
         try:
             resp = requests.get(_API, params=params, timeout=60)
@@ -74,7 +82,7 @@ class FantasyCalcSource(ValuationSource):
                     position=position, team=team, metric_key=metric_key,
                     metric_value=float(item[api_key]),
                     rank=item.get("overallRank") if metric_key == "value" else None,
-                    sleeper_id=sleeper_id,
+                    sleeper_id=sleeper_id, config_key=cfg,
                     as_of=now, raw=item if metric_key == "value" else {},
                 ))
         return rows

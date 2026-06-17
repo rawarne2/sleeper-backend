@@ -34,6 +34,7 @@ class ValuationRow:
     rank: Optional[int] = None
     sleeper_id: Optional[str] = None   # canonical Sleeper player_id when the source provides it
     as_of: Optional[datetime] = None
+    config_key: Optional[str] = None   # FantasyCalc league config "teams-qbs-ppr"; None for config-agnostic sources
     raw: dict[str, Any] = field(default_factory=dict)
 
 
