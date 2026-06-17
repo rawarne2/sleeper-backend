@@ -90,6 +90,18 @@ curl "{base_url}/api/sleeper/league/1210364682523656192"
 # Refresh league data
 curl -X POST "{base_url}/api/sleeper/league/1210364682523656192"
 ```
+
+### Player Universe (All Players)
+```bash
+# All players, dynasty superflex TEP — uses half-PPR baseline for points
+curl "{base_url}/api/players/all?league_format=superflex&is_redraft=false&tep_level=tep&season=2025"
+
+# All players with league-accurate scoring (league_id drives scoring_settings)
+curl "{base_url}/api/players/all?league_format=superflex&season=2025&league_id=1210364682523656192"
+
+# Preview TEPPP effect on points without changing the league
+curl "{base_url}/api/players/all?league_format=superflex&season=2025&league_id=1210364682523656192&tep=teppp"
+```
             """,
             "version": "1.0.0",
             "contact": {

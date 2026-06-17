@@ -647,40 +647,84 @@ paths:
       description: |
         Returns every player that has a KTC values row for the requested format,
         serialized with the same shape as the dashboard bundle players array.
-        No league_id is required. Players without a KTC row for the format are excluded.
+
+        When `league_id` is supplied the response computes season points using that
+        league's actual `scoring_settings` (dot-product `Σ scoring_settings[k] × stats[k]`
+        over the `nfl_player_week_stats` table, weeks 1–18). The optional `tep` override
+        replaces `bonus_rec_te` in the scoring so the TE-premium dropdown can preview
+        point changes for all players without re-selecting a different league.
+
+        Without `league_id` the endpoint falls back to a half-PPR baseline so `stats`
+        fields still populate.
+
+        Players without a KTC row for the format are excluded.
+
+        The response header `X-Players-All-Cache` is `HIT` when served from Redis cache
+        and `MISS` on a fresh computation. The Redis cache key includes `league_id` so
+        switching leagues never serves stale values from a different league (cache prefix v2).
       operationId: getAllPlayers
       parameters:
         - $ref: "#/components/parameters/LeagueFormat"
         - $ref: "#/components/parameters/IsRedraft"
         - $ref: "#/components/parameters/TepLevel"
         - $ref: "#/components/parameters/SeasonQuery"
+        - name: league_id
+          in: query
+          description: |
+            Sleeper league ID. When provided the scoring engine loads this league's
+            `scoring_settings` to compute per-player season points for the whole
+            player universe. Ignored for KTC/FantasyCalc values (those are format-keyed).
+          required: false
+          schema:
+            type: string
+            pattern: "^[0-9]+$"
+          example: "1210364682523656192"
       responses:
         "200":
           description: Player universe retrieved successfully
+          headers:
+            X-Players-All-Cache:
+              description: "`HIT` when served from Redis; `MISS` on fresh computation."
+              schema:
+                type: string
+                enum: [HIT, MISS]
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: success
-                  timestamp:
-                    type: string
-                    format: date-time
-                  league_format:
-                    type: string
-                    enum: [superflex, 1qb]
-                  is_redraft:
-                    type: boolean
-                  tep_level:
-                    type: string
-                  count:
-                    type: integer
-                  players:
-                    type: array
-                    items:
-                      type: object
+                $ref: "#/components/schemas/PlayersAllResponse"
+              example:
+                status: success
+                timestamp: "2026-06-16T10:00:00Z"
+                league_format: superflex
+                is_redraft: false
+                tep_level: tep
+                league_id: "1210364682523656192"
+                count: 412
+                researchMeta:
+                  season: "2025"
+                  week: 17
+                  league_type: dynasty
+                players:
+                  - sleeper_player_id: "7553"
+                    playerName: Kyle Pitts
+                    position: TE
+                    team: ATL
+                    stats:
+                      total_points: 154.3
+                      average_points: 9.64
+                      games_played: 16
+                    research_latest:
+                      week: 17
+                      market_owned_pct: 0.92
+                      market_started_pct: 0.71
+                    values:
+                      blended: 5820
+                      sources:
+                        ktc:
+                          value: 5640
+                        fantasycalc:
+                          value: 6000
+                          trend_30day: 120
         "400":
           description: Invalid query parameters
           content:
@@ -756,8 +800,15 @@ paths:
         - Maintenance
       summary: Run nightly sync pipeline (cron style)
       description: |
-        Runs the ingest pipeline (KTC -> leagues -> research). Requires
-        Authorization: Bearer <CRON_SECRET> in production.
+        Runs the ingest pipeline (KTC → leagues → research → NFL weekly stats ingestion).
+        Requires `Authorization: Bearer <CRON_SECRET>` in production.
+
+        **NFL weekly stats ingestion** (`ingest_nfl_week_stats`): fetches raw per-player
+        stat lines from `GET https://api.sleeper.app/v1/stats/nfl/regular/{season}/{week}`
+        for weeks 1–18 and upserts them into the league-agnostic `nfl_player_week_stats`
+        table. The scoring engine then computes `Σ scoring_settings[k] × stats[k]` for any
+        league's `scoring_settings`, reproducing Sleeper's matchup `players_points` exactly.
+        This step runs once per season after research ingestion.
       operationId: runNightlySyncGet
       responses:
         "200":
@@ -779,6 +830,7 @@ paths:
       description: |
         Same pipeline as GET /api/maintenance/nightly-sync with optional JSON body controls
         (league_ids, seasons, research_week, skip_ktc, skip_leagues, skip_research, skip_prewarm).
+        Includes NFL weekly stats ingestion (see GET description).
       operationId: runNightlySyncPost
       responses:
         "200":
@@ -1857,6 +1909,111 @@ components:
         timestamp:
           type: string
           format: date-time
+
+    PlayerStatsBlock:
+      type: object
+      description: |
+        Season-aggregate points computed by the scoring engine
+        (`Σ scoring_settings[k] × stats[k]`) from `nfl_player_week_stats`, weeks 1–18.
+        Reproduces Sleeper's matchup `players_points` exactly for the selected league.
+      properties:
+        total_points:
+          type: number
+          format: float
+          description: Cumulative season points under the selected league's scoring settings
+          example: 154.3
+        average_points:
+          type: number
+          format: float
+          description: Points per game (total / games_played)
+          example: 9.64
+        games_played:
+          type: integer
+          description: Weeks the player recorded at least one stat line with gp >= 1
+          example: 16
+
+    ResearchLatestBlock:
+      type: object
+      description: Most recent ownership/start percentages from SleeperWeeklyData.research_data
+      properties:
+        week:
+          type: integer
+          example: 17
+        market_owned_pct:
+          type: number
+          format: float
+          example: 0.92
+        market_started_pct:
+          type: number
+          format: float
+          example: 0.71
+
+    ResearchMeta:
+      type: object
+      description: Metadata describing the ownership data snapshot attached to each player
+      properties:
+        season:
+          type: string
+          example: "2025"
+        week:
+          type: integer
+          example: 17
+        league_type:
+          type: string
+          enum: [dynasty, redraft]
+          example: dynasty
+
+    PlayersAllResponse:
+      type: object
+      description: Response envelope for GET /api/players/all
+      properties:
+        status:
+          type: string
+          example: success
+        timestamp:
+          type: string
+          format: date-time
+        league_format:
+          type: string
+          enum: [superflex, 1qb]
+        is_redraft:
+          type: boolean
+        tep_level:
+          type: string
+          enum: ["", tep, tepp, teppp]
+        league_id:
+          type: string
+          nullable: true
+          description: Echoed back when provided; null otherwise
+        count:
+          type: integer
+        researchMeta:
+          $ref: "#/components/schemas/ResearchMeta"
+        players:
+          type: array
+          description: |
+            Every player with a KTC row for the requested format, in the same shape
+            as dashboard bundle players. Includes `stats` (engine points) when `season`
+            is provided, and `research_latest` (ownership) when research data exists.
+          items:
+            type: object
+            properties:
+              sleeper_player_id:
+                type: string
+              playerName:
+                type: string
+              position:
+                type: string
+              team:
+                type: string
+                nullable: true
+              stats:
+                $ref: "#/components/schemas/PlayerStatsBlock"
+              research_latest:
+                $ref: "#/components/schemas/ResearchLatestBlock"
+              values:
+                type: object
+                description: Consensus blend and per-source trade values
 
     TradeAnalyzerKTC:
       type: object

@@ -24,9 +24,11 @@ A Flask API for fantasy football data across KeepTradeCut (KTC) and Sleeper, inc
 - **Season Averages**: Calculate player averages (weeks 1–17; week 18 excluded)
 - **Database Caching**: Fast response times with persistent storage
 
-## Weekly stats
+## Weekly stats and scoring engine
 
-Sleeper matchup data per week; season averages and dashboard per-player `stats` use weeks 1–17 (week 18 excluded). Flow: seed `/api/sleeper/league/{id}/stats/seed`, then `GET` / `POST` / `PUT` on `/api/sleeper/league/{id}/stats/week/{week}`. Examples: [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
+**League-specific per-player stats (new):** Raw Sleeper stat lines are stored in the league-agnostic `nfl_player_week_stats` table (one row per player/week, weeks 1–18). A pure scoring engine in `services/scoring/engine.py` computes `points = Σ scoring_settings[k] × stats[k]`, which reproduces Sleeper's matchup `players_points` exactly (validated: Kyle Pitts 2025 Wk1 = 12.9). This runs for the whole player universe — not just rostered players — so `/api/players/all` and the dashboard bundle both serve league-accurate season points. Ingestion runs via `ingest_nfl_week_stats(season)` in `services/daily_refresh.py` and `scripts/seed_three_leagues.py`.
+
+**Roster-scoped weekly data:** Sleeper matchup data per week is still stored in `SleeperWeeklyData` for ownership/`is_starter` tracking (used by research). Season averages use weeks 1–17 (week 18 excluded). Flow: seed `/api/sleeper/league/{id}/stats/seed`, then `GET` / `POST` / `PUT` on `/api/sleeper/league/{id}/stats/week/{week}`. Examples: [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
 
 ## Quick Start
 
@@ -124,7 +126,7 @@ Raw SQL files in `sql/migrations/` remain for reference; use `flask db migrate` 
 
 - **Docs:** `http://localhost:5001/docs/` (root redirects); **OpenAPI:** `/openapi.json`.
 - **KTC refresh:** `POST`/`PUT /api/ktc/refresh` usually returns **202** (background job); add `sync=1` to block, or poll `GET /api/ktc/refresh/status/{job_id}`.
-- **Player universe:** `GET /api/players/all` — full player universe in the unified dashboard shape (no league_id required); query params `league_format`, `is_redraft`, `tep_level`, `season`.
+- **Player universe:** `GET /api/players/all` — full player universe in the unified dashboard shape; query params `league_format`, `is_redraft`, `tep_level`, `season`, and the new `league_id`. When `league_id` is supplied, season points are computed for every player using that league's actual `scoring_settings` (scoring engine: `Σ scoring_settings[k] × stats[k]` over `nfl_player_week_stats`). The optional `tep` query param overrides `bonus_rec_te` so the TEP dropdown can preview point changes without re-selecting a league. Response includes `players[]` (with `stats`, `research_latest`, `values`), `researchMeta`, and an `X-Players-All-Cache: HIT|MISS` header (Redis cache key v2 includes `league_id`).
 
 ```bash
 curl http://localhost:5001/api/ktc/health
