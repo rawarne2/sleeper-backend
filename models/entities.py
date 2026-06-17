@@ -826,6 +826,7 @@ class ValueSnapshot(db.Model):
     metric_key = db.Column(db.String(30), nullable=False)     # value|redraft_value|proj_ros|proj_week|trade_frequency|volatility
     metric_value = db.Column(db.Float)
     rank = db.Column(db.Integer)
+    config_key = db.Column(db.String(24), nullable=True, index=True)
     as_of = db.Column(db.DateTime, nullable=False)
     raw_json = db.Column(db.Text)
 
@@ -846,6 +847,23 @@ class ValueSource(db.Model):
     kind = db.Column(db.String(20), nullable=False)  # "trade_value" | "projection"
     attribution_url = db.Column(db.String(200))
     last_synced_at = db.Column(db.DateTime)
+
+
+class NflPlayerWeekStats(db.Model):
+    """Raw Sleeper per-player weekly stat line (league-agnostic). One row per player/week."""
+    __tablename__ = "nfl_player_week_stats"
+
+    id = db.Column(db.Integer, primary_key=True)
+    season = db.Column(db.String(4), nullable=False, index=True)
+    week = db.Column(db.Integer, nullable=False)
+    player_id = db.Column(db.String(20), nullable=False, index=True)
+    stats = db.Column(db.JSON, nullable=False, default=dict)  # full Sleeper stats dict
+    last_updated = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(UTC))
+
+    __table_args__ = (
+        db.UniqueConstraint("season", "week", "player_id", name="uq_nfl_week_stats"),
+        db.Index("ix_nfl_week_stats_season_week", "season", "week"),
+    )
 
 
 class RagDocument(db.Model):
