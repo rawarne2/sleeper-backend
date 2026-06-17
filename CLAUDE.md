@@ -56,6 +56,22 @@ Layered structure:
 - Trade analyzer slim LLM context and curl examples: `docs/trade-analyzer-payload.md`. Sample analyze: `provider: echo` or `tests/fixtures/data/trade_analyzer_echo.json` (no GET sample route).
 - **Trade analyzer perf:** Gemini uses the `google-genai` SDK with `thinking_budget=0` by default (raise via `TRADE_ANALYZER_GEMINI_THINKING_BUDGET` for deeper reasoning at +10–30s latency). All providers use the canonical `TRADE_ANALYZER_JSON_SCHEMA` for structured output. Provider health checks are cached in-process only (`services/trade_analyzer/health_cache.py`, 60s success / 5s failure) — there is intentionally no Redis or IndexedDB cache for analysis results so injuries/news flow through immediately. Ownership + `research_meta` are loaded once in `_load_league.py` and threaded through `build_context` and `load_stats_with_trajectory`'s `max_week` arg; do not requery `SleeperWeeklyData` from those callers.
 
+## Scoring engine and league-accurate season points
+
+`nfl_player_week_stats` stores raw Sleeper stat lines — one row per `(season, week, player_id)` — fetched from `GET https://api.sleeper.app/v1/stats/nfl/regular/{season}/{week}`. The table is **league-agnostic** (no `league_id`); the same stat lines are reused for every league.
+
+`services/scoring/engine.py` provides two pure functions:
+- `score_stat_line(scoring_settings, stats) -> float` — dot-product `Σ scoring_settings[k] × stats[k]`, rounded to 2dp. This **reproduces Sleeper's matchup `players_points` exactly** (validated: Kyle Pitts 2025 Wk1 — rec_yd 59×0.1 + rec 7×0.5 + bonus_rec_te 7×0.5 = 12.9). `bonus_rec_te` is itself a stat key in Sleeper's data, equal to TE reception count, so TEP scoring requires no special-casing.
+- `season_points_for_players(scoring_settings, rows) -> dict` — aggregates per-player `{total_points, average_points, games_played}` over a set of `NflPlayerWeekStats` rows (weeks 1–18, filtered by `gp >= 1`).
+
+Both `routes/dashboard_league.py` (roster-scoped bundle) and `routes/players_all.py` (whole-universe `/api/players/all`) call the engine. `players_all.py` loads the league's `scoring_settings` when `league_id` is provided and applies an optional `tep` query-param override on `bonus_rec_te` so the frontend TEP dropdown can preview point changes. Stats ingestion runs in `services/daily_refresh.py::ingest_nfl_week_stats(season)` (weeks 1–18) and `scripts/seed_three_leagues.py`.
+
+## FantasyCalc config_key
+
+`value_snapshots.config_key` (VARCHAR 24, nullable) keys FantasyCalc snapshots by a `"{teams}-{num_qbs}-{ppr}"` string (e.g. `"12-2-0.5"`). KTC and `sleeper_proj` rows leave it **NULL** (they are not PPR/team-count sensitive). `latest_player_values(league_format, fc_config_key=...)` filters FantasyCalc rows by `config_key` while leaving non-FC rows unfiltered, so both sources coexist in the same query. The `dashboard_league.py` route derives the key from the league's `total_rosters`, `scoring_settings.rec`, and `league_format`. The nightly maintenance route ingests FC for each distinct example-league config (vary teams/QBs/PPR).
+
+KTC TEP level mapping: the frontend resolves `bonus_rec_te` to the nearest KTC bucket via thresholds 0.25/0.75/1.25 (`< 0.25 → ''`, `< 0.75 → 'tep'`, `< 1.25 → 'tepp'`, else `'teppp'`). See `src/utils/leagueConfig.ts::resolveTepLevel`.
+
 ## Maintenance / cron
 
 `/api/maintenance/nightly-sync` (and `/prewarm`, same prewarm step) require `Authorization: Bearer <CRON_SECRET>` when `VERCEL_ENV=production` (header-only auth disabled in prod). Pipeline order: KTC formats → leagues → research; research seasons come from each league's API `season`. `_prewarm_dashboard_caches` runs after the pipeline unless `skip_prewarm`. `POST /api/sleeper/refresh` (60s+ Sleeper NFL ingest) is operator-only and **not** part of any scheduled run. `vercel.json` defines one daily cron at `30 15 * * *` UTC (Vercel Hobby allows ≤1 run/day per job). When calling maintenance in prod, target the deployed backend origin, not the Supabase REST host.
