@@ -695,4 +695,16 @@ class SleeperScraper:
                 'season': season
             }
 
+    @staticmethod
+    def fetch_weekly_player_stats(season: str, week: int) -> Optional[Dict[str, Any]]:
+        """Fetch the raw per-player NFL stat lines for a season/week (league-agnostic)."""
+        url = f"https://api.sleeper.app/v1/stats/nfl/regular/{season}/{week}"
+        try:
+            resp = requests.get(url, timeout=30)
+            resp.raise_for_status()
+            return resp.json()
+        except (requests.RequestException, ValueError) as e:
+            logger.error("Failed to fetch stats for %s wk %s: %s", season, week, e)
+            return None
+
 

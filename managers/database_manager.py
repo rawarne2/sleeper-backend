@@ -13,6 +13,7 @@ from models.entities import (
     PlayerKTCSuperflexValues,
     SleeperWeeklyData,
     SleeperLeagueStats,
+    NflPlayerWeekStats,
 )
 from utils.constants import (
     PLAYER_NAME_KEY,
@@ -1516,3 +1517,25 @@ class DatabaseManager:
                 **superflex_data,
             )
             db.session.add(superflex_values)
+
+    @staticmethod
+    def save_nfl_week_stats(season: str, week: int, stats_by_pid: dict) -> dict:
+        """Upsert league-agnostic raw stat lines for a season/week."""
+        saved = updated = skipped = 0
+        for pid, stats in (stats_by_pid or {}).items():
+            if not pid or not isinstance(stats, dict):
+                skipped += 1
+                continue
+            row = NflPlayerWeekStats.query.filter_by(
+                season=season, week=week, player_id=str(pid)).first()
+            if row is None:
+                db.session.add(NflPlayerWeekStats(
+                    season=season, week=week, player_id=str(pid),
+                    stats=stats, last_updated=datetime.now(UTC)))
+                saved += 1
+            else:
+                row.stats = stats
+                row.last_updated = datetime.now(UTC)
+                updated += 1
+        db.session.commit()
+        return {"saved": saved, "updated": updated, "skipped": skipped}
