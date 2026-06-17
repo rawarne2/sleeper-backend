@@ -21,6 +21,10 @@ THREE_LEAGUES = [
     "1333945997071515648",  # 2026 dynasty superflex
 ]
 
+# Distinct seasons across the seeded leagues; raw NFL stat lines are ingested
+# once per season so the scoring engine can compute league-accurate points.
+SEED_SEASONS = ["2024", "2025", "2026"]
+
 _EPILOG = textwrap.dedent(
     """
     What each mode does
@@ -110,7 +114,7 @@ def main() -> int:
     from managers.database_manager import DatabaseManager  # noqa: E402
     from models.entities import Player  # noqa: E402
     from scrapers.sleeper_scraper import SleeperScraper  # noqa: E402
-    from services.daily_refresh import run_daily_refresh  # noqa: E402
+    from services.daily_refresh import ingest_nfl_week_stats, run_daily_refresh  # noqa: E402
 
     with app.app_context():
         if args.reset:
@@ -153,6 +157,15 @@ def main() -> int:
         summary = run_daily_refresh(league_ids=THREE_LEAGUES)
         print(f"  pipeline completed in {(time.perf_counter() - t):.1f}s")
         _print_summary(summary)
+
+        print("Ingesting raw NFL weekly stat lines (once per distinct season)...")
+        for season in SEED_SEASONS:
+            t = time.perf_counter()
+            totals = ingest_nfl_week_stats(season)
+            print(
+                f"  {season}: saved={totals['saved']} updated={totals['updated']} "
+                f"skipped={totals['skipped']} in {(time.perf_counter() - t):.1f}s"
+            )
 
     print("Seed complete.")
     return 0

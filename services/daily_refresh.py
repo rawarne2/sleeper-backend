@@ -176,6 +176,24 @@ def refresh_weekly_stats_for_league(
     return summary
 
 
+def ingest_nfl_week_stats(season: str) -> Dict[str, int]:
+    """Ingest league-agnostic raw Sleeper stat lines for a season (weeks 1–18).
+
+    One row per player/week in ``nfl_player_week_stats``; the scoring engine
+    dot-products these against each league's ``scoring_settings`` to reproduce
+    Sleeper points for the whole player universe.
+    """
+    totals = {"saved": 0, "updated": 0, "skipped": 0}
+    for week in REGULAR_SEASON_WEEKS:
+        raw = SleeperScraper.fetch_weekly_player_stats(season, week)
+        if not raw:
+            continue
+        res = DatabaseManager.save_nfl_week_stats(season, week, raw)
+        for k in totals:
+            totals[k] += res.get(k, 0)
+    return totals
+
+
 def refresh_weekly_stats_for_leagues(
     league_ids: List[str],
     *,
@@ -233,6 +251,7 @@ def run_daily_refresh(
         "leagues": None,
         "research": [],
         "weekly_stats": None,
+        "nfl_week_stats": None,
         "errors": [],
     }
 
@@ -317,5 +336,23 @@ def run_daily_refresh(
         except Exception as e:
             logger.exception("Weekly stats refresh failed")
             summary["errors"].append({"step": "weekly_stats", "error": str(e)})
+
+        # Ingest league-agnostic raw NFL stat lines once per distinct season so the
+        # scoring engine can compute league-accurate points for the whole universe.
+        ingest_seasons = {
+            s for s in (seasons or league_seasons or _league_id_to_season().values())
+            if s and str(s).strip()
+        }
+        if ingest_seasons:
+            nfl_stats: Dict[str, Any] = {}
+            for s in sorted(ingest_seasons):
+                try:
+                    nfl_stats[s] = ingest_nfl_week_stats(str(s))
+                except Exception as e:
+                    logger.exception("NFL week stats ingest failed for season %s", s)
+                    summary["errors"].append(
+                        {"step": "nfl_week_stats", "season": s, "error": str(e)}
+                    )
+            summary["nfl_week_stats"] = nfl_stats
 
     return summary

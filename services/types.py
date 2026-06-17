@@ -7,4 +7,5 @@ class DailyRefreshSummary(TypedDict, total=False):
     leagues: Any
     research: List[Any]
     weekly_stats: Any
+    nfl_week_stats: Any
     errors: List[Any]
