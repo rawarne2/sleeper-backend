@@ -16,6 +16,7 @@ from models.entities import (
     PlayerKTCOneQBValues,
     PlayerKTCSuperflexValues,
     SleeperLeague,
+    SleeperRoster,
 )
 from models.extensions import db
 from routes.dashboard_league import (
@@ -66,6 +67,23 @@ def _resolve_scoring_settings(league_id: str | None, tep: str) -> Dict[str, Any]
     if not scoring_settings:
         scoring_settings = {**_BASELINE_SCORING, "bonus_rec_te": TEP_BONUS.get(tep, 0.0)}
     return scoring_settings
+
+
+def _fc_config_key(league_id: str | None, league_format: str) -> str | None:
+    """FantasyCalc ``{teams}-{qbs}-{ppr}`` key for the selected league, matching the
+    dashboard bundle so All Players reads PPR/team-count-specific FC values. ``None``
+    (config-agnostic latest) when no league is selected or it is not yet persisted."""
+    if not league_id:
+        return None
+    lg = SleeperLeague.query.filter_by(league_id=str(league_id)).first()
+    if lg is None:
+        return None
+    num_teams = SleeperRoster.query.filter_by(league_id=str(league_id)).count() or 12
+    num_qbs = 2 if league_format == "superflex" else 1
+    raw = getattr(lg, "scoring_settings", None) or {}
+    scoring = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    rec = float(scoring.get("rec", 0.5) or 0.5)
+    return f"{num_teams}-{num_qbs}-{rec}"
 
 
 @players_all_bp.route("/all", methods=["GET"])
@@ -122,7 +140,9 @@ def get_all_players():
         resp.headers["X-Players-All-Cache"] = "HIT"
         return resp
 
-    values_by_player_id = latest_player_values(league_format)
+    values_by_player_id = latest_player_values(
+        league_format, fc_config_key=_fc_config_key(league_id, league_format)
+    )
 
     # Bulk-load the format's KTC value rows once (one query, not per player).
     ktc_model = (

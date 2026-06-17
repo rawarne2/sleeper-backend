@@ -151,3 +151,19 @@ class TestPlayersAllEnriched:
         assert player is not None
         assert "stats" not in player
         assert "research_latest" not in player
+
+
+def test_fc_config_key_matches_league_config(client):
+    """All Players derives the same FantasyCalc config_key as the bundle does."""
+    from models.entities import SleeperRoster
+    from routes.players_all import _fc_config_key
+
+    _seed_league("FCK1", {"rec": 0.5}, ["SUPER_FLEX"])
+    for rid in range(1, 13):
+        db.session.add(SleeperRoster(league_id="FCK1", roster_id=rid))
+    db.session.commit()
+
+    assert _fc_config_key("FCK1", "superflex") == "12-2-0.5"
+    assert _fc_config_key("FCK1", "1qb") == "12-1-0.5"
+    assert _fc_config_key(None, "superflex") is None
+    assert _fc_config_key("does-not-exist", "superflex") is None
