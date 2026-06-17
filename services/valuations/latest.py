@@ -8,29 +8,30 @@ from services.valuations.blend import blend_values, default_weights
 _BLEND_SOURCES = ("ktc", "fantasycalc")
 
 
-def _latest_rows(league_format: str):
-    sub = (
-        db.session.query(
-            ValueSnapshot.player_id.label("aid"), ValueSnapshot.source_key,
-            ValueSnapshot.metric_key, func.max(ValueSnapshot.as_of).label("mx"),
-        )
-        .filter(ValueSnapshot.league_format == league_format,
-                ValueSnapshot.player_id.isnot(None))
-        .group_by(ValueSnapshot.player_id, ValueSnapshot.source_key, ValueSnapshot.metric_key)
-        .subquery()
-    )
-    return (
-        db.session.query(ValueSnapshot)
-        .join(sub, (ValueSnapshot.player_id == sub.c.aid)
-              & (ValueSnapshot.source_key == sub.c.source_key)
-              & (ValueSnapshot.metric_key == sub.c.metric_key)
-              & (ValueSnapshot.as_of == sub.c.mx))
-        .all()
-    )
+def _latest_rows(league_format: str, fc_config_key: str | None = None):
+    q = db.session.query(
+        ValueSnapshot.player_id.label("aid"), ValueSnapshot.source_key,
+        ValueSnapshot.metric_key, func.max(ValueSnapshot.as_of).label("mx"),
+    ).filter(ValueSnapshot.league_format == league_format,
+             ValueSnapshot.player_id.isnot(None))
+    cfg_clause = ((ValueSnapshot.source_key != "fantasycalc")
+                  | (ValueSnapshot.config_key == fc_config_key))
+    if fc_config_key is not None:
+        q = q.filter(cfg_clause)
+    sub = q.group_by(
+        ValueSnapshot.player_id, ValueSnapshot.source_key, ValueSnapshot.metric_key
+    ).subquery()
+    join_cond = ((ValueSnapshot.player_id == sub.c.aid)
+                 & (ValueSnapshot.source_key == sub.c.source_key)
+                 & (ValueSnapshot.metric_key == sub.c.metric_key)
+                 & (ValueSnapshot.as_of == sub.c.mx))
+    if fc_config_key is not None:
+        join_cond = join_cond & cfg_clause
+    return db.session.query(ValueSnapshot).join(sub, join_cond).all()
 
 
-def latest_player_values(league_format: str) -> Dict[int, Dict[str, Any]]:
-    rows = _latest_rows(league_format)
+def latest_player_values(league_format: str, fc_config_key: str | None = None) -> Dict[int, Dict[str, Any]]:
+    rows = _latest_rows(league_format, fc_config_key)
     out: Dict[int, Dict[str, Any]] = {}
     for r in rows:
         entry = out.setdefault(r.player_id, {"sources": {}, "projection": {}, "blended": None})

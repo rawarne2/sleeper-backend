@@ -499,13 +499,21 @@ def get_dashboard_league(league_id: str):
 
     needed_ids = _roster_player_ids(db_league)
     research_lt = _research_league_type_label(is_redraft)
-    player_values = latest_player_values(league_format)
 
     # Season points use the selected league's actual scoring (league-agnostic raw
     # stat lines dot-producted against scoring_settings). to_dict() parses the
     # JSON-string column, but guard against a raw string just in case.
     raw_scoring = (db_league.get("league") or {}).get("scoring_settings") or {}
     scoring_settings = json.loads(raw_scoring) if isinstance(raw_scoring, str) else raw_scoring
+
+    # FantasyCalc values vary by this league's PPR and team count; KTC/sleeper_proj
+    # ignore config_key. num_teams is derived from the loaded rosters (no total_rosters
+    # column on SleeperLeague).
+    num_qbs = 2 if league_format == "superflex" else 1
+    num_teams = len(db_league.get("rosters") or []) or 12
+    league_rec = float((scoring_settings or {}).get("rec", 0.5) or 0.5)
+    fc_config_key = f"{num_teams}-{num_qbs}-{league_rec}"
+    player_values = latest_player_values(league_format, fc_config_key=fc_config_key)
 
     own_timings: Dict[str, float] = {}
     flask_app = current_app._get_current_object()

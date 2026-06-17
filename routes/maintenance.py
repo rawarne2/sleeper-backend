@@ -185,9 +185,20 @@ def nightly_sync():
         from datetime import datetime, UTC
         from scrapers.pipelines import ingest_valuations
         current_season = str(datetime.now(UTC).year)
+        # FantasyCalc varies by league config (teams-qbs-ppr), so ingest one snapshot
+        # per distinct example-league config. KTC + sleeper_proj are config-agnostic.
+        EXAMPLE_FC_CONFIGS = [
+            {"total_rosters": 12, "roster_positions": ["SUPER_FLEX"], "scoring_settings": {"rec": 0.5}},
+            {"total_rosters": 12, "roster_positions": ["SUPER_FLEX"], "scoring_settings": {"rec": 1.0}},
+            {"total_rosters": 10, "roster_positions": ["SUPER_FLEX"], "scoring_settings": {"rec": 1.0}},
+            {"total_rosters": 10, "roster_positions": ["QB"], "scoring_settings": {"rec": 1.0}},
+        ]
         for fmt in ("superflex", "1qb"):
-            ingest_valuations(["ktc", "fantasycalc", "sleeper_proj"],
-                              season=current_season,
+            for ls in EXAMPLE_FC_CONFIGS:
+                ingest_valuations(["fantasycalc"], season=current_season,
+                                  league_format=fmt, league_settings=ls)
+        for fmt in ("superflex", "1qb"):
+            ingest_valuations(["ktc", "sleeper_proj"], season=current_season,
                               league_format=fmt, league_settings={})
     except Exception as exc:  # noqa: BLE001 - never fail the cron on valuation ingest
         current_app.logger.warning("valuation ingest skipped: %s", exc)
