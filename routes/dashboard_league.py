@@ -8,7 +8,7 @@ from datetime import datetime, UTC
 from typing import Any, Dict, List, Set, Tuple
 
 from flask import Blueprint, current_app, request, Response
-from sqlalchemy import case, func
+from sqlalchemy import func
 
 from cache.redis_dashboard import (
     dashboard_league_cache_key,
@@ -16,7 +16,7 @@ from cache.redis_dashboard import (
     redis_set_dashboard_league_bytes,
 )
 from managers.database_manager import DatabaseManager
-from models.entities import Player, SleeperWeeklyData
+from models.entities import NflPlayerWeekStats, Player, SleeperWeeklyData
 from models.extensions import db
 from routes.helpers import json_api_error, with_error_handling
 from scrapers.sleeper_scraper import SleeperScraper
@@ -25,6 +25,7 @@ from utils.constants import (
     SLEEPER_STATS_AGGREGATE_WEEK_MAX,
     SLEEPER_STATS_AGGREGATE_WEEK_MIN,
 )
+from services.scoring.engine import season_points_for_players
 from services.valuations.latest import latest_player_values
 from utils.datetime_serialization import format_instant_rfc3339_utc
 from utils.helpers import validate_parameters
@@ -280,61 +281,45 @@ def _load_ownership_and_meta(
 
 def _load_player_stats(
     season: str,
-    research_lt: str,
-    roster_player_ids: Set[str],
+    scoring_settings: Dict[str, Any],
+    player_ids: Set[str],
     *,
     timings: Dict[str, float] | None = None,
 ) -> Dict[str, Dict[str, Any]]:
-    """Load aggregated season stats (avg, total, games) for roster player ids.
+    """Compute league-accurate season points from raw Sleeper weekly stat lines.
 
-    Uses ``SLEEPER_STATS_AGGREGATE_WEEK_*`` (weeks 1–17): week 18 is omitted so the
-    last regular-season week does not skew stats (rests, tanking, etc.).
+    Loads ``NflPlayerWeekStats`` rows (weeks per ``SLEEPER_STATS_AGGREGATE_WEEK_*``;
+    week 18 omitted so the last regular-season week does not skew stats) and
+    delegates to the scoring engine, which dot-products ``scoring_settings`` against
+    each raw stat line — reproducing Sleeper's matchup ``players_points`` exactly.
 
-    ``games_played`` counts only weeks with matchup ``points`` (research-only rows
-  with null points do not count — avoids GP=1 during pre-season research refresh).
+    Stat lines are league-agnostic, so points reflect whatever scoring the caller
+    passes for the selected league.
     """
-    if not roster_player_ids:
+    if not player_ids:
         return {}
 
-    id_list = [x for x in roster_player_ids if x]
+    id_list = [x for x in player_ids if x]
     if not id_list:
         return {}
 
     t_rows = time.perf_counter()
     rows = (
-        db.session.query(
-            SleeperWeeklyData.player_id,
-            func.sum(SleeperWeeklyData.points).label("total_points"),
-            func.sum(
-                case((SleeperWeeklyData.points.isnot(None), 1), else_=0)
-            ).label("games_played"),
-        )
+        db.session.query(NflPlayerWeekStats)
         .filter(
-            SleeperWeeklyData.season == season,
-            SleeperWeeklyData.league_type == research_lt,
-            SleeperWeeklyData.week.between(
+            NflPlayerWeekStats.season == season,
+            NflPlayerWeekStats.week.between(
                 SLEEPER_STATS_AGGREGATE_WEEK_MIN,
                 SLEEPER_STATS_AGGREGATE_WEEK_MAX,
             ),
-            SleeperWeeklyData.player_id.in_(id_list),
+            NflPlayerWeekStats.player_id.in_(id_list),
         )
-        .group_by(SleeperWeeklyData.player_id)
         .all()
     )
     if timings is not None:
         timings["ms_player_stats"] = (time.perf_counter() - t_rows) * 1000
 
-    stats: Dict[str, Dict[str, Any]] = {}
-    for row in rows:
-        total = float(row.total_points or 0)
-        games = int(row.games_played or 0)
-        avg = round(total / games, 2) if games > 0 else 0.0
-        stats[str(row.player_id)] = {
-            "average_points": avg,
-            "total_points": round(total, 2),
-            "games_played": games,
-        }
-    return stats
+    return season_points_for_players(scoring_settings or {}, rows)
 
 
 def _ktc_players_for_roster(
@@ -515,6 +500,13 @@ def get_dashboard_league(league_id: str):
     needed_ids = _roster_player_ids(db_league)
     research_lt = _research_league_type_label(is_redraft)
     player_values = latest_player_values(league_format)
+
+    # Season points use the selected league's actual scoring (league-agnostic raw
+    # stat lines dot-producted against scoring_settings). to_dict() parses the
+    # JSON-string column, but guard against a raw string just in case.
+    raw_scoring = (db_league.get("league") or {}).get("scoring_settings") or {}
+    scoring_settings = json.loads(raw_scoring) if isinstance(raw_scoring, str) else raw_scoring
+
     own_timings: Dict[str, float] = {}
     flask_app = current_app._get_current_object()
 
@@ -537,7 +529,7 @@ def get_dashboard_league(league_id: str):
     def _run_stats():
         with flask_app.app_context():
             return _load_player_stats(
-                season, research_lt, needed_ids, timings=own_timings
+                season, scoring_settings, needed_ids, timings=own_timings
             )
 
     t_parallel = time.perf_counter()

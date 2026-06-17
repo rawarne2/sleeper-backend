@@ -1,66 +1,71 @@
-"""Dashboard player stats: games_played must ignore research-only weekly rows."""
+"""Dashboard player stats are computed by the scoring engine over raw stat lines.
+
+``_load_player_stats`` loads ``NflPlayerWeekStats`` rows and dot-products the
+league's ``scoring_settings`` against each line. ``games_played`` counts weeks the
+player actually played (``gp >= 1``, or any non-empty stat line when ``gp`` is absent).
+"""
 from __future__ import annotations
 
-import json
+from datetime import datetime, UTC
 
-from models.entities import SleeperWeeklyData
+from models.entities import NflPlayerWeekStats
 from models.extensions import db
 from routes.dashboard_league import _load_player_stats
 
+SCORING = {"rec": 0.5, "rec_yd": 0.1, "rec_td": 6.0}
 
-def test_games_played_zero_for_research_only_row(app_context):
+
+def _add_week(player_id: str, week: int, stats: dict) -> None:
     db.session.add(
-        SleeperWeeklyData(
+        NflPlayerWeekStats(
             season="2026",
-            week=1,
-            league_type="dynasty",
-            player_id="p_research_only",
-            research_data=json.dumps({"owned": 50.0, "started": 10.0}),
+            week=week,
+            player_id=player_id,
+            stats=stats,
+            last_updated=datetime.now(UTC),
         )
     )
+
+
+def test_did_not_play_week_is_skipped(app_context):
+    """A row marked gp=0 does not count as a game played."""
+    _add_week("p_dnp", 1, {"gp": 0.0})
     db.session.commit()
 
-    stats = _load_player_stats("2026", "dynasty", {"p_research_only"})
-    row = stats.get("p_research_only")
-    assert row is not None
-    assert row["games_played"] == 0
-    assert row["average_points"] == 0.0
-    assert row["total_points"] == 0.0
+    stats = _load_player_stats("2026", SCORING, {"p_dnp"})
+    assert "p_dnp" not in stats
 
 
-def test_games_played_counts_matchup_points_row(app_context):
-    db.session.add(
-        SleeperWeeklyData(
-            season="2026",
-            week=3,
-            league_type="dynasty",
-            player_id="p_with_points",
-            points=18.5,
-            roster_id=1,
-            is_starter=True,
-        )
-    )
+def test_points_computed_from_scoring_settings(app_context):
+    """Engine reproduces league points from the raw stat line."""
+    _add_week("p_played", 3, {"rec": 7.0, "rec_yd": 59.0, "gp": 1.0})
     db.session.commit()
 
-    stats = _load_player_stats("2026", "dynasty", {"p_with_points"})
-    row = stats["p_with_points"]
+    stats = _load_player_stats("2026", SCORING, {"p_played"})
+    row = stats["p_played"]
     assert row["games_played"] == 1
-    assert row["total_points"] == 18.5
-    assert row["average_points"] == 18.5
+    # 7*0.5 + 59*0.1 = 3.5 + 5.9 = 9.4
+    assert row["total_points"] == 9.4
+    assert row["average_points"] == 9.4
 
 
-def test_games_played_research_on_same_row_as_points(app_context):
-    db.session.add(
-        SleeperWeeklyData(
-            season="2026",
-            week=5,
-            league_type="dynasty",
-            player_id="p_both",
-            points=12.0,
-            research_data=json.dumps({"owned": 80.0, "started": 60.0}),
-        )
-    )
+def test_aggregates_across_weeks(app_context):
+    """Total and average accumulate over multiple played weeks."""
+    _add_week("p_multi", 1, {"rec": 4.0, "gp": 1.0})  # 2.0
+    _add_week("p_multi", 2, {"rec": 6.0, "gp": 1.0})  # 3.0
     db.session.commit()
 
-    stats = _load_player_stats("2026", "dynasty", {"p_both"})
-    assert stats["p_both"]["games_played"] == 1
+    stats = _load_player_stats("2026", SCORING, {"p_multi"})
+    row = stats["p_multi"]
+    assert row["games_played"] == 2
+    assert row["total_points"] == 5.0
+    assert row["average_points"] == 2.5
+
+
+def test_week_18_is_excluded_from_aggregate(app_context):
+    """Weeks outside SLEEPER_STATS_AGGREGATE window (e.g. 18) are not loaded."""
+    _add_week("p_w18", 18, {"rec": 10.0, "gp": 1.0})
+    db.session.commit()
+
+    stats = _load_player_stats("2026", SCORING, {"p_w18"})
+    assert "p_w18" not in stats
