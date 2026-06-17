@@ -65,6 +65,42 @@ def _current_research_season(candidates: Optional[Iterable[str]] = None) -> str:
     return str(datetime.now(UTC).year)
 
 
+def _current_season() -> str:
+    """The season scheduled refreshes operate on — the current calendar year.
+
+    Prior seasons are immutable (research, weekly stats, and final standings no
+    longer change), so the nightly cron re-scrapes only this season.
+    """
+    return str(datetime.now(UTC).year)
+
+
+def _current_season_league_ids(current_season: str) -> List[str]:
+    """League IDs to refresh on the scheduled path: only current-season leagues.
+
+    Falls back to the built-in example leagues for ``current_season`` when the DB
+    has none, and finally to every persisted league (with a warning) so the cron
+    never silently refreshes nothing.
+    """
+    rows = (
+        SleeperLeague.query.with_entities(SleeperLeague.league_id)
+        .filter(SleeperLeague.season == current_season)
+        .all()
+    )
+    out = [r[0] for r in rows if r and r[0]]
+    if out:
+        return out
+
+    seeded = [lid for lid, season in EXAMPLE_LEAGUE_IDS if season == current_season]
+    if seeded:
+        return seeded
+
+    logger.warning(
+        "No leagues found for current season %s; refreshing all persisted leagues",
+        current_season,
+    )
+    return _league_ids_for_refresh()
+
+
 def refresh_leagues(league_ids: List[str]) -> Dict[str, Any]:
     out: Dict[str, Any] = {"leagues": {}, "errors": [], "seasons": []}
     seasons_seen: set[str] = set()
@@ -240,8 +276,17 @@ def run_daily_refresh(
     ``refresh_leagues`` results (each league's API response contains a
     ``season`` field). If ``skip_leagues`` is true and ``seasons`` is not
     provided, research is skipped and a warning is logged.
+
+    The scheduled (no-argument) path is **scoped to the current season**: prior
+    seasons are immutable, so re-scraping them nightly is wasted work. Pass
+    explicit ``league_ids`` / ``seasons`` to back-fill older data on demand.
     """
-    lids = league_ids if league_ids is not None else _league_ids_for_refresh()
+    current_season = _current_season()
+    lids = (
+        league_ids
+        if league_ids is not None
+        else _current_season_league_ids(current_season)
+    )
     week = research_week if research_week is not None else int(
         os.getenv("DAILY_REFRESH_RESEARCH_WEEK", "1")
     )
@@ -339,8 +384,10 @@ def run_daily_refresh(
 
         # Ingest league-agnostic raw NFL stat lines once per distinct season so the
         # scoring engine can compute league-accurate points for the whole universe.
+        # On the scheduled path (no explicit seasons) this is the current season
+        # only; prior-season stat lines are final and never change.
         ingest_seasons = {
-            s for s in (seasons or league_seasons or _league_id_to_season().values())
+            s for s in (seasons or league_seasons or [current_season])
             if s and str(s).strip()
         }
         if ingest_seasons:

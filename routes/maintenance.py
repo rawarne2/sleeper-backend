@@ -138,6 +138,8 @@ def nightly_sync():
     Schedule: see vercel.json (UTC). Repo default 30 15 * * * ≈ 11:30 AM Eastern when DST.
 
     Pipeline: KTC all formats -> leagues -> research per season.
+    Scraping is scoped to the current season by default (prior seasons are
+    immutable); pass explicit league_ids/seasons to back-fill older data.
     NFL player ingest is NOT included; use POST /api/sleeper/refresh separately (rare).
 
     Optional JSON body (POST only):
