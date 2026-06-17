@@ -3,6 +3,7 @@ from flask import Blueprint, jsonify
 from managers.database_manager import DatabaseManager
 from routes.helpers import json_api_error, with_error_handling
 from routes.ktc.rankings_cache import invalidate_rankings_cache
+from routes.ktc.refresh_rate_limit import ktc_refresh_rate_limited
 from scrapers.ktc_scraper import KTCScraper
 from scrapers.pipelines import scrape_and_save_all_ktc_data
 from utils.datetime_serialization import utc_now_rfc3339
@@ -91,6 +92,10 @@ def refresh_ktc_all():
             details:
               type: string
     """
+    limited = ktc_refresh_rate_limited()
+    if limited is not None:
+        return limited
+
     # Verify database connection
     logger.info(
         "Verifying database connection before comprehensive refresh...")

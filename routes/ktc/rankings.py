@@ -9,6 +9,7 @@ from routes.ktc.rankings_cache import (
     invalidate_rankings_cache,
     set_cached_rankings_json,
 )
+from routes.ktc.refresh_rate_limit import ktc_refresh_rate_limited
 from services.ktc_refresh_async import (
     execute_ktc_refresh_pipeline,
     get_refresh_job,
@@ -192,6 +193,10 @@ def refresh_rankings():
               type: boolean
               example: false
     """
+    limited = ktc_refresh_rate_limited()
+    if limited is not None:
+        return limited
+
     is_redraft_str = request.args.get('is_redraft', 'false')
     league_format_str = request.args.get('league_format', '1qb')
     tep_level_str = request.args.get('tep_level', '')
