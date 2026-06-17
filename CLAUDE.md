@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 App entrypoints (port `5001` everywhere — port 5000 is intentionally avoided):
 - `./startup.sh` — local Flask via Gunicorn; defaults `DATABASE_URL=sqlite:///sleeper_local.db` if unset. Set `REMOTE_DEBUG=1` to enable debugpy on port 5678.
-- `./docker-compose.sh up` — Postgres + Redis + Flask in containers. Other subcommands: `down`, `logs`, `status`, `clean`, `redis-cli`, `redis-keys`, `warm-cache`. **Ask the user before running the app.**
+- `./docker-compose.sh up` — Postgres + Redis + Flask in containers. Other subcommands: `down`, `restart`, `logs`, `status`, `clean`, `redis-cli`, `redis-keys`, `warm-cache`. **Before starting the app, check whether port `5001` is already serving** (e.g. `lsof -i :5001` or `curl -sf localhost:5001/api/ktc/health`) — it is often already up via detached Docker; only start it if the port is not answering. If the port is held but unresponsive, run `docker ps -a` first to inspect container state, then `./docker-compose.sh restart` rather than launching a second instance.
 - Vercel runs `vercel_app.py` (not `app.py`); `wsgi.py` is the Gunicorn target.
 
 Tests (use `./run_tests.sh` as the canonical runner — it builds the Docker image and runs pytest with `TEST_DATABASE_URI=sqlite:///:memory:`):
@@ -74,7 +74,7 @@ KTC TEP level mapping: the frontend resolves `bonus_rec_te` to the nearest KTC b
 
 ## Maintenance / cron
 
-`/api/maintenance/nightly-sync` (and `/prewarm`, same prewarm step) require `Authorization: Bearer <CRON_SECRET>` when `VERCEL_ENV=production` (header-only auth disabled in prod). Pipeline order: KTC formats → leagues → research; research seasons come from each league's API `season`. `_prewarm_dashboard_caches` runs after the pipeline unless `skip_prewarm`. `POST /api/sleeper/refresh` (60s+ Sleeper NFL ingest) is operator-only and **not** part of any scheduled run. `vercel.json` defines one daily cron at `30 15 * * *` UTC (Vercel Hobby allows ≤1 run/day per job). When calling maintenance in prod, target the deployed backend origin, not the Supabase REST host.
+`/api/maintenance/nightly-sync` (and `/prewarm`, same prewarm step) require `Authorization: Bearer <CRON_SECRET>` when `VERCEL_ENV=production` (header-only auth disabled in prod). Pipeline order: KTC formats → leagues → research; research seasons come from each league's API `season`. The scheduled (no-argument) path is **scoped to the current calendar season** — `run_daily_refresh` refreshes only current-season leagues (`_current_season_league_ids`) and ingests research + NFL week stats for the current season only, since prior seasons are immutable. Pass explicit `league_ids`/`seasons` to back-fill older data on demand. `_prewarm_dashboard_caches` is intentionally **not** season-scoped (it only warms the Redis dashboard cache from already-ingested data, so warming historical leagues for browsing is cheap) and runs after the pipeline unless `skip_prewarm`. `POST /api/sleeper/refresh` (60s+ Sleeper NFL ingest) is operator-only and **not** part of any scheduled run. `vercel.json` defines one daily cron at `30 15 * * *` UTC (Vercel Hobby allows ≤1 run/day per job). When calling maintenance in prod, target the deployed backend origin, not the Supabase REST host.
 
 ## Conventions to follow
 

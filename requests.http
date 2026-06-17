@@ -28,7 +28,7 @@
 GET {{BASE_URL}}/api/maintenance/health
 
 ### Nightly full sync — GET (matches Vercel Cron) or POST; Bearer required in production
-GET {{BASE_URL}}/api/maintenance/nightly-sync
+POST {{BASE_URL}}/api/maintenance/nightly-sync
 Authorization: Bearer {{CRON_SECRET}}
 
 ### Prewarm (same Redis step as tail of nightly-sync)
@@ -77,10 +77,11 @@ GET {{BASE_URL}}/api/sleeper/league/{{LEAGUE_ID}}/users
 ### week accepts integers or "all" (weeks 1-18)
 ### ============================================================================
 
-GET {{BASE_URL}}/api/sleeper/players/research/{{SEASON}}?week={{WEEK}}&league_type={{LEAGUE_TYPE}}
-POST {{BASE_URL}}/api/sleeper/players/research/{{SEASON}}?week={{WEEK}}&league_type={{LEAGUE_TYPE}}
-PUT {{BASE_URL}}/api/sleeper/players/research/{{SEASON}}?week={{WEEK}}&league_type={{LEAGUE_TYPE}}
-PUT {{BASE_URL}}/api/sleeper/players/research/{{SEASON}}?week=all&league_type={{LEAGUE_TYPE}}
+# GET {{BASE_URL}}/api/sleeper/players/research/{{SEASON}}?week={{WEEK}}&league_type={{LEAGUE_TYPE}}
+# POST {{BASE_URL}}/api/sleeper/players/research/{{SEASON}}?week={{WEEK}}&league_type={{LEAGUE_TYPE}}
+# PUT {{BASE_URL}}/api/sleeper/players/research/{{SEASON}}?week={{WEEK}}&league_type={{LEAGUE_TYPE}}
+PUT {{BASE_URL}}/api/sleeper/players/research/{{SEASON}}?week=1&league_type={{LEAGUE_TYPE}}
+Authorization: Bearer {{CRON_SECRET}}
 
 ### ============================================================================
 ### Sleeper — weekly stats (league in path may differ from @SEASON)
