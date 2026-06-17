@@ -21,22 +21,27 @@ from cache.settings import players_all_redis_ttl_seconds
 
 logger = logging.getLogger(__name__)
 
-_PREFIX = "players:all:v1:"
+_PREFIX = "players:all:v2:"
 
 
 def _redis_key(
-    is_redraft: bool, league_format: str, tep_level: str, season: str
+    is_redraft: bool, league_format: str, tep_level: str, season: str,
+    league_id: str = "",
 ) -> str:
-    return f"{_PREFIX}{int(is_redraft)}:{league_format}:{tep_level or ''}:{season or ''}"
+    return (
+        f"{_PREFIX}{int(is_redraft)}:{league_format}:{tep_level or ''}:"
+        f"{season or ''}:{league_id or ''}"
+    )
 
 
 def redis_get_players_all_bytes(
-    is_redraft: bool, league_format: str, tep_level: str, season: str
+    is_redraft: bool, league_format: str, tep_level: str, season: str,
+    league_id: str = "",
 ) -> Optional[bytes]:
     r = get_redis_client()
     if not r:
         return None
-    key = _redis_key(is_redraft, league_format, tep_level, season)
+    key = _redis_key(is_redraft, league_format, tep_level, season, league_id)
     try:
         t0 = time.perf_counter()
         raw = r.get(key)
@@ -61,11 +66,12 @@ def redis_set_players_all_bytes(
     season: str,
     payload: bytes,
     ttl_seconds: Optional[int] = None,
+    league_id: str = "",
 ) -> None:
     r = get_redis_client()
     if not r:
         return
-    key = _redis_key(is_redraft, league_format, tep_level, season)
+    key = _redis_key(is_redraft, league_format, tep_level, season, league_id)
     ttl = ttl_seconds if ttl_seconds is not None else players_all_redis_ttl_seconds()
     try:
         t0 = time.perf_counter()

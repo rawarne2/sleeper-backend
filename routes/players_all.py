@@ -1,6 +1,7 @@
 """GET /api/players/all — full player universe in the unified dashboard shape."""
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Dict, List
 
@@ -10,7 +11,12 @@ from cache.redis_players_all import (
     redis_get_players_all_bytes,
     redis_set_players_all_bytes,
 )
-from models.entities import Player, PlayerKTCOneQBValues, PlayerKTCSuperflexValues
+from models.entities import (
+    Player,
+    PlayerKTCOneQBValues,
+    PlayerKTCSuperflexValues,
+    SleeperLeague,
+)
 from models.extensions import db
 from routes.dashboard_league import (
     _attach_research_latest,
@@ -28,6 +34,39 @@ from utils.helpers import validate_parameters
 players_all_bp = Blueprint("players_all", __name__, url_prefix="/api/players")
 logger = logging.getLogger(__name__)
 
+# TE-premium dropdown → bonus_rec_te coefficient (previews other configs' points).
+TEP_BONUS = {"": 0.0, "tep": 0.5, "tepp": 1.0, "teppp": 1.5}
+
+# Half-PPR baseline so points still populate when no league context is given.
+_BASELINE_SCORING = {
+    "rec_yd": 0.1,
+    "rush_yd": 0.1,
+    "rec_td": 6.0,
+    "rush_td": 6.0,
+    "pass_yd": 0.04,
+    "pass_td": 4.0,
+    "rec": 0.5,
+}
+
+
+def _resolve_scoring_settings(league_id: str | None, tep: str) -> Dict[str, Any]:
+    """Scoring used to compute universe points for the selected league + TEP override."""
+    scoring_settings: Dict[str, Any] = {}
+    if league_id:
+        lg = SleeperLeague.query.filter_by(league_id=str(league_id)).first()
+        if lg is not None:
+            raw = getattr(lg, "scoring_settings", None) or {}
+            scoring_settings = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    # The TEP dropdown overrides the TE premium used for points.
+    if tep:
+        scoring_settings = {
+            **scoring_settings,
+            "bonus_rec_te": TEP_BONUS.get(tep, scoring_settings.get("bonus_rec_te", 0.0)),
+        }
+    if not scoring_settings:
+        scoring_settings = {**_BASELINE_SCORING, "bonus_rec_te": TEP_BONUS.get(tep, 0.0)}
+    return scoring_settings
+
 
 @players_all_bp.route("/all", methods=["GET"])
 @with_error_handling
@@ -38,20 +77,28 @@ def get_all_players():
       ``league_format`` (superflex|1qb, default superflex)
       ``is_redraft`` (true|false, default false)
       ``tep_level`` ('', tep, tepp, teppp, default '')
-      ``season`` (optional 4-digit year; reserved for future ownership support)
+      ``season`` (optional 4-digit year; enables season points + ownership)
+      ``league_id`` (optional; loads that league's scoring for season points)
 
     Returns every ``Player`` row that has a KTC values row for the requested
     format, serialized with the same ``_player_to_dashboard_dict`` the dashboard
     bundle uses. Players with no KTC row for the format are excluded.
 
+    When ``season`` is supplied, season points are computed for the whole player
+    universe via the scoring engine using the selected league's ``scoring_settings``
+    (or a half-PPR baseline when no ``league_id`` is given). The ``tep`` dropdown
+    overrides ``bonus_rec_te`` to preview other TE-premium configs.
+
     The full universe only changes on a KTC refresh, so responses are cached in
-    Redis (invalidated there). On a cache miss the KTC value rows are bulk-loaded
-    in one query rather than per-player, avoiding an N+1 over ~500+ players.
+    Redis (keyed by league/config/season, invalidated on refresh). On a cache miss
+    the KTC value rows are bulk-loaded in one query rather than per-player, avoiding
+    an N+1 over ~500+ players.
     """
     is_redraft_str = request.args.get("is_redraft", "false")
     league_format_str = request.args.get("league_format", "superflex")
     tep_level_str = request.args.get("tep_level", "")
     season_param = (request.args.get("season") or "").strip()
+    league_id = (request.args.get("league_id") or "").strip() or None
 
     valid, league_format, tep_level, err = validate_parameters(
         is_redraft_str, league_format_str, tep_level_str
@@ -67,7 +114,9 @@ def get_all_players():
             "Query parameter season must be a four-digit year when provided.", 400
         )
 
-    cached = redis_get_players_all_bytes(is_redraft, league_format, tep, season_param)
+    cached = redis_get_players_all_bytes(
+        is_redraft, league_format, tep, season_param, league_id or ""
+    )
     if cached is not None:
         resp = Response(cached, mimetype="application/json")
         resp.headers["X-Players-All-Cache"] = "HIT"
@@ -100,13 +149,14 @@ def get_all_players():
         if d is not None:
             out.append(d)
 
-    # When a season is supplied, attach season stats + research ownership using the
-    # same bulk (non-N+1) loaders the dashboard bundle uses.
+    # When a season is supplied, attach season points (engine, league-accurate) +
+    # research ownership using the same bulk (non-N+1) loaders the dashboard bundle uses.
     research_meta = None
     if season_param:
+        scoring_settings = _resolve_scoring_settings(league_id, tep)
         research_lt = _research_league_type_label(is_redraft)
         all_ids = {d["sleeper_player_id"] for d in out if d.get("sleeper_player_id")}
-        stats_by_pid = _load_player_stats(season_param, research_lt, all_ids)
+        stats_by_pid = _load_player_stats(season_param, scoring_settings, all_ids)
         ownership, research_meta = _load_ownership_and_meta(season_param, research_lt, all_ids)
         _attach_stats(out, stats_by_pid)
         _attach_research_latest(out, ownership, research_meta)
@@ -123,6 +173,9 @@ def get_all_players():
     if research_meta is not None:
         payload["researchMeta"] = research_meta
     resp = jsonify(payload)
-    redis_set_players_all_bytes(is_redraft, league_format, tep, season_param, resp.get_data())
+    redis_set_players_all_bytes(
+        is_redraft, league_format, tep, season_param, resp.get_data(),
+        league_id=league_id or "",
+    )
     resp.headers["X-Players-All-Cache"] = "MISS"
     return resp
