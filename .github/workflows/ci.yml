@@ -23,5 +23,5 @@ jobs:
       - name: Run tests
         # Mirrors ./run_tests.sh: in-memory SQLite, no external services.
         env:
-          TEST_DATABASE_URI: sqlite:///:memory:
+          TEST_DATABASE_URI: "sqlite:///:memory:"
         run: pytest tests/ --tb=short
