@@ -6,9 +6,10 @@ from typing import Any, Dict, Set
 
 from sqlalchemy import func
 
-from models.entities import SleeperWeeklyData
+from models.entities import NflPlayerWeekStats, SleeperWeeklyData
 from models.extensions import db
 from routes.dashboard_league import _load_player_stats
+from services.scoring.engine import score_stat_line
 from utils.constants import (
     SLEEPER_STATS_AGGREGATE_WEEK_MAX,
     SLEEPER_STATS_AGGREGATE_WEEK_MIN,
@@ -74,35 +75,37 @@ def _max_stats_week(season: str, research_lt: str) -> int | None:
 
 def _last_three_week_avgs(
     season: str,
-    research_lt: str,
     player_ids: Set[str],
     *,
     max_week: int,
+    scoring_settings: Dict[str, Any],
 ) -> Dict[str, float]:
+    """Last-3-week scoring average from league-agnostic raw stat lines.
+
+    Each week's points are computed by the scoring engine against the league's
+    ``scoring_settings`` so the trajectory matches the rest of the dashboard.
+    """
     if max_week < SLEEPER_STATS_AGGREGATE_WEEK_MIN or not player_ids:
         return {}
 
     week_lo = max(SLEEPER_STATS_AGGREGATE_WEEK_MIN, max_week - 2)
     id_list = [x for x in player_ids if x]
     rows = (
-        db.session.query(
-            SleeperWeeklyData.player_id,
-            SleeperWeeklyData.week,
-            SleeperWeeklyData.points,
-        )
+        db.session.query(NflPlayerWeekStats)
         .filter(
-            SleeperWeeklyData.season == season,
-            SleeperWeeklyData.league_type == research_lt,
-            SleeperWeeklyData.week.between(week_lo, max_week),
-            SleeperWeeklyData.player_id.in_(id_list),
+            NflPlayerWeekStats.season == season,
+            NflPlayerWeekStats.week.between(week_lo, max_week),
+            NflPlayerWeekStats.player_id.in_(id_list),
         )
-        .order_by(SleeperWeeklyData.player_id, SleeperWeeklyData.week)
+        .order_by(NflPlayerWeekStats.player_id, NflPlayerWeekStats.week)
         .all()
     )
 
     by_player: Dict[str, list[float]] = defaultdict(list)
     for row in rows:
-        by_player[str(row.player_id)].append(float(row.points or 0))
+        by_player[str(row.player_id)].append(
+            score_stat_line(scoring_settings or {}, row.stats or {})
+        )
 
     out: Dict[str, float] = {}
     for pid, points in by_player.items():
@@ -119,14 +122,20 @@ def load_stats_with_trajectory(
     player_ids: Set[str],
     *,
     max_week: int | None = None,
+    scoring_settings: Dict[str, Any] | None = None,
 ) -> Dict[str, Dict[str, Any]]:
     """Season aggregates + ``trajectory`` (last-3-week avg vs season) + ``is_starter_latest``.
+
+    Season points and the trajectory's weekly averages are computed by the scoring
+    engine against the league's ``scoring_settings`` (league-agnostic raw stat lines),
+    so the trade analyzer's numbers match the dashboard for the same league.
 
     ``max_week`` may be supplied by the caller to skip the SELECT max(week) query
     when that value is already known (e.g. when ownership was loaded from the same
     SleeperWeeklyData table).
     """
-    stats = _load_player_stats(season, research_lt, player_ids)
+    scoring_settings = scoring_settings or {}
+    stats = _load_player_stats(season, scoring_settings, player_ids)
     if not stats:
         return stats
 
@@ -138,7 +147,9 @@ def load_stats_with_trajectory(
             block.setdefault("is_starter_latest", None)
         return stats
 
-    last3 = _last_three_week_avgs(season, research_lt, player_ids, max_week=max_week)
+    last3 = _last_three_week_avgs(
+        season, player_ids, max_week=max_week, scoring_settings=scoring_settings
+    )
     starter_flags = _latest_starter_flags(
         season, research_lt, player_ids, max_week=max_week
     )

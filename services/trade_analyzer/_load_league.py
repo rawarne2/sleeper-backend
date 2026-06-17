@@ -1,6 +1,7 @@
 """Build the dashboard-shaped league bundle from the DB."""
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, Set
 
 from managers.database_manager import DatabaseManager
@@ -31,6 +32,10 @@ def load_league_bundle(
     if db_league.get("status") != "success":
         raise LeagueNotFound(db_league.get("error") or "League not in DB")
 
+    # to_dict() parses the scoring_settings JSON column; guard a raw string anyway.
+    raw_scoring = (db_league.get("league") or {}).get("scoring_settings") or {}
+    scoring_settings = json.loads(raw_scoring) if isinstance(raw_scoring, str) else raw_scoring
+
     needed: Set[str] = _roster_player_ids(db_league)
     players, _ts = _ktc_players_for_roster(
         league_format, tep_level or "", needed, is_redraft
@@ -46,7 +51,7 @@ def load_league_bundle(
     max_week = research_meta.get("week") if isinstance(research_meta, dict) else None
 
     stats_by_pid = load_stats_with_trajectory(
-        season, research_lt, needed, max_week=max_week
+        season, research_lt, needed, max_week=max_week, scoring_settings=scoring_settings
     )
     players = _attach_stats(players, stats_by_pid)
     players = _attach_research_latest(players, ownership, research_meta)
