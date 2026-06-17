@@ -232,6 +232,7 @@ def ingest_valuations(source_keys, *, season, league_format, league_settings):
                 player_id=player_id, pick_key=None, source_key=row.source_key,
                 league_format=league_format, metric_key=row.metric_key,
                 metric_value=row.metric_value, rank=row.rank,
+                config_key=getattr(row, "config_key", None),
                 as_of=row.as_of or datetime.now(UTC), raw_json=None,
             ))
             written += 1
