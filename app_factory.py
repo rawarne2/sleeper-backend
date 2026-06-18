@@ -38,7 +38,7 @@ def create_app(
     if engine_options:
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = engine_options
 
-    @app.teardown_request
+    @app.teardown_appcontext
     def _remove_session(exc=None):
         db.session.remove()
 

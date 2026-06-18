@@ -79,9 +79,7 @@ def run_migrations_online():
                 directives[:] = []
                 logger.info('No changes in schema detected.')
 
-    conf_args = {}
-    if conf_args.get("process_revision_directives") is None:
-        conf_args["process_revision_directives"] = process_revision_directives
+    conf_args = {"process_revision_directives": process_revision_directives}
 
     connectable = get_engine()
 

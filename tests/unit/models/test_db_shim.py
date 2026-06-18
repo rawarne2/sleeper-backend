@@ -29,12 +29,42 @@ def test_model_query_and_session_roundtrip():
 def test_session_scope_isolates_and_removes():
     db.configure("sqlite:///:memory:", None)
     db.create_all()
-    seen = {}
     try:
         with session_scope() as s1:
-            seen["a"] = id(s1())
+            obj_a = s1()  # hold a reference so CPython cannot reuse the address
+            id_a = id(obj_a)
         with session_scope() as s2:
-            seen["b"] = id(s2())
-        assert seen["a"] != seen["b"]
+            obj_b = s2()
+            id_b = id(obj_b)
+        assert id_a != id_b
     finally:
         db.drop_all()
+
+
+def test_session_remove_resets_registry():
+    db.configure("sqlite:///:memory:", None)
+    db.create_all()
+    try:
+        first = id(db.session())
+        db.session.remove()
+        second = id(db.session())
+        assert first != second  # remove() drops the scoped session for this scope
+    finally:
+        db.drop_all()
+        db.session.remove()
+
+
+def test_thread_id_fallback_gives_distinct_sessions_per_thread():
+    db.configure("sqlite:///:memory:", None)
+    sessions = {}
+
+    def grab(key):
+        obj = db.session()  # hold a reference so CPython cannot reuse the address
+        sessions[key] = (id(obj), obj)
+        db.session.remove()
+
+    t1 = threading.Thread(target=grab, args=("a",))
+    t2 = threading.Thread(target=grab, args=("b",))
+    t1.start(); t1.join()
+    t2.start(); t2.join()
+    assert sessions["a"][0] != sessions["b"][0]  # no ContextVar set => thread-id fallback scopes per thread
