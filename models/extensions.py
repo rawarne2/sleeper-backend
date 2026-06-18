@@ -68,7 +68,18 @@ class _Db:
         if self._engine is not None:
             self.session.remove()
             self._engine.dispose()
-        self._engine = create_engine(db_url, future=True, **(engine_options or {}))
+        opts = dict(engine_options or {})
+        # In-memory SQLite must share ONE connection across threads (FastAPI runs
+        # sync handlers in a threadpool), otherwise each thread sees its own empty
+        # DB or hits "objects created in a thread can only be used in that thread".
+        # Applied here so every caller (entrypoints, tests, scripts) is thread-safe.
+        if db_url.startswith("sqlite") and ":memory:" in db_url:
+            from sqlalchemy.pool import StaticPool
+            opts.setdefault("poolclass", StaticPool)
+            connect_args = dict(opts.get("connect_args") or {})
+            connect_args.setdefault("check_same_thread", False)
+            opts["connect_args"] = connect_args
+        self._engine = create_engine(db_url, future=True, **opts)
         factory = sessionmaker(bind=self._engine, autoflush=False,
                                autocommit=False, future=True)
         self.session = scoped_session(factory, scopefunc=_scope_id)

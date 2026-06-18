@@ -13,17 +13,20 @@ only throttles ad-hoc/abusive callers.
 from __future__ import annotations
 
 import os
-from typing import Optional, Tuple
 
-from flask import Response, request
+from starlette.requests import Request
 
 from cache.rate_limiter import get_rate_limiter
-from routes.helpers import json_api_error
+from web.errors import ApiError
 
 
-def _client_ip() -> str:
-    return (request.headers.get("X-Forwarded-For")
-            or request.remote_addr or "0.0.0.0").split(",")[0].strip()
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "0.0.0.0"
 
 
 def _enabled() -> bool:
@@ -31,8 +34,8 @@ def _enabled() -> bool:
             not in ("0", "false", "no"))
 
 
-def ktc_refresh_rate_limited() -> Optional[Tuple[Response, int]]:
-    """Return a 429 ``json_api_error`` response if the caller is over budget, else None."""
+def ktc_refresh_rate_limited(request: Request) -> None:
+    """Raise a 429 ``ApiError`` if the caller is over budget, else return None."""
     if not _enabled():
         return None
 
@@ -41,9 +44,9 @@ def ktc_refresh_rate_limited() -> Optional[Tuple[Response, int]]:
         window_s=int(os.getenv("KTC_REFRESH_RATE_LIMIT_WINDOW_SECONDS", "300")),
     )
     allowed, retry_after = limiter.check_and_record(
-        f"ktc_refresh:rl:v1:ip:{_client_ip()}")
+        f"ktc_refresh:rl:v1:ip:{_client_ip(request)}")
     if not allowed:
-        return json_api_error(
+        raise ApiError(
             "Rate limit exceeded", 429,
             details=f"KTC refresh is expensive; try again in {retry_after} seconds",
             retry_after_seconds=retry_after,

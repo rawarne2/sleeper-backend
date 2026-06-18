@@ -2,8 +2,8 @@
 Async KTC single-format refresh: job registry + background worker.
 
 Default HTTP handler returns 202 quickly; heavy scrape/DB work runs in a daemon thread
-with a Flask app context (suitable for Gunicorn/Docker). Serverless runtimes may freeze
-the process after the response — see refresh route logs when VERCEL is set.
+with a per-thread DB session scope (suitable for Gunicorn/Docker). Serverless runtimes may
+freeze the process after the response — see refresh route logs when VERCEL is set.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from managers.database_manager import DatabaseManager
 from managers.file_manager import FileManager
+from models.extensions import session_scope
 from routes.helpers import filter_players_by_format
 from routes.ktc.rankings_cache import invalidate_rankings_cache
 from scrapers.ktc_scraper import KTCScraper
@@ -190,7 +191,6 @@ def _release_active_slot(cfg_key: str, job_id: str) -> None:
 
 
 def _worker(
-    app: Any,
     job_id: str,
     cfg_key: str,
     league_format: str,
@@ -198,7 +198,7 @@ def _worker(
     tep_level: Optional[str],
 ) -> None:
     try:
-        with app.app_context():
+        with session_scope():
             with _lock:
                 j = _jobs.get(job_id)
                 if j:
@@ -246,7 +246,6 @@ def _worker(
 
 
 def try_begin_async_job(
-    app: Any,
     league_format: str,
     is_redraft: bool,
     tep_level: Optional[str],
@@ -291,7 +290,7 @@ def try_begin_async_job(
 
     thread = threading.Thread(
         target=_worker,
-        args=(app, job_id, cfg_key, league_format, is_redraft, tep_level),
+        args=(job_id, cfg_key, league_format, is_redraft, tep_level),
         daemon=True,
         name=f"ktc-refresh-{job_id[:8]}",
     )

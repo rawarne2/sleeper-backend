@@ -4,12 +4,14 @@ from starlette.testclient import TestClient
 from app import app  # FastAPI app after Task 2
 
 
-def test_health_served_through_bridge():
+def test_legacy_route_served_through_bridge():
+    # /api/maintenance/health is still a Flask blueprint served via the WSGI bridge
+    # (migrated to native FastAPI later). KTC/health is now native, so this proves
+    # the bridge still routes unmigrated paths.
     client = TestClient(app)
-    resp = client.get("/api/ktc/health")
-    assert resp.status_code in (200, 500)
-    body = resp.json()
-    assert body["status"] in ("healthy", "unhealthy")
+    resp = client.get("/api/maintenance/health")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
 
 
 def test_openapi_docs_available():

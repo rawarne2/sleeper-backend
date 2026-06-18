@@ -13,7 +13,7 @@ def test_health_check_endpoint_exists(client):
 def test_health_check_response_format(client):
     """Test that the health check endpoint returns properly formatted JSON"""
     response = client.get('/api/ktc/health')
-    data = response.get_json()
+    data = response.json()
 
     # Check that all required fields are present
     assert 'status' in data

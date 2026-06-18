@@ -30,7 +30,7 @@ def test_refresh_rate_limited_returns_429(client, monkeypatch):
 
     second = client.post("/api/ktc/refresh?league_format=1qb&sync=1")
     assert second.status_code == 429
-    body = second.get_json()
+    body = second.json()
     assert body["error"] == "Rate limit exceeded"
     assert body.get("retry_after_seconds", 0) >= 1
 

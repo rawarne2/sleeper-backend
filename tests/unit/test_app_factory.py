@@ -29,6 +29,7 @@ def test_factory_bridges_legacy_flask_routes():
     """Unmigrated routes fall through the WSGI bridge to the Flask blueprints."""
     from app_factory import create_app
     client = TestClient(create_app("sqlite:///:memory:"))
-    resp = client.get("/api/ktc/health")
-    assert resp.status_code in (200, 500)
-    assert resp.json()["status"] in ("healthy", "unhealthy")
+    # /api/maintenance/health is still a Flask blueprint (KTC/health is now native).
+    resp = client.get("/api/maintenance/health")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
