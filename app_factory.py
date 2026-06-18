@@ -9,12 +9,14 @@ from starlette.routing import Mount
 
 import models.entities  # noqa: F401 -- register ORM mappers
 from flask_bridge import build_flask_bridge
+from web.errors import register_exception_handlers
 from web.middleware import DbSessionScopeMiddleware
 
 
 def create_app(db_url: str, engine_options: dict[str, Any] | None = None) -> FastAPI:
     app = FastAPI(title="Sleeper Backend API", version="1.0.0")
     app.add_middleware(DbSessionScopeMiddleware)
+    register_exception_handlers(app)
 
     # Migrated FastAPI routers are registered here in later tasks, e.g.:
     #   from routes.health import router as health_router
