@@ -19,8 +19,12 @@ def create_app(db_url: str, engine_options: dict[str, Any] | None = None) -> Fas
     # Migrated FastAPI routers are registered here in later tasks, e.g.:
     #   from routes.health import router as health_router
     #   app.include_router(health_router)
+    # IMPORTANT: every app.include_router(...) MUST go ABOVE the bridge mount
+    # below. The catch-all Mount("/") matches every path, so any router appended
+    # after it is silently shadowed by the Flask bridge.
 
     # Mount the remaining Flask blueprints LAST so FastAPI routes/docs win and
     # everything else falls through to the bridge. Removed entirely in a later task.
+    # Do not append any route after this line.
     app.router.routes.append(Mount("/", app=WSGIMiddleware(build_flask_bridge())))
     return app
