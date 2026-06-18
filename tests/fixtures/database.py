@@ -63,20 +63,11 @@ def client():
 
 @pytest.fixture
 def app_context():
-    """Create app context for database operations."""
-    app.config['TESTING'] = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-    if str(app.config['SQLALCHEMY_DATABASE_URI']).startswith('sqlite'):
-        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-            'connect_args': {
-                'timeout': 30,
-                'check_same_thread': False,
-            },
-        }
+    """Create the schema for DB-touching unit tests (framework-neutral)."""
     _disable_redis()
-
-    with app.app_context():
-        db.create_all()
+    db.create_all()
+    try:
         yield app
+    finally:
         _sqlite_teardown()
         db.drop_all()

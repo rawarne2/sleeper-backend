@@ -20,9 +20,7 @@ from app import app  # noqa: E402 -- imported after env/plugins so TEST_DATABASE
 
 @pytest.fixture(scope="session")
 def test_app():
-    """Create application for the tests."""
-    app.config['TESTING'] = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+    """Application under test (FastAPI)."""
     return app
 
 
