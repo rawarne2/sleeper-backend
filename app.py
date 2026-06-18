@@ -22,6 +22,17 @@ if not database_uri.startswith("sqlite://"):
         "connect_args": {"options": "-c timezone=UTC"},
     }
 
+from models.extensions import db
+# For in-memory SQLite (tests/local), force a single shared connection so the
+# scoped session sees the same DB across threads (FastAPI runs sync handlers in a
+# threadpool). Harmless for file/Postgres URLs.
+if database_uri.startswith("sqlite") and ":memory:" in database_uri:
+    from sqlalchemy.pool import StaticPool
+    engine_options = {**engine_options, "poolclass": StaticPool,
+                      "connect_args": {**engine_options.get("connect_args", {}),
+                                       "check_same_thread": False}}
+db.configure(database_uri, engine_options or None)
+
 app = create_app(
     db_url=database_uri,
     engine_options=engine_options,

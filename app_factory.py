@@ -6,7 +6,6 @@ from typing import Any
 
 from flask import Flask
 from flask_compress import Compress
-from flask_migrate import Migrate
 
 import models.entities  # noqa: F401 — register ORM mappers before create_all
 from models.extensions import db
@@ -39,8 +38,10 @@ def create_app(
     if engine_options:
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = engine_options
 
-    db.init_app(app)
-    Migrate(app, db)
+    @app.teardown_request
+    def _remove_session(exc=None):
+        db.session.remove()
+
     Compress(app)
     configure_cors(app)
     setup_swagger(app, host=swagger_host, schemes=swagger_schemes)
