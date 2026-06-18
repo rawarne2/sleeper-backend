@@ -45,10 +45,10 @@ def test_session_remove_resets_registry():
     db.configure("sqlite:///:memory:", None)
     db.create_all()
     try:
-        first = id(db.session())
+        first = db.session()  # hold references so CPython cannot reuse the address
         db.session.remove()
-        second = id(db.session())
-        assert first != second  # remove() drops the scoped session for this scope
+        second = db.session()
+        assert second is not first  # remove() drops the scoped session; a fresh one is created
     finally:
         db.drop_all()
         db.session.remove()
