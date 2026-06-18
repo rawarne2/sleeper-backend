@@ -58,7 +58,7 @@ class TestPlayersAll:
 
         resp = client.get("/api/players/all?league_format=superflex")
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         assert data["status"] == "success"
         assert isinstance(data["players"], list)
         assert len(data["players"]) > 0
@@ -71,7 +71,7 @@ class TestPlayersAll:
 
         resp = client.get("/api/players/all?league_format=superflex")
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         assert "status" in data
         assert "timestamp" in data
         assert "league_format" in data
@@ -94,7 +94,7 @@ class TestPlayersAll:
 
         resp = client.get("/api/players/all?league_format=superflex")
         assert resp.status_code == 200
-        players = resp.get_json()["players"]
+        players = resp.json()["players"]
         assert len(players) > 0
 
         player = next((pl for pl in players if pl.get("sleeper_player_id") == "4984"), None)
@@ -114,7 +114,7 @@ class TestPlayersAll:
         db.session.commit()
 
         resp = client.get("/api/players/all?league_format=superflex")
-        players = resp.get_json()["players"]
+        players = resp.json()["players"]
         player = next((pl for pl in players if pl.get("sleeper_player_id") == "6845"), None)
         assert player is not None
 
@@ -134,14 +134,14 @@ class TestPlayersAll:
         db.session.commit()
 
         resp_sf = client.get("/api/players/all?league_format=superflex")
-        players_sf = resp_sf.get_json()["players"]
+        players_sf = resp_sf.json()["players"]
         p_sf = next((pl for pl in players_sf if pl.get("sleeper_player_id") == "4949"), None)
         assert p_sf is not None
         assert p_sf["ktc"]["superflexValues"] is not None
         assert p_sf["ktc"]["oneQBValues"] is None
 
         resp_1qb = client.get("/api/players/all?league_format=1qb")
-        players_1qb = resp_1qb.get_json()["players"]
+        players_1qb = resp_1qb.json()["players"]
         p_1qb = next((pl for pl in players_1qb if pl.get("sleeper_player_id") == "4949"), None)
         assert p_1qb is not None
         assert p_1qb["ktc"]["oneQBValues"] is not None
@@ -154,7 +154,7 @@ class TestPlayersAll:
         db.session.commit()
 
         resp = client.get("/api/players/all?league_format=1qb")
-        players = resp.get_json()["players"]
+        players = resp.json()["players"]
         ids = [pl.get("sleeper_player_id") for pl in players]
         assert "9991" not in ids, "Player with only superflex values should be excluded for 1qb"
 
@@ -173,7 +173,7 @@ class TestPlayersAll:
         db.session.commit()
 
         resp = client.get("/api/players/all?league_format=superflex&tep_level=tep")
-        data = resp.get_json()
+        data = resp.json()
         assert data["tep_level"] == "tep"
         players = data["players"]
         te = next((pl for pl in players if pl.get("sleeper_player_id") == "10229"), None)
@@ -190,7 +190,7 @@ class TestPlayersAll:
 
         resp_dyn = client.get("/api/players/all?league_format=superflex&is_redraft=false")
         p_dyn = next(
-            (pl for pl in resp_dyn.get_json()["players"] if pl.get("sleeper_player_id") == "10228"),
+            (pl for pl in resp_dyn.json()["players"] if pl.get("sleeper_player_id") == "10228"),
             None,
         )
         assert p_dyn is not None
@@ -198,7 +198,7 @@ class TestPlayersAll:
 
         resp_rd = client.get("/api/players/all?league_format=superflex&is_redraft=true")
         p_rd = next(
-            (pl for pl in resp_rd.get_json()["players"] if pl.get("sleeper_player_id") == "10228"),
+            (pl for pl in resp_rd.json()["players"] if pl.get("sleeper_player_id") == "10228"),
             None,
         )
         assert p_rd is not None
@@ -217,7 +217,7 @@ class TestPlayersAll:
         """Invalid league_format returns 400 error envelope."""
         resp = client.get("/api/players/all?league_format=invalid")
         assert resp.status_code == 400
-        data = resp.get_json()
+        data = resp.json()
         assert data["status"] == "error"
 
     def test_invalid_is_redraft_returns_400(self, client):
@@ -229,7 +229,7 @@ class TestPlayersAll:
         """Default params: league_format=superflex, is_redraft=false, tep_level=''."""
         resp = client.get("/api/players/all")
         assert resp.status_code == 200
-        data = resp.get_json()
+        data = resp.json()
         assert data["league_format"] == "superflex"
         assert data["is_redraft"] is False
         assert data["tep_level"] == ""
@@ -243,7 +243,7 @@ class TestPlayersAll:
         db.session.commit()
 
         resp = client.get("/api/players/all?league_format=superflex")
-        data = resp.get_json()
+        data = resp.json()
         assert data["count"] == len(data["players"])
 
     def test_season_param_accepted(self, client):

@@ -66,7 +66,7 @@ def test_dashboard_defaults_season_from_league(client):
             "?league_format=superflex&is_redraft=false&tep_level=tep"
         )
     assert r.status_code == 200
-    data = r.get_json()
+    data = r.json()
     assert data.get("status") == "success"
     assert data.get("data", {}).get("league", {}).get("season") == "2025"
 
@@ -154,7 +154,7 @@ def test_nightly_sync_with_bearer(client, monkeypatch):
             headers={"Authorization": "Bearer test-cron-secret"},
         )
     assert r.status_code == 200
-    data = r.get_json()
+    data = r.json()
     assert data.get("status") == "success"
     prewarm_mock.assert_called_once()
     assert "prewarm" in (data.get("summary") or {})
@@ -288,7 +288,7 @@ def test_dashboard_bundle_includes_bundle_season(client):
             "/api/dashboard/league/Z?season=2026&league_format=superflex&is_redraft=false&tep_level=tep"
         )
     assert r.status_code == 200
-    data = r.get_json()["data"]
+    data = r.json()["data"]
     assert data.get("bundleSeason") == "2026"
 
 
@@ -314,5 +314,5 @@ def test_dashboard_includes_picks_by_roster_block(client):
          patch("managers.sleeper_picks.compute_owned_picks", return_value={}):
         r = client.get("/api/dashboard/league/X?season=2026&league_format=superflex&is_redraft=false&tep_level=tep")
     assert r.status_code == 200
-    body = r.get_json()
+    body = r.json()
     assert "picks_by_roster" in body["data"]

@@ -7,7 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, UTC
 from typing import Any, Dict, List, Set, Tuple
 
-from flask import Blueprint, current_app, request, Response
+from fastapi import APIRouter, Query
+from fastapi.responses import Response
 from sqlalchemy import func
 
 from cache.redis_dashboard import (
@@ -18,7 +19,6 @@ from cache.redis_dashboard import (
 from managers.database_manager import DatabaseManager
 from models.entities import NflPlayerWeekStats, Player, SleeperWeeklyData
 from models.extensions import db
-from routes.helpers import json_api_error, with_error_handling
 from scrapers.sleeper_scraper import SleeperScraper
 from utils.constants import (
     PLAYER_NAME_KEY,
@@ -28,9 +28,10 @@ from utils.constants import (
 from services.scoring.engine import season_points_for_players
 from services.valuations.latest import latest_player_values
 from utils.datetime_serialization import format_instant_rfc3339_utc
-from utils.helpers import validate_parameters
+from web.errors import ApiError
+from web.params import validate_ktc_params
 
-dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/api/dashboard")
+router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 logger = logging.getLogger(__name__)
 
 
@@ -401,9 +402,14 @@ def _attach_research_latest(
     return players_slim
 
 
-@dashboard_bp.route("/league/<string:league_id>", methods=["GET"])
-@with_error_handling
-def get_dashboard_league(league_id: str):
+@router.get("/league/{league_id}", summary="Get dashboard league bundle")
+def get_dashboard_league(
+    league_id: str,
+    season: str = Query(""),
+    league_format: str = Query("1qb"),
+    is_redraft: str = Query("false"),
+    tep_level: str = Query(""),
+):
     """
     ``GET /api/dashboard/league/<league_id>`` — league snapshot with rosters, slim KTC rows,
     aggregated season points (weeks per ``SLEEPER_STATS_AGGREGATE_WEEK_*``), and research ownership.
@@ -413,21 +419,14 @@ def get_dashboard_league(league_id: str):
     """
     t0 = time.perf_counter()
 
-    season_param = (request.args.get("season") or "").strip()
-    is_redraft_str = request.args.get("is_redraft", "false")
-    league_format_str = request.args.get("league_format", "1qb")
-    tep_level_str = request.args.get("tep_level", "")
-
-    valid, league_format, tep_level, err = validate_parameters(
-        is_redraft_str, league_format_str, tep_level_str
-    )
-    if not valid:
-        return json_api_error(err, 400)
-
-    is_redraft = is_redraft_str.lower() == "true"
+    season_param = (season or "").strip()
+    p = validate_ktc_params(is_redraft, league_format, tep_level)
+    league_format = p.league_format
+    tep_level = p.tep_level
+    is_redraft = p.is_redraft
 
     if season_param and (len(season_param) != 4 or not season_param.isdigit()):
-        return json_api_error(
+        raise ApiError(
             "Query parameter season must be a four-digit year when provided.",
             400,
         )
@@ -443,7 +442,7 @@ def get_dashboard_league(league_id: str):
             # Auto-import league on first request so users can add new league IDs.
             ensured_season = _ensure_league_in_db(league_id)
             if not ensured_season:
-                return json_api_error(
+                raise ApiError(
                     "Invalid Sleeper league ID or unable to fetch league data.",
                     404,
                     league_id=league_id,
@@ -476,18 +475,22 @@ def get_dashboard_league(league_id: str):
             total_ms,
             len(cached),
         )
-        resp = Response(cached, mimetype="application/json")
-        resp.headers["X-Dashboard-League-Cache"] = "HIT"
-        resp.headers["X-Dashboard-League-Payload-Bytes"] = str(len(cached))
-        resp.headers["Cache-Control"] = "public, s-maxage=3600, stale-while-revalidate=86400"
-        return resp
+        return Response(
+            cached,
+            media_type="application/json",
+            headers={
+                "X-Dashboard-League-Cache": "HIT",
+                "X-Dashboard-League-Payload-Bytes": str(len(cached)),
+                "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+            },
+        )
 
     t_league = time.perf_counter()
     db_league = DatabaseManager.get_league_data(league_id)
     ms_league = (time.perf_counter() - t_league) * 1000
 
     if db_league.get("status") != "success":
-        return json_api_error(
+        raise ApiError(
             db_league.get("error", "League not found"),
             404,
             hint=(
@@ -516,29 +519,25 @@ def get_dashboard_league(league_id: str):
     player_values = latest_player_values(league_format, fc_config_key=fc_config_key)
 
     own_timings: Dict[str, float] = {}
-    flask_app = current_app._get_current_object()
 
     def _run_players():
-        with flask_app.app_context():
-            t = time.perf_counter()
-            result = _ktc_players_for_roster(
-                league_format, tep_level, needed_ids, is_redraft,
-                values_by_player_id=player_values,
-            )
-            own_timings["ms_run_players"] = (time.perf_counter() - t) * 1000
-            return result
+        t = time.perf_counter()
+        result = _ktc_players_for_roster(
+            league_format, tep_level, needed_ids, is_redraft,
+            values_by_player_id=player_values,
+        )
+        own_timings["ms_run_players"] = (time.perf_counter() - t) * 1000
+        return result
 
     def _run_ownership():
-        with flask_app.app_context():
-            return _load_ownership_and_meta(
-                season, research_lt, needed_ids, timings=own_timings
-            )
+        return _load_ownership_and_meta(
+            season, research_lt, needed_ids, timings=own_timings
+        )
 
     def _run_stats():
-        with flask_app.app_context():
-            return _load_player_stats(
-                season, scoring_settings, needed_ids, timings=own_timings
-            )
+        return _load_player_stats(
+            season, scoring_settings, needed_ids, timings=own_timings
+        )
 
     t_parallel = time.perf_counter()
     with ThreadPoolExecutor(max_workers=3) as pool:
@@ -625,10 +624,12 @@ def get_dashboard_league(league_id: str):
         len(payload),
     )
 
-    resp = Response(payload, mimetype="application/json")
-    resp.headers["X-Dashboard-League-Cache"] = "MISS"
-    resp.headers["X-Dashboard-League-Payload-Bytes"] = str(len(payload))
-    resp.headers["Cache-Control"] = (
-        "public, s-maxage=3600, stale-while-revalidate=86400"
+    return Response(
+        payload,
+        media_type="application/json",
+        headers={
+            "X-Dashboard-League-Cache": "MISS",
+            "X-Dashboard-League-Payload-Bytes": str(len(payload)),
+            "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+        },
     )
-    return resp

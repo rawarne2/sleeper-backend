@@ -47,6 +47,9 @@ def create_app(db_url: str, engine_options: dict[str, Any] | None = None) -> Fas
     from routes.sleeper.leagues import router as sleeper_leagues_router
     from routes.sleeper.research import router as sleeper_research_router
     from routes.sleeper.stats import router as sleeper_stats_router
+    from routes.maintenance import router as maintenance_router
+    from routes.dashboard_league import router as dashboard_router
+    from routes.players_all import router as players_all_router
     app.include_router(health_router)
     app.include_router(ktc_rankings_router)
     app.include_router(ktc_bulk_router)
@@ -54,6 +57,9 @@ def create_app(db_url: str, engine_options: dict[str, Any] | None = None) -> Fas
     app.include_router(sleeper_leagues_router)
     app.include_router(sleeper_research_router)
     app.include_router(sleeper_stats_router)
+    app.include_router(maintenance_router)
+    app.include_router(dashboard_router)
+    app.include_router(players_all_router)
 
     # Mount the remaining Flask blueprints LAST so FastAPI routes/docs win and
     # everything else falls through to the bridge. Removed entirely in a later task.

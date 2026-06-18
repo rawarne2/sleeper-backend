@@ -5,13 +5,15 @@ from app import app  # FastAPI app after Task 2
 
 
 def test_legacy_route_served_through_bridge():
-    # /api/maintenance/health is still a Flask blueprint served via the WSGI bridge
-    # (migrated to native FastAPI later). KTC/health is now native, so this proves
-    # the bridge still routes unmigrated paths.
+    # /api/trade-analyzer/providers is still a Flask blueprint served via the WSGI
+    # bridge (dashboard and players/all are now native FastAPI). This proves the
+    # bridge still routes unmigrated paths.
     client = TestClient(app)
-    resp = client.get("/api/maintenance/health")
+    resp = client.get("/api/trade-analyzer/providers")
+    # The route is live and handled (200 JSON, no external calls in tests) — a
+    # non-404 status proves the bridge routes the path rather than the native
+    # router returning 404.
     assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
 
 
 def test_openapi_docs_available():

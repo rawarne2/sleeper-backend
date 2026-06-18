@@ -84,7 +84,7 @@ class TestPlayersAllEnriched:
 
         resp = client.get("/api/players/all?league_format=superflex&season=2025")
         assert resp.status_code == 200
-        body = resp.get_json()
+        body = resp.json()
 
         assert "researchMeta" in body
         assert body["researchMeta"]["season"] == "2025"
@@ -117,7 +117,7 @@ class TestPlayersAllEnriched:
 
         base = client.get(
             f"/api/players/all?league_format=superflex&season=2025&league_id={league_id}"
-        ).get_json()
+        ).json()
         te_row = next(p for p in base["players"] if p["sleeper_player_id"] == "7553")
         fa_row = next(p for p in base["players"] if p["sleeper_player_id"] == "9999")
         # Universe coverage: both rostered TE and free-agent WR get points.
@@ -128,7 +128,7 @@ class TestPlayersAllEnriched:
 
         bumped = client.get(
             f"/api/players/all?league_format=superflex&season=2025&league_id={league_id}&tep_level=teppp"
-        ).get_json()
+        ).json()
         te2 = next(p for p in bumped["players"] if p["sleeper_player_id"] == "7553")
         fa2 = next(p for p in bumped["players"] if p["sleeper_player_id"] == "9999")
         # teppp bonus_rec_te=1.5 → +7*1.5 = +10.5 for the TE; the WR is unaffected.
@@ -143,7 +143,7 @@ class TestPlayersAllEnriched:
 
         resp = client.get("/api/players/all?league_format=superflex")
         assert resp.status_code == 200
-        body = resp.get_json()
+        body = resp.json()
         assert body["status"] == "success"
         assert "players" in body
         assert "researchMeta" not in body

@@ -29,7 +29,8 @@ def test_factory_bridges_legacy_flask_routes():
     """Unmigrated routes fall through the WSGI bridge to the Flask blueprints."""
     from app_factory import create_app
     client = TestClient(create_app("sqlite:///:memory:"))
-    # /api/maintenance/health is still a Flask blueprint (KTC/health is now native).
-    resp = client.get("/api/maintenance/health")
+    # /api/trade-analyzer/providers is still a Flask blueprint (dashboard and
+    # players/all are now native FastAPI). It returns 200 JSON — the bridge is
+    # routing the path rather than the native router returning 404.
+    resp = client.get("/api/trade-analyzer/providers")
     assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"

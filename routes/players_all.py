@@ -5,7 +5,8 @@ import json
 import logging
 from typing import Any, Dict, List
 
-from flask import Blueprint, Response, jsonify, request
+from fastapi import APIRouter, Query
+from fastapi.responses import Response
 
 from cache.redis_players_all import (
     redis_get_players_all_bytes,
@@ -27,12 +28,12 @@ from routes.dashboard_league import (
     _player_to_dashboard_dict,
     _research_league_type_label,
 )
-from routes.helpers import json_api_error, with_error_handling
 from services.valuations.latest import latest_player_values
 from utils.datetime_serialization import utc_now_rfc3339
-from utils.helpers import validate_parameters
+from web.errors import ApiError
+from web.params import validate_ktc_params
 
-players_all_bp = Blueprint("players_all", __name__, url_prefix="/api/players")
+router = APIRouter(prefix="/api/players", tags=["Dashboard"])
 logger = logging.getLogger(__name__)
 
 # TE-premium dropdown → bonus_rec_te coefficient (previews other configs' points).
@@ -86,9 +87,14 @@ def _fc_config_key(league_id: str | None, league_format: str) -> str | None:
     return f"{num_teams}-{num_qbs}-{rec}"
 
 
-@players_all_bp.route("/all", methods=["GET"])
-@with_error_handling
-def get_all_players():
+@router.get("/all", summary="Get all players in dashboard shape")
+def get_all_players(
+    league_format: str = Query("superflex"),
+    is_redraft: str = Query("false"),
+    tep_level: str = Query(""),
+    season: str = Query(""),
+    league_id: str = Query(""),
+):
     """``GET /api/players/all`` — full player universe in the unified dashboard shape.
 
     Query params:
@@ -112,23 +118,16 @@ def get_all_players():
     the KTC value rows are bulk-loaded in one query rather than per-player, avoiding
     an N+1 over ~500+ players.
     """
-    is_redraft_str = request.args.get("is_redraft", "false")
-    league_format_str = request.args.get("league_format", "superflex")
-    tep_level_str = request.args.get("tep_level", "")
-    season_param = (request.args.get("season") or "").strip()
-    league_id = (request.args.get("league_id") or "").strip() or None
+    season_param = (season or "").strip()
+    league_id = (league_id or "").strip() or None
 
-    valid, league_format, tep_level, err = validate_parameters(
-        is_redraft_str, league_format_str, tep_level_str
-    )
-    if not valid:
-        return json_api_error(err, 400)
-
-    is_redraft = is_redraft_str.lower() == "true"
-    tep = tep_level or ""
+    p = validate_ktc_params(is_redraft, league_format, tep_level)
+    league_format = p.league_format
+    is_redraft = p.is_redraft
+    tep = p.tep_level or ""
 
     if season_param and (len(season_param) != 4 or not season_param.isdigit()):
-        return json_api_error(
+        raise ApiError(
             "Query parameter season must be a four-digit year when provided.", 400
         )
 
@@ -136,9 +135,11 @@ def get_all_players():
         is_redraft, league_format, tep, season_param, league_id or ""
     )
     if cached is not None:
-        resp = Response(cached, mimetype="application/json")
-        resp.headers["X-Players-All-Cache"] = "HIT"
-        return resp
+        return Response(
+            cached,
+            media_type="application/json",
+            headers={"X-Players-All-Cache": "HIT"},
+        )
 
     values_by_player_id = latest_player_values(
         league_format, fc_config_key=_fc_config_key(league_id, league_format)
@@ -192,10 +193,13 @@ def get_all_players():
     }
     if research_meta is not None:
         payload["researchMeta"] = research_meta
-    resp = jsonify(payload)
+    payload_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     redis_set_players_all_bytes(
-        is_redraft, league_format, tep, season_param, resp.get_data(),
+        is_redraft, league_format, tep, season_param, payload_bytes,
         league_id=league_id or "",
     )
-    resp.headers["X-Players-All-Cache"] = "MISS"
-    return resp
+    return Response(
+        payload_bytes,
+        media_type="application/json",
+        headers={"X-Players-All-Cache": "MISS"},
+    )

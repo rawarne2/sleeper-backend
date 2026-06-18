@@ -90,7 +90,7 @@ def test_bundle_points_reproduce_sleeper(client, seeded_pitts_bundle):
         "?season=2025&league_format=superflex&is_redraft=false&tep_level=tep"
     )
     assert res.status_code == 200
-    body = res.get_json()
+    body = res.json()
     te = _find_player(body, seeded_pitts_bundle["te_pid"])
     assert te is not None
     assert te["stats"]["total_points"] == 12.9
