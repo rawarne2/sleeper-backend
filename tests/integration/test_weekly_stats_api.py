@@ -21,7 +21,7 @@ def test_seed_league_stats_integration(client):
     assert response.status_code in [200, 400, 500]
 
     if response.status_code == 200:
-        response_data = response.get_json()
+        response_data = response.json()
         assert response_data['status'] == 'success'
         assert 'message' in response_data
         assert 'league_id' in response_data
@@ -47,7 +47,7 @@ def test_seed_league_stats_missing_data(client):
         '/api/sleeper/league/new_league_8888/stats/seed', json={})
 
     assert response.status_code == 400
-    response_data = response.get_json()
+    response_data = response.json()
     assert response_data['status'] == 'error'
     assert 'error' in response_data
 
@@ -61,7 +61,7 @@ def test_get_weekly_stats_integration(client):
     assert response.status_code in [200, 404, 500]
 
     if response.status_code == 200:
-        response_data = response.get_json()
+        response_data = response.json()
         assert 'status' in response_data
         assert 'records' in response_data
         assert 'count' in response_data
@@ -84,7 +84,7 @@ def test_put_weekly_stats_integration(client):
     assert response.status_code in [200, 400, 500]
 
     if response.status_code == 200:
-        response_data = response.get_json()
+        response_data = response.json()
         assert response_data['status'] == 'success'
         assert 'message' in response_data
         assert 'refresh_results' in response_data
@@ -109,12 +109,12 @@ def test_weekly_stats_invalid_league_id(client):
 
 def test_weekly_stats_invalid_week(client):
     """Test weekly stats endpoints with invalid week number."""
-    # Test with week 0 - currently allowed, returns empty data
+    # Test with week 0 - out of range, returns 400
     response = client.get(
         '/api/sleeper/league/1050831680350568448/stats/week/0')
     assert response.status_code in [200, 400, 404, 500]
 
-    # Test with week 25 - currently allowed, returns empty data
+    # Test with week 25 - out of range, returns 400
     response = client.get(
         '/api/sleeper/league/1050831680350568448/stats/week/25')
     assert response.status_code in [200, 400, 404, 500]

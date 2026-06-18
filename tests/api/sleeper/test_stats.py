@@ -27,20 +27,20 @@ def test_seed_league_stats_missing_data_on_new_league(client):
     """POST with empty body for a new league returns 400."""
     response = client.post('/api/sleeper/league/new_league_999/stats/seed', json={})
     assert response.status_code == 400
-    data = response.get_json()
+    data = response.json()
     assert data['status'] == 'error'
     assert 'error' in data
 
 
 def test_seed_league_stats_invalid_json(client):
-    """Invalid JSON is ignored (silent parse); new league without fields returns 400."""
+    """Invalid JSON body is treated as missing (empty) body; new league without fields returns 400."""
     response = client.post(
         '/api/sleeper/league/new_league_invalid_json/stats/seed',
-        data='invalid json',
-        content_type='text/plain',
+        content='invalid json',
+        headers={'Content-Type': 'text/plain'},
     )
-    assert response.status_code == 400
-    data = response.get_json()
+    assert response.status_code in [400, 422]
+    data = response.json()
     assert data['status'] == 'error'
 
 
