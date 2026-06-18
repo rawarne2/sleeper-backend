@@ -56,7 +56,8 @@ async def _validation_handler(_: Request, exc: RequestValidationError) -> JSONRe
 
 
 async def _http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
-    return JSONResponse(error_body(str(exc.detail)), status_code=exc.status_code)
+    return JSONResponse(error_body(str(exc.detail)), status_code=exc.status_code,
+                        headers=exc.headers)
 
 
 async def _unhandled_handler(_: Request, exc: Exception) -> JSONResponse:

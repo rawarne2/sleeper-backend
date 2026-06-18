@@ -14,5 +14,7 @@ def test_error_body_shape():
 
 def test_api_error_carries_status_and_extra():
     exc = ApiError("nope", 404, details="x", league_id="123")
+    assert exc.message == "nope"
     assert exc.status_code == 404
+    assert exc.details == "x"
     assert exc.extra == {"league_id": "123"}
