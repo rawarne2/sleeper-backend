@@ -4,19 +4,38 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.wsgi import WSGIMiddleware
 from starlette.routing import Mount
+from starlette_compress import CompressMiddleware
 
 import models.entities  # noqa: F401 -- register ORM mappers
 from flask_bridge import build_flask_bridge
+from utils.cors import EXPLICIT_ORIGINS
 from web.errors import register_exception_handlers
 from web.middleware import DbSessionScopeMiddleware
+
+_CORS_ORIGIN_REGEX = (
+    r"^https://.*\.vercel\.app$"
+    r"|^http://(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$"
+)
 
 
 def create_app(db_url: str, engine_options: dict[str, Any] | None = None) -> FastAPI:
     app = FastAPI(title="Sleeper Backend API", version="1.0.0")
     app.add_middleware(DbSessionScopeMiddleware)
     register_exception_handlers(app)
+
+    app.add_middleware(CompressMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(EXPLICIT_ORIGINS),
+        allow_origin_regex=_CORS_ORIGIN_REGEX,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+    )
 
     # Migrated FastAPI routers are registered here in later tasks, e.g.:
     #   from routes.health import router as health_router
