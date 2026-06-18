@@ -75,25 +75,19 @@ if database_uri.startswith("sqlite") and ":memory:" in database_uri:
                                        "check_same_thread": False}}
 db.configure(database_uri, engine_options or None)
 
-app = create_app(
-    db_url=database_uri,
-    engine_options=engine_options,
-    swagger_host="sleeper-backend.vercel.app",
-    swagger_schemes=["https"],
-)
+app = create_app(db_url=database_uri, engine_options=engine_options)
 
 
 def initialize_database() -> bool:
     """Initialize the database tables with proper error handling."""
     from sqlalchemy import inspect
     try:
-        with app.app_context():
-            db.create_all()
-            logger.info("Database tables initialized successfully")
-            inspector = inspect(db.engine)
-            tables = inspector.get_table_names()
-            logger.info("Available tables: %s", tables)
-            return True
+        db.create_all()
+        logger.info("Database tables initialized successfully")
+        inspector = inspect(db.engine)
+        tables = inspector.get_table_names()
+        logger.info("Available tables: %s", tables)
+        return True
     except (sqlalchemy.exc.SQLAlchemyError, ConnectionError, OSError) as e:
         logger.error("Database initialization failed: %s", e)
         return False
