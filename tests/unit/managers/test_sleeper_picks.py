@@ -28,7 +28,7 @@ def _seed_league(*, status="pre_draft", picks=None, roster_count=12, current_sea
     db.session.commit()
 
 
-def test_pre_draft_seeds_each_roster_with_own_picks(client):
+def test_pre_draft_seeds_each_roster_with_own_picks(app_context):
     _seed_league(status="pre_draft", roster_count=12)
     by_roster = compute_owned_picks("L1")
     assert 1 in by_roster
@@ -37,7 +37,7 @@ def test_pre_draft_seeds_each_roster_with_own_picks(client):
     assert ("2027", 1) in rounds_for_1
 
 
-def test_in_season_excludes_current_season(client):
+def test_in_season_excludes_current_season(app_context):
     _seed_league(status="in_season", roster_count=12)
     by_roster = compute_owned_picks("L1")
     seasons = {p["season"] for picks in by_roster.values() for p in picks}
@@ -45,7 +45,7 @@ def test_in_season_excludes_current_season(client):
     assert "2027" in seasons
 
 
-def test_traded_pick_reassigns_to_current_owner(client):
+def test_traded_pick_reassigns_to_current_owner(app_context):
     _seed_league(status="pre_draft", roster_count=12, picks=[
         {"round": 1, "season": "2026", "roster_id": 1, "owner_id": 5, "previous_owner_id": 8},
     ])
@@ -56,11 +56,11 @@ def test_traded_pick_reassigns_to_current_owner(client):
     assert ("2026", 1) in five_picks
 
 
-def test_returns_empty_when_league_missing(client):
+def test_returns_empty_when_league_missing(app_context):
     assert compute_owned_picks("does-not-exist") == {}
 
 
-def test_pick_id_canonical_format(client):
+def test_pick_id_canonical_format(app_context):
     _seed_league(status="pre_draft", roster_count=12)
     by_roster = compute_owned_picks("L1")
     sample = by_roster[1][0]
@@ -68,7 +68,7 @@ def test_pick_id_canonical_format(client):
     assert sample["pick_id"].endswith(("early", "mid", "late")) or "pick" in sample["pick_id"]
 
 
-def test_slot_buckets_12_team_thirds(client):
+def test_slot_buckets_12_team_thirds(app_context):
     _seed_league(status="pre_draft", roster_count=12)
     rosters = SleeperRoster.query.filter_by(league_id="L1").all()
     for r in rosters:

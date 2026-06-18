@@ -28,6 +28,6 @@ def test_round_ordinal_ok():
     assert _round_ordinal(4) == "4th"
 
 
-def test_resolve_returns_none_when_no_match(client):
+def test_resolve_returns_none_when_no_match(app_context):
     out = resolve_pick_to_ktc("2099-r1-mid", league_format="superflex", tep_level="tep")
     assert out is None

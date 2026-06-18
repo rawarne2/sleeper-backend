@@ -3,6 +3,7 @@ Database test fixtures and utilities.
 """
 import os
 import pytest
+from starlette.testclient import TestClient
 
 os.environ.setdefault('TEST_DATABASE_URI', 'sqlite:///:memory:')
 
@@ -41,24 +42,14 @@ def _disable_redis():
 
 @pytest.fixture
 def client():
-    """Create test client with in-memory database."""
-    app.config['TESTING'] = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-    if str(app.config['SQLALCHEMY_DATABASE_URI']).startswith('sqlite'):
-        app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-            'connect_args': {
-                'timeout': 30,
-                'check_same_thread': False,
-            },
-        }
+    """ASGI test client over the FastAPI app (proxies un-migrated routes via the WSGI bridge)."""
     _disable_redis()
-
-    with app.test_client() as client:
-        with app.app_context():
-            db.create_all()
-            yield client
-            _sqlite_teardown()
-            db.drop_all()
+    db.create_all()
+    try:
+        yield TestClient(app, raise_server_exceptions=False)
+    finally:
+        _sqlite_teardown()
+        db.drop_all()
 
 
 @pytest.fixture
