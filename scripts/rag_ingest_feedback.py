@@ -9,13 +9,14 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from app import app
+import app  # noqa: F401 - importing configures the db engine (db.configure)
+from models.extensions import session_scope
 from services.trade_analyzer.rag.embeddings.registry import get_embedding_provider
 from services.trade_analyzer.rag.ingest import backfill_feedback
 
 
 def main() -> int:
-    with app.app_context():
+    with session_scope():
         ok, detail = get_embedding_provider().health()
         if not ok:
             print(f"embedding provider unavailable: {detail}")

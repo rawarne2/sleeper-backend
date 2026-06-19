@@ -109,14 +109,14 @@ def main() -> int:
         print("Use either --skip-nfl or --force-nfl, not both", file=sys.stderr)
         return 2
 
-    from app import app  # noqa: E402
-    from models.extensions import db  # noqa: E402
+    import app  # noqa: F401,E402 - importing configures the db engine (db.configure)
+    from models.extensions import db, session_scope  # noqa: E402
     from managers.database_manager import DatabaseManager  # noqa: E402
     from models.entities import Player  # noqa: E402
     from scrapers.sleeper_scraper import SleeperScraper  # noqa: E402
     from services.daily_refresh import ingest_nfl_week_stats, run_daily_refresh  # noqa: E402
 
-    with app.app_context():
+    with session_scope():
         if args.reset:
             print("--reset: dropping and recreating every table")
             db.drop_all()

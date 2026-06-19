@@ -43,10 +43,11 @@ def run_structural_eval() -> Dict[str, Any]:
 def run_feedback_eval() -> Dict[str, Any]:
     from sqlalchemy.exc import ProgrammingError
 
-    from app import app
+    import app  # noqa: F401 - importing configures the db engine (db.configure)
     from models.entities import TradeFeedback
+    from models.extensions import session_scope
 
-    with app.app_context():
+    with session_scope():
         try:
             rows = (
                 TradeFeedback.query
@@ -72,12 +73,13 @@ def run_feedback_eval() -> Dict[str, Any]:
 
 
 def _run_live_echo_case(case: Dict[str, Any], league_fixture: Dict[str, Any]) -> Dict[str, Any]:
-    from app import app
+    import app  # noqa: F401 - importing configures the db engine (db.configure)
+    from models.extensions import session_scope
     from services.trade_analyzer.analyzer import run_analysis
 
     req = dict(case["request"])
     outcome = None
-    with app.app_context(), patch(
+    with session_scope(), patch(
         "services.trade_analyzer.analyzer.load_league_bundle",
         return_value=league_fixture,
     ), patch(

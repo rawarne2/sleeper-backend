@@ -63,9 +63,9 @@ def main() -> int:
         if os.getenv("DATABASE_URL"):
             os.environ.pop("TEST_DATABASE_URI", None)
 
-    from app import app  # noqa: E402
+    import app  # noqa: F401,E402 - importing configures the db engine (db.configure)
     from models.entities import Player  # noqa: E402
-    from models.extensions import db  # noqa: E402
+    from models.extensions import db, session_scope  # noqa: E402
     from sqlalchemy import or_  # noqa: E402
     from utils.constants import SLEEPER_SEARCH_RANK_EXCLUDE  # noqa: E402
 
@@ -75,8 +75,8 @@ def main() -> int:
         Player.search_rank == SLEEPER_SEARCH_RANK_EXCLUDE,
     )
 
-    with app.app_context():
-        uri = app.config.get("SQLALCHEMY_DATABASE_URI") or ""
+    with session_scope():
+        uri = str(db.engine.url) if db.engine else ""
         print(f"Effective database: {_mask_database_url(uri)}")
 
         if args.verbose:

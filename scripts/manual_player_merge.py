@@ -15,9 +15,9 @@ Usage:
 
 from data_types.normalization import normalize_name_for_matching
 from utils.helpers import create_player_match_key
-from models.extensions import db
+import app  # noqa: F401 - importing configures the db engine (db.configure)
+from models.extensions import db, session_scope
 from models.entities import Player, PlayerKTCOneQBValues, PlayerKTCSuperflexValues
-from app import app
 import logging
 import os
 import sys
@@ -162,7 +162,6 @@ class ManualPlayerMerger:
     """Handles manual merging of specific player records."""
 
     def __init__(self):
-        self.app = app
         self.merged_count = 0
         self.error_count = 0
         self.errors = []
@@ -369,7 +368,7 @@ class ManualPlayerMerger:
             'merged_players': []
         }
 
-        with self.app.app_context():
+        with session_scope():
             for ktc_name, sleeper_name, position in MANUAL_MERGE_MAPPINGS:
                 try:
                     logger.info("Processing mapping: KTC='%s' -> Sleeper='%s' (%s)",
@@ -437,7 +436,7 @@ class ManualPlayerMerger:
         Returns:
             List of potential duplicate groups
         """
-        with self.app.app_context():
+        with session_scope():
             # Find players with similar normalized names in the same position
             duplicates = []
 
