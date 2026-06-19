@@ -8,6 +8,8 @@ import os
 bind = "0.0.0.0:5001"
 
 # Worker processes
+# The app is ASGI (FastAPI); serve it with Uvicorn's Gunicorn worker.
+worker_class = os.getenv('GUNICORN_WORKER_CLASS', 'uvicorn.workers.UvicornWorker')
 workers = int(os.getenv('GUNICORN_WORKERS', str(multiprocessing.cpu_count() * 2 + 1)))
 timeout = int(os.getenv('GUNICORN_TIMEOUT', '9999'))
 graceful_timeout = int(os.getenv('GUNICORN_GRACEFUL_TIMEOUT', str(timeout)))

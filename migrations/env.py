@@ -24,10 +24,14 @@ def get_engine_url():
     return str(db.engine.url).replace('%', '%%')
 
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
+# The Alembic CLI does not load app.py/vercel_app.py, so configure the engine from
+# the environment (DATABASE_URL / POSTGRES_URL, falling back to utils.constants)
+# before we read db.engine for the URL and metadata.
+import os  # noqa: E402
+from utils.constants import DATABASE_URI  # noqa: E402
+
+db.configure(os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or DATABASE_URI)
+
 config.set_main_option('sqlalchemy.url', get_engine_url())
 
 # other values from the config, defined by the needs of env.py,

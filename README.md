@@ -1,10 +1,12 @@
 # Sleeper Backend API
 
-A Flask + SQLAlchemy service that powers a fantasy-football dynasty dashboard. It
+A FastAPI + SQLAlchemy service that powers a fantasy-football dynasty dashboard. It
 ingests data from **KeepTradeCut** and the **Sleeper API**, reproduces Sleeper's
 scoring exactly for the entire player universe, serves a single cache-backed
 bundle to the frontend, and runs an LLM-powered trade analyzer behind a unified
 interface. Deployed serverlessly on Vercel with a scheduled nightly ingest.
+
+> _Migrated from Flask to FastAPI — async ASGI, Pydantic request validation, and auto-generated OpenAPI docs._
 
 - **Live docs (Swagger):** <https://sleeper-backend.vercel.app/docs>
 - **Local docs:** <http://localhost:5001/docs> · OpenAPI at `/openapi.json`
@@ -33,13 +35,13 @@ interface. Deployed serverlessly on Vercel with a scheduled nightly ingest.
 
 ## Architecture
 
-A layered Flask app: HTTP routes delegate to services (orchestration), which use
+A layered FastAPI app: HTTP routes delegate to services (orchestration), which use
 managers (DB writes / merges) and scrapers (external fetchers). Redis caches the
 read-heavy endpoints; Postgres (or SQLite locally) is the system of record.
 
 ```mermaid
 flowchart LR
-    Client[Dashboard / API clients] -->|HTTP| Routes[routes/ — blueprints]
+    Client[Dashboard / API clients] -->|HTTP| Routes[routes/ — APIRouters]
     Cron[Vercel Cron] -->|nightly-sync| Routes
     Routes --> Services[services/ — scoring, daily_refresh, trade_analyzer]
     Services --> Managers[managers/ — DB writes & player merge]
@@ -50,18 +52,18 @@ flowchart LR
     Services -->|LLM| Providers[(Anthropic · Gemini · Groq · Ollama)]
 ```
 
-Blueprints register through `routes/registry.py`; shared error/JSON envelopes
-live in `routes/helpers.py`. See [`CLAUDE.md`](CLAUDE.md) for the full layer map
+Routers register in `app_factory.py::create_app`; request validation uses Pydantic
+and the shared error envelope lives in `web/errors.py`. See [`CLAUDE.md`](CLAUDE.md) for the full layer map
 and domain conventions, and [API_DOCUMENTATION.md](API_DOCUMENTATION.md) for the
 endpoint reference.
 
 ## Tech stack
 
-- **API:** Flask 3, SQLAlchemy 2, Flask-Migrate (Alembic)
+- **API:** FastAPI, Pydantic, SQLAlchemy 2, Alembic
 - **Data:** PostgreSQL (prod) / SQLite (local + tests), Redis (caching + rate limiting)
 - **External:** KeepTradeCut (scraped), FantasyCalc, Sleeper API, LLM providers via official SDKs
-- **Runtime:** Gunicorn, Docker Compose for local infra, Vercel serverless (`vercel_app.py`)
-- **Tooling:** pytest, Swagger UI / OpenAPI
+- **Runtime:** Uvicorn (Gunicorn with Uvicorn workers), Docker Compose for local infra, Vercel serverless (`vercel_app.py`)
+- **Tooling:** pytest, auto-generated OpenAPI / Swagger UI
 
 ## Quick start
 
@@ -72,7 +74,7 @@ pip install -r requirements.txt
 ./startup.sh                       # http://localhost:5001
 ```
 
-**Docker (Postgres + Redis + Flask):**
+**Docker (Postgres + Redis + FastAPI):**
 
 ```bash
 ./docker-compose.sh up             # http://localhost:5001
@@ -91,13 +93,14 @@ To develop against the production database instead, set `DATABASE_URL` in `.env`
 
 ## Database migrations
 
-Schema changes use Flask-Migrate (Alembic):
+Schema changes use Alembic (config and versions under `migrations/`). Run from the
+project root with the target database in the environment:
 
 ```bash
-flask --app app db migrate -m "describe the change"   # review the generated file
-flask --app app db upgrade
+DATABASE_URL=<db_url> alembic -c migrations/alembic.ini revision --autogenerate -m "describe the change"   # review the generated file
+DATABASE_URL=<db_url> alembic -c migrations/alembic.ini upgrade head
 # Production (run before deploying code that needs it):
-POSTGRES_URL=<prod_url> flask --app vercel_app db upgrade
+POSTGRES_URL=<prod_url> alembic -c migrations/alembic.ini upgrade head
 ```
 
 ## Testing

@@ -5,9 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Common commands
 
 App entrypoints (port `5001` everywhere — port 5000 is intentionally avoided):
-- `./startup.sh` — local Flask via Gunicorn; defaults `DATABASE_URL=sqlite:///sleeper_local.db` if unset. Set `REMOTE_DEBUG=1` to enable debugpy on port 5678.
-- `./docker-compose.sh up` — Postgres + Redis + Flask in containers. Other subcommands: `down`, `restart`, `logs`, `status`, `clean`, `redis-cli`, `redis-keys`, `warm-cache`. **Before starting the app, check whether port `5001` is already serving** (e.g. `lsof -i :5001` or `curl -sf localhost:5001/api/ktc/health`) — it is often already up via detached Docker; only start it if the port is not answering. If the port is held but unresponsive, run `docker ps -a` first to inspect container state, then `./docker-compose.sh restart` rather than launching a second instance.
-- Vercel runs `vercel_app.py` (not `app.py`); `wsgi.py` is the Gunicorn target.
+- `./startup.sh` — local FastAPI via Gunicorn with Uvicorn workers; defaults `DATABASE_URL=sqlite:///sleeper_local.db` if unset. Set `REMOTE_DEBUG=1` to run a single Uvicorn process under debugpy on port 5678.
+- `./docker-compose.sh up` — Postgres + Redis + FastAPI in containers. Other subcommands: `down`, `restart`, `logs`, `status`, `clean`, `redis-cli`, `redis-keys`, `warm-cache`. **Before starting the app, check whether port `5001` is already serving** (e.g. `lsof -i :5001` or `curl -sf localhost:5001/api/ktc/health`) — it is often already up via detached Docker; only start it if the port is not answering. If the port is held but unresponsive, run `docker ps -a` first to inspect container state, then `./docker-compose.sh restart` rather than launching a second instance.
+- Vercel runs `vercel_app.py` (not `app.py`); `wsgi.py` exposes the ASGI app for Gunicorn's Uvicorn worker.
 
 Tests (use `./run_tests.sh` as the canonical runner — it builds the Docker image and runs pytest with `TEST_DATABASE_URI=sqlite:///:memory:`):
 - `./run_tests.sh` — all tests in Docker.
@@ -20,9 +20,9 @@ Operational scripts (run from repo root with venv active):
 - `scripts/cleanup_invalid_players.py` — dry run by default; `--execute` performs batched ORM deletes (cascades child KTC rows). Loads `.env` and unsets `TEST_DATABASE_URI` when `DATABASE_URL` is set so it targets the same DB as the app, not pytest SQLite.
 - `scripts/seed_three_leagues.py`, `scripts/manual_player_merge.py`, `scripts/ktc-scrape.py`, `scripts/reset_db.py`, `scripts/setup_postgres.py`.
 
-## Flask entrypoints
+## FastAPI entrypoints
 
-`app.py` (local) and `vercel_app.py` (serverless on Vercel) share blueprint registration, CORS, Compress, Swagger, and Flask-Migrate setup through `app_factory.py::create_app`. Each entrypoint is responsible only for its own DB URL resolution and `engine_options`:
+`app.py` (local) and `vercel_app.py` (serverless on Vercel) build the FastAPI app through `app_factory.py::create_app` — router registration, CORS, brotli/gzip compression (`starlette-compress`), the per-request DB-session ASGI middleware, the shared exception handlers (`web/errors.py`), and FastAPI's auto-generated OpenAPI docs at `/docs` (+ `/redoc`, `/openapi.json`). Each entrypoint resolves its own DB URL + `engine_options` and calls `models.extensions.db.configure(...)` before `create_app`:
 
 - `app.py` reads `TEST_DATABASE_URI` then `DATABASE_URL` (via `utils/constants.DATABASE_URI`); pooled engine with `pool_pre_ping`, `pool_recycle=3600`, `pool_size=10`.
 - `vercel_app.py` resolves the DB URL from the first set among `POSTGRES_URL`, `POSTGRES_PRISMA_URL`, `DATABASE_URL`, `POSTGRES_URL_NON_POOLING`; uses `NullPool` with `sslmode=require` and a 15s `statement_timeout`. It strips non-libpq query params from the URL and rewrites `postgres://` → `postgresql://`.
@@ -30,12 +30,12 @@ Operational scripts (run from repo root with venv active):
 
 ## Architecture
 
-Flask + SQLAlchemy with one ORM module. Entities live in `models/entities.py` (`Player`, plus Sleeper league/roster/user/research/weekly tables); `models.extensions` exposes the `db` instance. `import models.entities` is required from both entrypoints to register mappers before `db.create_all()`.
+FastAPI + SQLAlchemy with one ORM module. Entities live in `models/entities.py` (`Player`, plus Sleeper league/roster/user/research/weekly tables); `models.extensions` exposes a framework-neutral `db` (a thin SQLAlchemy shim providing `db.Model`/`db.session`/`Model.query`, configured via `db.configure(url, engine_options)`). `import models.entities` is required to register mappers before `db.create_all()`.
 
-Blueprints are registered through `routes/registry.py` (`routes/__init__.py` is intentionally empty). Adding a new route surface means: create the module under `routes/...`, import its blueprint in `routes/registry.py`, and update `openapi.yaml` + `routes/swagger_config.py` examples + `README.md` so live prefixes match.
+Routers are registered in `app_factory.py::create_app` via `app.include_router(...)`. Adding a new route surface means: create the module under `routes/...` defining an `APIRouter`, include it in `create_app`, and update `README.md` so live prefixes match. OpenAPI docs are generated by FastAPI from the route signatures + Pydantic models — there is no hand-maintained spec to keep in sync.
 
 Layered structure:
-- `routes/` — HTTP layer; uses `routes/helpers.py::json_api_error` (returns `{status, error, timestamp (RFC 3339), details?}`) and `with_error_handling` for unexpected → 500. Validation/client errors use this envelope; do not invent ad-hoc error shapes.
+- `routes/` — HTTP layer (FastAPI `APIRouter`s). Routes `raise web/errors.py::ApiError(message, status_code, **extra)`; the registered handler emits `{status, error, timestamp (RFC 3339), details?, **extra}` and turns unexpected exceptions into a 500 with the same shape. Validation/client errors use this envelope; do not invent ad-hoc error shapes. Shared query validation: `web/params.py::validate_ktc_params`.
 - `services/` — orchestration (e.g. async KTC refresh in `services/ktc_refresh_async.py`, `daily_refresh.py`).
 - `managers/` — DB writers and merge logic (`database_manager.py`, `player_merger.py`, `file_manager.py`).
 - `scrapers/` — external fetchers (`ktc_scraper.py`, `sleeper_scraper.py`) and `pipelines.py` glue (preloads eligible Sleeper rows from DB via `load_sleeper_players_for_merge_from_db` to avoid N+1).
