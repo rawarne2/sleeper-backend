@@ -1,18 +1,32 @@
 # routes/valuations.py
-from flask import Blueprint, request, jsonify
+from __future__ import annotations
+
+from typing import Any, Optional
+
+from fastapi import APIRouter
+from pydantic import BaseModel
+
 from scrapers.pipelines import ingest_valuations
 from services.valuations import registry
 
-valuations_bp = Blueprint("valuations", __name__, url_prefix="/api/valuations")
+router = APIRouter(prefix="/api/valuations", tags=["Maintenance"])
 
 
-@valuations_bp.route("/refresh", methods=["POST"])
-def refresh_valuations():
-    body = request.get_json(silent=True) or {}
-    league_format = body.get("league_format", "superflex")
-    sources = body.get("sources") or registry.known_sources()
-    league_settings = body.get("league_settings") or {}
-    season = str(body.get("season") or "2026")
-    results = ingest_valuations(sources, season=season, league_format=league_format,
-                                league_settings=league_settings)
-    return jsonify({"results": results}), 200
+class ValuationsRefreshBody(BaseModel):
+    league_format: str = "superflex"
+    sources: Optional[list[str]] = None
+    league_settings: dict[str, Any] = {}
+    season: str = "2026"
+
+
+@router.post("/refresh")
+def refresh_valuations(body: ValuationsRefreshBody | None = None):
+    payload = body or ValuationsRefreshBody()
+    sources = payload.sources or registry.known_sources()
+    results = ingest_valuations(
+        sources,
+        season=str(payload.season),
+        league_format=payload.league_format,
+        league_settings=payload.league_settings,
+    )
+    return {"results": results}

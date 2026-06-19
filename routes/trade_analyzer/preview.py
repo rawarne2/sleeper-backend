@@ -1,9 +1,8 @@
 """POST /api/trade-analyzer/preview — assemble context, no LLM call."""
 from __future__ import annotations
 
-from flask import jsonify, request
+from fastapi import Body
 
-from routes.helpers import json_api_error, with_error_handling
 from services.trade_analyzer import policy as ta_policy
 from routes.trade_analyzer.request_schema import (
     RequestValidationError, parse_trade_request,
@@ -12,21 +11,21 @@ from services.trade_analyzer._load_league import LeagueNotFound, load_league_bun
 from services.trade_analyzer.context import build_context
 from services.trade_analyzer.prompt import SYSTEM_PROMPT, build_user_prompt
 from services.trade_analyzer.tokens import estimate_prompt_tokens
+from web.errors import ApiError
 
-from . import trade_analyzer_bp
+from . import router
 
 
-@trade_analyzer_bp.route("/preview", methods=["POST"])
-@with_error_handling
-def preview_trade():
+@router.post("/preview")
+def preview_trade(body: dict | None = Body(default=None)):
     try:
-        req = parse_trade_request(request.get_json(silent=True))
+        req = parse_trade_request(body)
     except RequestValidationError as exc:
-        return json_api_error(str(exc), 400)
+        raise ApiError(str(exc), 400)
 
     deny = ta_policy.environment_provider_error(req.get("provider"))
     if deny:
-        return json_api_error(deny, 400)
+        raise ApiError(deny, 400)
 
     provider, model = ta_policy.resolved_provider_and_model(
         body_provider=req.get("provider"),
@@ -42,17 +41,17 @@ def preview_trade():
             is_redraft=bool(req["ktc"].get("is_redraft")),
         )
     except LeagueNotFound as exc:
-        return json_api_error("League not found", 404, details=str(exc), league_id=req["league_id"])
+        raise ApiError("League not found", 404, details=str(exc), league_id=req["league_id"])
 
     try:
         context = build_context(req, league_data=league_data)
     except ValueError as exc:
-        return json_api_error(str(exc), 400)
+        raise ApiError(str(exc), 400)
 
     user_prompt = build_user_prompt(context, req.get("additional_context"))
     token_usage = estimate_prompt_tokens(SYSTEM_PROMPT, user_prompt)
 
-    return jsonify({
+    return {
         "context": context,
         "system_prompt": SYSTEM_PROMPT,
         "user_prompt": user_prompt,
@@ -60,4 +59,4 @@ def preview_trade():
         "token_usage": token_usage,
         "provider_used": provider,
         "model_used": model,
-    })
+    }

@@ -3,13 +3,10 @@ from __future__ import annotations
 
 import os
 
-from flask import jsonify
-
-from routes.helpers import with_error_handling
 from services.trade_analyzer import policy as ta_policy
 from services.trade_analyzer.providers.registry import get_provider
 
-from . import trade_analyzer_bp
+from . import router
 
 
 def _enabled() -> bool:
@@ -17,8 +14,7 @@ def _enabled() -> bool:
             not in ("0", "false", "no"))
 
 
-@trade_analyzer_bp.route("/providers", methods=["GET"])
-@with_error_handling
+@router.get("/providers")
 def list_providers():
     entries = []
     for name in ta_policy.provider_names_for_listing():
@@ -42,7 +38,7 @@ def list_providers():
                 "available": False,
                 "detail": f"factory error: {exc}",
             })
-    return jsonify({
+    return {
         "default_provider": ta_policy.effective_default_provider(),
         "allows_client_provider_model_choice": not ta_policy.production_routing_locked(),
         "providers": entries,
@@ -51,4 +47,4 @@ def list_providers():
             "key": os.getenv("TRADE_ANALYZER_RATE_LIMIT_KEY", "ip"),
         },
         "enabled": _enabled(),
-    })
+    }

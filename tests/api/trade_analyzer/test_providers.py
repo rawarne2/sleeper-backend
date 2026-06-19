@@ -4,7 +4,7 @@
 def test_providers_endpoint_returns_known_providers(client):
     resp = client.get("/api/trade-analyzer/providers")
     assert resp.status_code == 200
-    body = resp.get_json()
+    body = resp.json()
     assert "default_provider" in body
     assert "providers" in body
     assert body.get("allows_client_provider_model_choice") is True
@@ -23,7 +23,7 @@ def test_providers_prod_lists_gemini_default(client, monkeypatch):
     monkeypatch.setenv("VERCEL_ENV", "production")
     resp = client.get("/api/trade-analyzer/providers")
     assert resp.status_code == 200
-    body = resp.get_json()
+    body = resp.json()
     names = [p["name"] for p in body["providers"]]
     assert names == ["gemini", "anthropic", "echo", "ollama"]
     assert body["allows_client_provider_model_choice"] is False
@@ -32,7 +32,7 @@ def test_providers_prod_lists_gemini_default(client, monkeypatch):
 
 def test_providers_endpoint_marks_echo_available(client):
     resp = client.get("/api/trade-analyzer/providers")
-    body = resp.get_json()
+    body = resp.json()
     echo = next(p for p in body["providers"] if p["name"] == "echo")
     assert echo["available"] is True
     assert echo["models"] == ["echo"]
@@ -40,7 +40,7 @@ def test_providers_endpoint_marks_echo_available(client):
 
 def test_providers_echo_lists_selectable_models(client):
     resp = client.get("/api/trade-analyzer/providers")
-    body = resp.get_json()
+    body = resp.json()
     echo = next(p for p in body["providers"] if p["name"] == "echo")
     assert echo["default_model"] == "echo"
     assert "echo" in echo["models"]

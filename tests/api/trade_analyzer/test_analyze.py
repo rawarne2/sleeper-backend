@@ -27,8 +27,8 @@ def stubbed_league(league_fixture):
 
 def test_analyze_happy_path_with_echo(client, stubbed_league):
     resp = client.post("/api/trade-analyzer/analyze", json=_BASE)
-    assert resp.status_code == 200, resp.get_data(as_text=True)
-    body = resp.get_json()
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
     assert body["winner"] in ("side_a", "side_b", "even")
     assert body["provider_used"] == "echo"
     assert body["elapsed_ms"] >= 0
@@ -51,7 +51,7 @@ def test_analyze_400_when_unknown_provider(client, stubbed_league):
     body = {**_BASE, "provider": "does-not-exist"}
     resp = client.post("/api/trade-analyzer/analyze", json=body)
     assert resp.status_code == 400
-    assert "Unknown provider" in (resp.get_json() or {}).get("error", "")
+    assert "Unknown provider" in (resp.json() or {}).get("error", "")
 
 
 def test_analyze_400_when_echo_in_vercel_production(client, monkeypatch, stubbed_league):
@@ -59,7 +59,7 @@ def test_analyze_400_when_echo_in_vercel_production(client, monkeypatch, stubbed
     monkeypatch.setenv("VERCEL_ENV", "production")
     resp = client.post("/api/trade-analyzer/analyze", json=_BASE)
     assert resp.status_code == 400
-    err = (resp.get_json() or {}).get("error", "")
+    err = (resp.json() or {}).get("error", "")
     assert "Gemini" in err
 
 
@@ -79,7 +79,7 @@ def test_analyze_accepts_explicit_gemini_in_vercel_production(
             "side_a": {}, "side_b": {},
         })
         resp = client.post("/api/trade-analyzer/analyze", json=body)
-    assert resp.status_code == 200, resp.get_data(as_text=True)
+    assert resp.status_code == 200, resp.text
     run.assert_called_once()
 
 
@@ -100,6 +100,6 @@ def test_analyze_429_when_rate_limited(client, monkeypatch, stubbed_league):
 
 def test_analyze_returns_analysis_id(client, stubbed_league):
     resp = client.post("/api/trade-analyzer/analyze", json=_BASE)
-    assert resp.status_code == 200, resp.get_data(as_text=True)
-    body = resp.get_json()
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
     assert isinstance(body.get("analysis_id"), str) and len(body["analysis_id"]) >= 8

@@ -6,4 +6,4 @@ def test_refresh_valuations_returns_summary(client, monkeypatch):
     resp = client.post("/api/valuations/refresh",
                        json={"league_format": "superflex", "sources": ["fantasycalc"]})
     assert resp.status_code == 200
-    assert resp.get_json()["results"]["fantasycalc"] == "10 snapshots"
+    assert resp.json()["results"]["fantasycalc"] == "10 snapshots"

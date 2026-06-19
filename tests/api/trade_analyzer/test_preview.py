@@ -23,8 +23,8 @@ def stubbed_league(league_fixture):
 
 def test_preview_returns_context_shape(client, stubbed_league):
     resp = client.post("/api/trade-analyzer/preview", json=_BASE)
-    assert resp.status_code == 200, resp.get_data(as_text=True)
-    body = resp.get_json()
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
     ctx = body["context"]
     assert ctx["league"]["season"] == "2026"
     assert "additional_context" not in ctx
