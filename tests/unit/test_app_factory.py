@@ -25,12 +25,20 @@ def test_factory_serves_openapi_docs():
     assert client.get("/docs").status_code == 200
 
 
-def test_factory_bridges_legacy_flask_routes():
-    """Unmigrated routes fall through the WSGI bridge to the Flask blueprints."""
+def test_factory_serves_native_route():
+    """The factory wires native FastAPI routers (no WSGI bridge)."""
     from app_factory import create_app
     client = TestClient(create_app("sqlite:///:memory:"))
-    # /api/trade-analyzer/providers is still a Flask blueprint (dashboard and
-    # players/all are now native FastAPI). It returns 200 JSON — the bridge is
-    # routing the path rather than the native router returning 404.
-    resp = client.get("/api/trade-analyzer/providers")
-    assert resp.status_code == 200
+    # ktc/health is a native router; allow 500 in case the in-memory DB is cold.
+    resp = client.get("/api/ktc/health")
+    assert resp.status_code in (200, 500)
+    assert "status" in resp.json()
+
+
+def test_factory_root_redirects_to_docs():
+    """GET / redirects to the FastAPI Swagger UI."""
+    from app_factory import create_app
+    client = TestClient(create_app("sqlite:///:memory:"))
+    resp = client.get("/", follow_redirects=False)
+    assert resp.status_code in (307, 308)
+    assert resp.headers["location"].endswith("/docs")

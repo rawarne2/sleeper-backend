@@ -1,4 +1,7 @@
-"""FastAPI exception handlers reproducing routes/helpers.json_api_error exactly."""
+"""FastAPI exception handlers producing the canonical JSON error envelope.
+
+Body shape: ``status``, ``error``, RFC 3339 ``timestamp``, optional ``details``.
+"""
 from __future__ import annotations
 
 import json

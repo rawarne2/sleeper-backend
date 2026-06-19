@@ -1,15 +1,11 @@
-"""Shared CORS configuration for the Flask app.
+"""Shared CORS configuration for the FastAPI app.
 
-Used by both ``app.py`` (local dev) and ``vercel_app.py`` (production) so the
-allow list and headers stay in lock-step.
+``EXPLICIT_ORIGINS`` and the regexes are consumed by ``app_factory.create_app``
+so the allow list and headers stay in lock-step across local dev and production.
 """
 from __future__ import annotations
 
 import re
-from typing import Iterable
-
-from flask import Flask, make_response, request
-from flask_cors import CORS
 
 EXPLICIT_ORIGINS: tuple[str, ...] = (
     "http://localhost:3000",
@@ -41,51 +37,3 @@ def is_allowed_origin(origin: str | None) -> bool:
     if VERCEL_REGEX.match(origin):
         return True
     return False
-
-
-def configure_cors(app: Flask, *, extra_origins: Iterable[str] = ()) -> None:
-    """Wire up CORS on the given Flask app.
-
-    Adds ``Flask-CORS`` for the canonical allow list, plus a manual ``after_request``
-    handler that handles dynamic origins (Vercel preview URLs and local network IPs)
-    that ``Flask-CORS`` regex matching does not handle reliably.
-    """
-    origins = [*EXPLICIT_ORIGINS, *extra_origins]
-
-    CORS(
-        app,
-        resources={
-            r"/api/*": {
-                "origins": origins + [r"https://.*\.vercel\.app"],
-                "methods": [m.strip() for m in ALLOW_METHODS.split(",")],
-                "allow_headers": [h.strip() for h in ALLOW_HEADERS.split(",")],
-                "supports_credentials": True,
-            }
-        },
-    )
-
-    @app.before_request
-    def _handle_preflight():
-        if request.method != "OPTIONS":
-            return None
-        origin = request.headers.get("Origin")
-        if not is_allowed_origin(origin):
-            return None
-        resp = make_response()
-        resp.headers["Access-Control-Allow-Origin"] = origin
-        resp.headers["Access-Control-Allow-Credentials"] = "true"
-        resp.headers["Access-Control-Allow-Methods"] = ALLOW_METHODS
-        resp.headers["Access-Control-Allow-Headers"] = ALLOW_HEADERS
-        return resp
-
-    @app.after_request
-    def _cors_after_request(response):
-        origin = request.headers.get("Origin")
-        if not origin or not request.path.startswith("/api/"):
-            return response
-        if is_allowed_origin(origin):
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = ALLOW_METHODS
-            response.headers["Access-Control-Allow-Headers"] = ALLOW_HEADERS
-        return response
