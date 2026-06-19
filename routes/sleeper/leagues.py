@@ -1,129 +1,34 @@
-from flask import Blueprint, jsonify
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 from cache.redis_dashboard import invalidate_dashboard_league
 from managers.database_manager import DatabaseManager
-from routes.helpers import json_api_error, with_error_handling
 from scrapers.sleeper_scraper import SleeperScraper
 from utils.datetime_serialization import utc_now_rfc3339
 from utils.helpers import setup_logging
+from web.errors import ApiError
 
-sleeper_leagues_bp = Blueprint(
-    'sleeper_leagues', __name__, url_prefix='/api/sleeper/league')
+router = APIRouter(prefix="/api/sleeper/league", tags=["Sleeper Leagues"])
 logger = setup_logging()
 
 
-@sleeper_leagues_bp.route('/<string:league_id>', methods=['GET'])
-@with_error_handling
+@router.get("/{league_id}", summary="Get comprehensive league data")
 def get_league_data(league_id: str):
     """
-    Get comprehensive league data
-    ---
-    tags:
-      - Sleeper Leagues
-    summary: Get comprehensive league data
-    description: |
-      Get comprehensive league data (league info, rosters, users). Returns complete league configuration, all rosters with player IDs, and user information. Checks database first, falls back to Sleeper API.
-    parameters:
-      - name: league_id
-        in: path
-        description: The Sleeper league ID
-        required: true
-        type: string
-        pattern: '^[0-9]+$'
-    responses:
-      200:
-        description: League data retrieved successfully
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-              enum: ['success']
-            data:
-              type: object
-              properties:
-                league:
-                  type: object
-                  properties:
-                    league_id:
-                      type: string
-                    name:
-                      type: string
-                    season:
-                      type: string
-                      type: integer
-                    status:
-                      type: string
-                rosters:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      roster_id:
-                        type: integer
-                      owner_id:
-                        type: string
-                      players:
-                        type: array
-                        items:
-                          type: string
-                users:
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      user_id:
-                        type: string
-                      username:
-                        type: string
-                      display_name:
-                        type: string
-            source:
-              type: string
-              enum: ['database', 'sleeper_api']
-            database_saved:
-              type: boolean
-            timestamp:
-              type: string
-              format: date-time
-      404:
-        description: League not found
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-              enum: ['error']
-            error:
-              type: string
-              example: 'Invalid league ID or failed to fetch league data'
-            details:
-              type: string
-            league_id:
-              type: string
-      500:
-        description: Server error
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-              enum: ['error']
-            error:
-              type: string
-            details:
-              type: string
+    Get comprehensive league data (league info, rosters, users). Returns complete league
+    configuration, all rosters with player IDs, and user information. Checks database
+    first, falls back to Sleeper API.
     """
     # Try to get from database first
     db_result = DatabaseManager.get_league_data(league_id)
 
     if db_result.get('status') == 'success':
-        return jsonify({
+        return {
             'status': 'success',
             'data': db_result,
             'source': 'database',
             'timestamp': utc_now_rfc3339(),
-        })
+        }
 
     # If not in database, fetch from Sleeper API
     logger.info(
@@ -131,7 +36,7 @@ def get_league_data(league_id: str):
     league_data = SleeperScraper.scrape_league_data(league_id)
 
     if not league_data.get('success'):
-        return json_api_error(
+        raise ApiError(
             'Invalid league ID or failed to fetch league data',
             404,
             details=league_data.get('error'),
@@ -145,313 +50,94 @@ def get_league_data(league_id: str):
         logger.warning("Failed to save league data to database: %s",
                        save_result.get('error'))
 
-    return jsonify({
+    return {
         'status': 'success',
         'data': league_data,
         'source': 'sleeper_api',
         'database_saved': save_result.get('status') == 'success',
         'timestamp': utc_now_rfc3339(),
-    })
+    }
 
 
-@sleeper_leagues_bp.route('/<string:league_id>/rosters', methods=['GET'])
-@with_error_handling
+@router.get("/{league_id}/rosters", summary="Get league rosters")
 def get_league_rosters(league_id: str):
-    """
-    Get league rosters
-    ---
-    tags:
-      - Sleeper Leagues
-    summary: Get league rosters
-    description: Get league rosters data for all teams in the league
-    parameters:
-      - name: league_id
-        in: path
-        description: The Sleeper league ID
-        required: true
-        type: string
-        pattern: '^[0-9]+$'
-    responses:
-      200:
-        description: Rosters retrieved successfully
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-              enum: ['success']
-            league_id:
-              type: string
-            rosters:
-              type: array
-              items:
-                type: object
-                properties:
-                  roster_id:
-                    type: integer
-                  owner_id:
-                    type: string
-                  players:
-                    type: array
-                    items:
-                      type: string
-            count:
-              type: integer
-            timestamp:
-              type: string
-              format: date-time
-      404:
-        description: League not found
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-              enum: ['error']
-            error:
-              type: string
-            league_id:
-              type: string
-      500:
-        description: Server error
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-              enum: ['error']
-            error:
-              type: string
-            details:
-              type: string
-    """
+    """Get league rosters data for all teams in the league."""
     # First try to get full league data (uses caching)
     league_result = DatabaseManager.get_league_data(league_id)
 
     if league_result.get('status') == 'success':
-        return jsonify({
+        return {
             'status': 'success',
             'league_id': league_id,
             'rosters': league_result['rosters'],
             'count': len(league_result['rosters']),
             'last_updated': league_result.get('last_updated'),
             'timestamp': utc_now_rfc3339(),
-        })
+        }
 
     # Fallback to direct API call if not in database
     rosters_data = SleeperScraper.fetch_league_rosters(league_id)
 
     if rosters_data is None:
-        return json_api_error(
+        raise ApiError(
             'Invalid league ID or failed to fetch roster data',
             404,
             league_id=league_id,
         )
 
-    return jsonify({
+    return {
         'status': 'success',
         'league_id': league_id,
         'rosters': rosters_data,
         'count': len(rosters_data),
         'source': 'direct_api',
         'timestamp': utc_now_rfc3339(),
-    })
+    }
 
 
-@sleeper_leagues_bp.route('/<string:league_id>/users', methods=['GET'])
-@with_error_handling
+@router.get("/{league_id}/users", summary="Get league users")
 def get_league_users(league_id: str):
-    """
-    Get league users
-    ---
-    tags:
-      - Sleeper Leagues
-    summary: Get league users
-    description: Get league users data for all participants in the league
-    parameters:
-      - name: league_id
-        in: path
-        description: The Sleeper league ID
-        required: true
-        type: string
-        pattern: '^[0-9]+$'
-    responses:
-      200:
-        description: Users retrieved successfully
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-              enum: ['success']
-            league_id:
-              type: string
-            users:
-              type: array
-              items:
-                type: object
-                properties:
-                  user_id:
-                    type: string
-                  username:
-                    type: string
-                  display_name:
-                    type: string
-                  avatar:
-                    type: string
-                  team_name:
-                    type: string
-            count:
-              type: integer
-            last_updated:
-              type: string
-              format: date-time
-            timestamp:
-              type: string
-              format: date-time
-      404:
-        description: League not found
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-              enum: ['error']
-            error:
-              type: string
-            league_id:
-              type: string
-      500:
-        description: Server error
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-              enum: ['error']
-            error:
-              type: string
-            details:
-              type: string
-    """
+    """Get league users data for all participants in the league."""
     # First try to get full league data (uses caching)
     league_result = DatabaseManager.get_league_data(league_id)
 
     if league_result.get('status') == 'success':
-        return jsonify({
+        return {
             'status': 'success',
             'league_id': league_id,
             'users': league_result['users'],
             'count': len(league_result['users']),
             'last_updated': league_result.get('last_updated'),
             'timestamp': utc_now_rfc3339(),
-        })
+        }
 
     # Fallback to direct API call if not in database
     users_data = SleeperScraper.fetch_league_users(league_id)
 
     if users_data is None:
-        return json_api_error(
+        raise ApiError(
             'Invalid league ID or failed to fetch users data',
             404,
             league_id=league_id,
         )
 
-    return jsonify({
+    return {
         'status': 'success',
         'league_id': league_id,
         'users': users_data,
         'count': len(users_data),
         'source': 'direct_api',
         'timestamp': utc_now_rfc3339(),
-    })
+    }
 
 
-@sleeper_leagues_bp.route('/<string:league_id>', methods=['POST', 'PUT'])
-@with_error_handling
+@router.api_route("/{league_id}", methods=["POST", "PUT"], summary="Refresh/Update league data")
 def refresh_league_data(league_id: str):
     """
-    Refresh/Update league data
-    ---
-    tags:
-      - Sleeper Leagues
-    summary: Refresh/Update league data
-    description: Refresh all league data from Sleeper API (league info, rosters, users).
-    parameters:
-      - name: league_id
-        in: path
-        description: The Sleeper league ID
-        required: true
-        type: string
-        pattern: '^[0-9]+$'
-    responses:
-      200:
-        description: League data refreshed successfully
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-              enum: ['success', 'partial_success', 'error']
-            timestamp:
-              type: string
-              format: date-time
-            league_id:
-              type: string
-            league_data:
-              type: object
-              properties:
-                status:
-                  type: string
-                save_result:
-                  type: object
-            users_data:
-              type: object
-              properties:
-                status:
-                  type: string
-                message:
-                  type: string
-            rosters_data:
-              type: object
-              properties:
-                status:
-                  type: string
-                message:
-                  type: string
-            errors:
-              type: array
-              items:
-                type: object
-                properties:
-                  type:
-                    type: string
-                  error:
-                    type: string
-      404:
-        description: League not found
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-              enum: ['error']
-            error:
-              type: string
-            league_id:
-              type: string
-      500:
-        description: Server error
-        schema:
-          type: object
-          properties:
-            status:
-              type: string
-              enum: ['error']
-            error:
-              type: string
-            details:
-              type: string
+    Refresh all league data from Sleeper API (league info, rosters, users).
+
+    Returns the full results dict even on 404/500 — the HTTP status code signals
+    the outcome but the body is always the results object (not the error envelope).
     """
     logger.info("League data refresh requested for league_id: %s", league_id)
 
@@ -548,5 +234,6 @@ def refresh_league_data(league_id: str):
         scrape_failed = any(
             e.get('type') == 'league_data' for e in results['errors'])
         http_code = 404 if scrape_failed else 500
-    payload = jsonify(results)
-    return payload, http_code
+
+    # Return the full results dict even on 404/500 (NOT the ApiError envelope)
+    return JSONResponse(results, status_code=http_code)
