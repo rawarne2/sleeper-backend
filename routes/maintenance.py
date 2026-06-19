@@ -1,21 +1,24 @@
 """
 Maintenance and batch operations (nightly sync, prewarm).
 """
-import os
 import time
-from typing import Any, Dict, List
+from datetime import datetime, UTC
+from typing import Any, Dict, List, Optional
 
-from flask import Blueprint, current_app, jsonify, request
+from fastapi import APIRouter, Body
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from starlette.requests import Request
 
 from models.entities import SleeperLeague
-from routes.helpers import json_api_error, with_error_handling
-from services.daily_refresh import run_daily_refresh
 from routes.ktc.rankings_cache import invalidate_rankings_cache
+from services.daily_refresh import run_daily_refresh
 from utils.constants import EXAMPLE_LEAGUE_IDS
 from utils.helpers import setup_logging
+from web.auth import CRON_AUTH_HINT, cron_authorized
+from web.errors import ApiError
 
-maintenance_bp = Blueprint("maintenance", __name__,
-                           url_prefix="/api/maintenance")
+router = APIRouter(prefix="/api/maintenance", tags=["Maintenance"])
 logger = setup_logging()
 
 
@@ -29,14 +32,19 @@ def _prewarm_dashboard_caches() -> Dict[str, Any]:
         (r[0], str(r[1])) for r in rows if r[0] and r[1]
     ] or list(EXAMPLE_LEAGUE_IDS)
 
-    client = current_app.test_client()
+    # Import lazily to avoid circular imports; works whether the dashboard route
+    # is still Flask-bridged or has been migrated to native FastAPI.
+    from starlette.testclient import TestClient
+    from app import app as fastapi_app
+    client = TestClient(fastapi_app)
+
     results: List[Dict[str, Any]] = []
     failed = 0
     for league_id, season in leagues:
         t0 = time.perf_counter()
         resp = client.get(
             f"/api/dashboard/league/{league_id}",
-            query_string={
+            params={
                 "season": season,
                 "league_format": "superflex",
                 "is_redraft": "false",
@@ -54,7 +62,7 @@ def _prewarm_dashboard_caches() -> Dict[str, Any]:
         if resp.status_code != 200:
             failed += 1
             try:
-                body = resp.get_json(force=True) or {}
+                body = resp.json() or {}
             except Exception:
                 body = {}
             detail = body.get("details") or body.get("error") or f"HTTP {resp.status_code}"
@@ -67,75 +75,36 @@ def _prewarm_dashboard_caches() -> Dict[str, Any]:
     return {"results": results, "failed": failed, "total": len(results)}
 
 
-def _cron_authorized() -> bool:
-    """
-    Authorize a request from Vercel Cron.
-
-    Vercel Cron sends ``Authorization: Bearer <CRON_SECRET>`` and ``x-vercel-cron: 1``.
-    Production (``VERCEL_ENV=production``) requires ``CRON_SECRET`` to be set; the
-    header alone is not sufficient (headers are spoofable).
-
-    Non-production: if ``CRON_SECRET`` is unset, allow requests that include
-    ``x-vercel-cron`` for local/preview testing only.
-    """
-    secret = (os.getenv("CRON_SECRET") or "").strip()
-    vercel_env = (os.getenv("VERCEL_ENV") or "").strip().lower()
-    auth = (request.headers.get("Authorization") or "").strip()
-    is_vercel_cron = bool(request.headers.get("x-vercel-cron"))
-
-    if vercel_env == "production" and not secret:
-        logger.warning(
-            "cron auth failed: CRON_SECRET is required when VERCEL_ENV=production"
-        )
-        return False
-
-    if secret:
-        if len(auth) >= 7 and auth[:7].lower() == "bearer ":
-            if auth[7:].strip() == secret:
-                return True
-        logger.warning(
-            "cron auth failed: bearer token missing or mismatch (vercel_cron=%s, has_auth=%s)",
-            is_vercel_cron,
-            bool(auth),
-        )
-        return False
-
-    if is_vercel_cron:
-        logger.warning(
-            "cron auth: CRON_SECRET unset; allowing because x-vercel-cron header is present"
-        )
-        return True
-
-    logger.warning(
-        "cron auth failed: CRON_SECRET unset and request lacks x-vercel-cron header"
-    )
-    return False
-
-
-@maintenance_bp.route("/health", methods=["GET"])
-@with_error_handling
+@router.get("/health", summary="Maintenance health check")
 def maintenance_health():
     """``GET /api/maintenance/health`` — JSON map of maintenance paths and auth expectations (no pipeline run)."""
-    return jsonify(
-        {
-            "status": "ok",
-            "nightly_sync": {
-                "methods": ["GET", "POST"],
-                "path": "/api/maintenance/nightly-sync",
-                "auth": "Authorization: Bearer <CRON_SECRET> (CRON_SECRET must be set on server)",
-                "note": "Vercel Cron invokes GET with the Bearer header; use POST for manual curl.",
-            },
-        }
-    )
+    return {
+        "status": "ok",
+        "nightly_sync": {
+            "methods": ["GET", "POST"],
+            "path": "/api/maintenance/nightly-sync",
+            "auth": "Authorization: Bearer <CRON_SECRET> (CRON_SECRET must be set on server)",
+            "note": "Vercel Cron invokes GET with the Bearer header; use POST for manual curl.",
+        },
+    }
 
 
-@maintenance_bp.route("/nightly-sync", methods=["GET", "POST"])
-@with_error_handling
-def nightly_sync():
+class NightlySyncBody(BaseModel):
+    league_ids: Optional[List[str]] = None
+    seasons: Optional[List[str]] = None
+    research_week: Optional[int] = None
+    skip_ktc: bool = False
+    skip_leagues: bool = False
+    skip_research: bool = False
+    skip_prewarm: bool = False
+
+
+@router.api_route("/nightly-sync", methods=["GET", "POST"], summary="Run nightly sync pipeline")
+def nightly_sync(request: Request, body: Optional[NightlySyncBody] = Body(None)):
     """
     Full ingest pipeline for scheduled jobs (Vercel Cron uses GET + CRON_SECRET).
 
-    Schedule: see vercel.json (UTC). Repo default 30 15 * * * ≈ 11:30 AM Eastern when DST.
+    Schedule: see vercel.json (UTC). Repo default 30 15 * * * ~= 11:30 AM Eastern when DST.
 
     Pipeline: KTC all formats -> leagues -> research per season.
     Scraping is scoped to the current season by default (prior seasons are
@@ -146,36 +115,33 @@ def nightly_sync():
       { "league_ids": ["..."], "seasons": ["2025"], "research_week": 1,
         "skip_ktc": false, "skip_leagues": false, "skip_research": false, "skip_prewarm": false }
     """
-    if not _cron_authorized():
-        return json_api_error(
+    if not cron_authorized(request):
+        raise ApiError(
             "Unauthorized",
             401,
-            hint=(
-                "Set CRON_SECRET in the server environment and send "
-                "Authorization: Bearer <CRON_SECRET>"
-            ),
+            hint=CRON_AUTH_HINT,
         )
 
-    payload = request.get_json(silent=True) or {}
-    league_ids = payload.get("league_ids")
-    seasons = payload.get("seasons")
-    research_week = payload.get("research_week")
+    # For GET (cron) there is no body; treat as all defaults.
+    payload = body or NightlySyncBody()
 
-    logger.info("Nightly sync started (remote=%s)", request.remote_addr)
+    logger.info(
+        "Nightly sync started (remote=%s)",
+        request.client.host if request.client else None,
+    )
 
     summary = run_daily_refresh(
-        league_ids=league_ids,
-        seasons=seasons,
-        research_week=int(
-            research_week) if research_week is not None else None,
-        skip_ktc=bool(payload.get("skip_ktc")),
-        skip_leagues=bool(payload.get("skip_leagues")),
-        skip_research=bool(payload.get("skip_research")),
+        league_ids=payload.league_ids,
+        seasons=payload.seasons,
+        research_week=payload.research_week,
+        skip_ktc=payload.skip_ktc,
+        skip_leagues=payload.skip_leagues,
+        skip_research=payload.skip_research,
     )
 
     invalidate_rankings_cache()
 
-    if not bool(payload.get("skip_prewarm")):
+    if not payload.skip_prewarm:
         try:
             summary["prewarm"] = _prewarm_dashboard_caches()
         except Exception as e:
@@ -184,7 +150,6 @@ def nightly_sync():
                 {"step": "prewarm", "error": str(e)})
 
     try:
-        from datetime import datetime, UTC
         from scrapers.pipelines import ingest_valuations
         current_season = str(datetime.now(UTC).year)
         # FantasyCalc varies by league config (teams-qbs-ppr), so ingest one snapshot
@@ -203,23 +168,22 @@ def nightly_sync():
             ingest_valuations(["ktc", "sleeper_proj"], season=current_season,
                               league_format=fmt, league_settings={})
     except Exception as exc:  # noqa: BLE001 - never fail the cron on valuation ingest
-        current_app.logger.warning("valuation ingest skipped: %s", exc)
+        logger.warning("valuation ingest skipped: %s", exc)
 
-    return jsonify({"status": "success", "summary": summary})
+    return {"status": "success", "summary": summary}
 
 
-@maintenance_bp.route("/prewarm", methods=["GET"])
-@with_error_handling
-def prewarm():
+@router.get("/prewarm", summary="Prewarm dashboard caches")
+def prewarm(request: Request):
     """``GET /api/maintenance/prewarm`` — same as nightly-sync prewarm; requires cron auth."""
-    if not _cron_authorized():
-        return json_api_error("Unauthorized", 401)
+    if not cron_authorized(request):
+        raise ApiError("Unauthorized", 401)
 
     summary = _prewarm_dashboard_caches()
     if summary["failed"]:
-        return json_api_error(
+        raise ApiError(
             f"{summary['failed']} of {summary['total']} prewarm requests failed",
             500,
             results=summary["results"],
         )
-    return jsonify({"status": "success", "results": summary["results"]})
+    return {"status": "success", "results": summary["results"]}
