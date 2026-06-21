@@ -6,8 +6,11 @@ import logging
 import os
 from typing import Dict, List, Optional
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from data_types.trade_analyzer_types import OwnedPick
-from models.entities import SleeperLeague, SleeperRoster
+from models.entities import db, SleeperLeague, SleeperRoster
 
 logger = logging.getLogger(__name__)
 
@@ -78,12 +81,19 @@ def _has_real_standings(rosters: List[SleeperRoster]) -> bool:
     return False
 
 
-def compute_owned_picks(league_id: str) -> Dict[int, List[OwnedPick]]:
-    league = SleeperLeague.query.filter_by(league_id=league_id).first()
+def compute_owned_picks(
+    league_id: str, session: Session | None = None
+) -> Dict[int, List[OwnedPick]]:
+    session = session or db.session
+    league = session.execute(
+        select(SleeperLeague).filter_by(league_id=league_id)
+    ).scalars().first()
     if league is None:
         return {}
 
-    rosters = SleeperRoster.query.filter_by(league_id=league_id).all()
+    rosters = session.execute(
+        select(SleeperRoster).filter_by(league_id=league_id)
+    ).scalars().all()
     if not rosters:
         return {}
 

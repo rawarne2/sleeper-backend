@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, UTC
 from typing import Any, Optional
+from sqlalchemy.orm import Session
 from models.entities import TradeFeedback
 from models.extensions import db
 
@@ -44,7 +45,9 @@ def _parse_created_at(stash: Optional[dict]) -> datetime:
 
 def save_feedback(*, analysis_id: str, client_id: str, league_id: Optional[str],
                   agree_winner: str, grade: Optional[str], note: Optional[str],
-                  stash: Optional[dict[str, Any]]) -> TradeFeedback:
+                  stash: Optional[dict[str, Any]],
+                  session: Session | None = None) -> TradeFeedback:
+    session = session or db.session
     now = datetime.now(UTC)
     has = stash is not None
     row = TradeFeedback(
@@ -58,8 +61,8 @@ def save_feedback(*, analysis_id: str, client_id: str, league_id: Optional[str],
         agree_winner=agree_winner, user_grade=grade, note=note,
         context_available=has, created_at=_parse_created_at(stash), feedback_at=now,
     )
-    db.session.merge(row)  # idempotent on re-submit for same analysis_id
-    db.session.commit()
+    session.merge(row)  # idempotent on re-submit for same analysis_id
+    session.commit()
     try:
         from services.trade_analyzer.rag.ingest import ingest_feedback_row
         ingest_feedback_row(row)

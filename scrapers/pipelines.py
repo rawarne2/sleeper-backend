@@ -1,13 +1,19 @@
 from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from models.extensions import db
 from utils.helpers import save_and_verify_database, setup_logging
 from services.valuations import registry
 
 logger = setup_logging()
 
 
-def load_sleeper_players_for_merge_from_db() -> List[Dict[str, Any]]:
+def load_sleeper_players_for_merge_from_db(
+    session: Session | None = None,
+) -> List[Dict[str, Any]]:
     """
     Rows for KTC merge: has sleeper id, non-empty match_key, not Sleeper search_rank placeholder.
     Avoids loading thousands of draft/meta rows into memory.
@@ -15,9 +21,10 @@ def load_sleeper_players_for_merge_from_db() -> List[Dict[str, Any]]:
     from models.entities import Player
     from utils.player_eligibility import sqlalchemy_player_eligible_for_merge_filter
 
-    sleeper_players_db = (
-        Player.query.filter(sqlalchemy_player_eligible_for_merge_filter()).all()
-    )
+    session = session or db.session
+    sleeper_players_db = session.execute(
+        select(Player).where(sqlalchemy_player_eligible_for_merge_filter())
+    ).scalars().all()
     sleeper_players: List[Dict[str, Any]] = []
     for player in sleeper_players_db:
         sleeper_data = player.to_dict()
@@ -35,7 +42,8 @@ def scrape_and_process_data(
     league_format: str,
     is_redraft: bool,
     tep_level: Optional[str],
-    sleeper_players: Optional[List[Dict[str, Any]]] = None
+    sleeper_players: Optional[List[Dict[str, Any]]] = None,
+    session: Session | None = None,
 ) -> tuple[List[Dict[str, Any]], Optional[str]]:
     """
     Scrape data from KTC and merge with existing Sleeper data from database.
@@ -66,7 +74,7 @@ def scrape_and_process_data(
         if sleeper_players is None:
             logger.info("Fetching merge-eligible Sleeper player rows from database...")
             try:
-                sleeper_players = load_sleeper_players_for_merge_from_db()
+                sleeper_players = load_sleeper_players_for_merge_from_db(session=session)
             except Exception as db_error:
                 logger.warning(
                     "Failed to get Sleeper data from database: %s. Will use KTC data only.",
@@ -106,7 +114,7 @@ def scrape_and_process_data(
         return [], str(e)
 
 
-def scrape_and_save_all_ktc_data(ktc_scraper, database_manager) -> Dict[str, Any]:
+def scrape_and_save_all_ktc_data(ktc_scraper, database_manager, session: Session | None = None) -> Dict[str, Any]:
     """
     Scrape and save comprehensive KTC data (dynasty + redraft) for all formats and TEP levels.
 
@@ -129,7 +137,7 @@ def scrape_and_save_all_ktc_data(ktc_scraper, database_manager) -> Dict[str, Any
 
     try:
         try:
-            sleeper_players = load_sleeper_players_for_merge_from_db()
+            sleeper_players = load_sleeper_players_for_merge_from_db(session=session)
         except Exception as db_error:
             logger.warning(
                 "Failed to get Sleeper data from database for bulk refresh: %s. Will use KTC data only.",
@@ -139,7 +147,7 @@ def scrape_and_save_all_ktc_data(ktc_scraper, database_manager) -> Dict[str, Any
 
         logger.info("Scraping comprehensive dynasty data from KTC...")
         dynasty_players, dynasty_error = scrape_and_process_data(
-            ktc_scraper, '1qb', False, None, sleeper_players)
+            ktc_scraper, '1qb', False, None, sleeper_players, session=session)
 
         if dynasty_error:
             results['dynasty']['status'] = 'error'
@@ -158,7 +166,7 @@ def scrape_and_save_all_ktc_data(ktc_scraper, database_manager) -> Dict[str, Any
 
         logger.info("Scraping comprehensive redraft data from KTC...")
         redraft_players, redraft_error = scrape_and_process_data(
-            ktc_scraper, '1qb', True, None, sleeper_players)
+            ktc_scraper, '1qb', True, None, sleeper_players, session=session)
 
         if redraft_error:
             results['redraft']['status'] = 'error'
@@ -189,7 +197,7 @@ def scrape_and_save_all_ktc_data(ktc_scraper, database_manager) -> Dict[str, Any
         return results
 
 
-def ingest_valuations(source_keys, *, season, league_format, league_settings):
+def ingest_valuations(source_keys, *, season, league_format, league_settings, session: Session | None = None):
     """Fetch each source, resolve players to canonical ids, write append-only snapshots.
 
     Players resolve by Sleeper id (FantasyCalc + Sleeper provide it), name as fallback;
@@ -197,10 +205,10 @@ def ingest_valuations(source_keys, *, season, league_format, league_settings):
     (picks are KTC-only in v1). Fail-soft per source.
     """
     from models.entities import Player, ValueSnapshot, ValueSource
-    from models.extensions import db
     from services.valuations.resolver import build_sleeper_index, build_name_index, resolve_player_id
 
-    players = Player.query.all()
+    session = session or db.session
+    players = session.execute(select(Player)).scalars().all()
     sleeper_index = build_sleeper_index(players)
     name_index = build_name_index(players)
     results = {}
@@ -228,7 +236,7 @@ def ingest_valuations(source_keys, *, season, league_format, league_settings):
                     sleeper_index=sleeper_index, name_index=name_index)
             if player_id is None:
                 continue  # drop unmatched, never guess
-            db.session.add(ValueSnapshot(
+            session.add(ValueSnapshot(
                 player_id=player_id, pick_key=None, source_key=row.source_key,
                 league_format=league_format, metric_key=row.metric_key,
                 metric_value=row.metric_value, rank=row.rank,
@@ -238,12 +246,12 @@ def ingest_valuations(source_keys, *, season, league_format, league_settings):
             written += 1
 
         meta = source.meta
-        src_row = ValueSource.query.get(meta.key)
+        src_row = session.get(ValueSource, meta.key)
         if src_row is None:
             src_row = ValueSource(source_key=meta.key, display_name=meta.display_name,
                                   kind=meta.kind, attribution_url=meta.attribution_url)
-            db.session.add(src_row)
+            session.add(src_row)
         src_row.last_synced_at = datetime.now(UTC)
-        db.session.commit()
+        session.commit()
         results[key] = f"{written} snapshots"
     return results

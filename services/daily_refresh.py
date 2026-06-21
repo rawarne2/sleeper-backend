@@ -10,6 +10,9 @@ import os
 from datetime import datetime, UTC
 from typing import Any, Dict, Iterable, List, Optional
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from cache.redis_dashboard import invalidate_dashboard_league
 from managers.database_manager import DatabaseManager
 from models.entities import SleeperLeague, SleeperLeagueStats, SleeperWeeklyData
@@ -30,24 +33,26 @@ logger = setup_logging()
 REGULAR_SEASON_WEEKS = range(1, 19)  # Sleeper uses weeks 1..18 for regular season + week 18
 
 
-def _league_ids_for_refresh() -> List[str]:
+def _league_ids_for_refresh(session: Session | None = None) -> List[str]:
     """All league IDs persisted in the DB; fall back to built-in defaults if none.
 
     Only league_id is needed here — season is resolved via the Sleeper API at
     refresh time. Unlike _prewarm_dashboard_caches(), rows with NULL season are
     still valid refresh targets.
     """
-    rows = SleeperLeague.query.with_entities(SleeperLeague.league_id).all()
+    session = session or db.session
+    rows = session.execute(select(SleeperLeague.league_id)).all()
     out = [r[0] for r in rows if r and r[0]]
     if out:
         return out
     return [lid for lid, _ in EXAMPLE_LEAGUE_IDS]
 
 
-def _league_id_to_season() -> Dict[str, str]:
+def _league_id_to_season(session: Session | None = None) -> Dict[str, str]:
     """Map league_id -> season for all leagues persisted in the DB."""
-    rows = SleeperLeague.query.with_entities(
-        SleeperLeague.league_id, SleeperLeague.season
+    session = session or db.session
+    rows = session.execute(
+        select(SleeperLeague.league_id, SleeperLeague.season)
     ).all()
     return {r[0]: str(r[1]) for r in rows if r and r[0] and r[1]}
 
@@ -74,18 +79,20 @@ def _current_season() -> str:
     return str(datetime.now(UTC).year)
 
 
-def _current_season_league_ids(current_season: str) -> List[str]:
+def _current_season_league_ids(
+    current_season: str, session: Session | None = None
+) -> List[str]:
     """League IDs to refresh on the scheduled path: only current-season leagues.
 
     Falls back to the built-in example leagues for ``current_season`` when the DB
     has none, and finally to every persisted league (with a warning) so the cron
     never silently refreshes nothing.
     """
-    rows = (
-        SleeperLeague.query.with_entities(SleeperLeague.league_id)
-        .filter(SleeperLeague.season == current_season)
-        .all()
-    )
+    session = session or db.session
+    rows = session.execute(
+        select(SleeperLeague.league_id)
+        .where(SleeperLeague.season == current_season)
+    ).all()
     out = [r[0] for r in rows if r and r[0]]
     if out:
         return out
@@ -98,7 +105,7 @@ def _current_season_league_ids(current_season: str) -> List[str]:
         "No leagues found for current season %s; refreshing all persisted leagues",
         current_season,
     )
-    return _league_ids_for_refresh()
+    return _league_ids_for_refresh(session=session)
 
 
 def refresh_leagues(league_ids: List[str]) -> Dict[str, Any]:
@@ -160,14 +167,19 @@ def persist_research(
     }
 
 
-def _bump_last_week_updated(league_id: str, week: int) -> None:
+def _bump_last_week_updated(
+    league_id: str, week: int, session: Session | None = None
+) -> None:
     """Advance SleeperLeagueStats.last_week_updated to ``week`` if higher than stored."""
-    row = SleeperLeagueStats.query.filter_by(league_id=league_id).first()
+    session = session or db.session
+    row = session.execute(
+        select(SleeperLeagueStats).filter_by(league_id=league_id)
+    ).scalars().first()
     if not row:
         return
     if (row.last_week_updated or 0) < week:
         row.last_week_updated = week
-        db.session.commit()
+        session.commit()
 
 
 def refresh_weekly_stats_for_league(
@@ -176,6 +188,7 @@ def refresh_weekly_stats_for_league(
     *,
     weeks: Iterable[int] = REGULAR_SEASON_WEEKS,
     league_type: str = "dynasty",
+    session: Session | None = None,
 ) -> Dict[str, Any]:
     """Fetch weekly matchup stats from Sleeper for a single league across one or more weeks.
 
@@ -200,10 +213,10 @@ def refresh_weekly_stats_for_league(
                 summary["weeks"].append({"week": week, "status": "no_records"})
                 continue
             save_result = DatabaseManager.save_weekly_stats(
-                records, season, week, league_type
+                records, season, week, league_type, session=session
             )
             summary["weeks"].append({"week": week, **save_result})
-            _bump_last_week_updated(league_id, week)
+            _bump_last_week_updated(league_id, week, session=session)
         except Exception as exc:
             logger.exception(
                 "weekly stats fetch failed league=%s week=%s", league_id, week
@@ -234,9 +247,11 @@ def refresh_weekly_stats_for_leagues(
     league_ids: List[str],
     *,
     weeks: Iterable[int] = REGULAR_SEASON_WEEKS,
+    session: Session | None = None,
 ) -> Dict[str, Any]:
     """Fetch weekly stats for many leagues. Uses each league's stored season."""
-    league_seasons = _league_id_to_season()
+    session = session or db.session
+    league_seasons = _league_id_to_season(session=session)
     out: Dict[str, Any] = {"leagues": [], "errors": []}
     for lid in league_ids:
         season = league_seasons.get(lid)
@@ -245,7 +260,7 @@ def refresh_weekly_stats_for_leagues(
             continue
         try:
             out["leagues"].append(
-                refresh_weekly_stats_for_league(lid, season, weeks=weeks)
+                refresh_weekly_stats_for_league(lid, season, weeks=weeks, session=session)
             )
         except Exception as exc:
             logger.exception("weekly stats refresh failed for league %s", lid)
@@ -262,6 +277,7 @@ def run_daily_refresh(
     skip_leagues: bool = False,
     skip_research: bool = False,
     skip_weekly_stats: bool = False,
+    session: Session | None = None,
 ) -> DailyRefreshSummary:
     """
     Run the full pipeline used for once-per-day updates.
@@ -281,11 +297,12 @@ def run_daily_refresh(
     seasons are immutable, so re-scraping them nightly is wasted work. Pass
     explicit ``league_ids`` / ``seasons`` to back-fill older data on demand.
     """
+    session = session or db.session
     current_season = _current_season()
     lids = (
         league_ids
         if league_ids is not None
-        else _current_season_league_ids(current_season)
+        else _current_season_league_ids(current_season, session=session)
     )
     week = research_week if research_week is not None else int(
         os.getenv("DAILY_REFRESH_RESEARCH_WEEK", "1")
@@ -305,7 +322,7 @@ def run_daily_refresh(
             summary["ktc"] = {"overall_status": "error", "error": "Database connection failed"}
             summary["errors"].append({"step": "ktc", "error": "Database connection failed"})
         else:
-            summary["ktc"] = scrape_and_save_all_ktc_data(KTCScraper, DatabaseManager)
+            summary["ktc"] = scrape_and_save_all_ktc_data(KTCScraper, DatabaseManager, session=session)
             if summary["ktc"].get("overall_status") == "error":
                 summary["errors"].append(
                     {"step": "ktc", "error": summary["ktc"].get("error", "KTC refresh failed")}
@@ -375,7 +392,7 @@ def run_daily_refresh(
 
     if not skip_weekly_stats and lids:
         try:
-            summary["weekly_stats"] = refresh_weekly_stats_for_leagues(lids)
+            summary["weekly_stats"] = refresh_weekly_stats_for_leagues(lids, session=session)
             for err in summary["weekly_stats"].get("errors", []):
                 summary["errors"].append({"step": "weekly_stats", **err})
         except Exception as e:

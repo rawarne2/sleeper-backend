@@ -4,7 +4,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Dict, Set
 
-from sqlalchemy import func
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from models.entities import NflPlayerWeekStats, SleeperWeeklyData
 from models.extensions import db
@@ -22,6 +23,7 @@ def _latest_starter_flags(
     player_ids: Set[str],
     *,
     max_week: int,
+    session: Session | None = None,
 ) -> Dict[str, bool]:
     """Most recent ``is_starter`` per player within the regular-season window."""
     if not player_ids or max_week < SLEEPER_STATS_AGGREGATE_WEEK_MIN:
@@ -29,13 +31,14 @@ def _latest_starter_flags(
     id_list = [x for x in player_ids if x]
     if not id_list:
         return {}
-    rows = (
-        db.session.query(
+    session = session or db.session
+    rows = session.execute(
+        select(
             SleeperWeeklyData.player_id,
             SleeperWeeklyData.week,
             SleeperWeeklyData.is_starter,
         )
-        .filter(
+        .where(
             SleeperWeeklyData.season == season,
             SleeperWeeklyData.league_type == research_lt,
             SleeperWeeklyData.week.between(
@@ -46,8 +49,7 @@ def _latest_starter_flags(
             SleeperWeeklyData.points.isnot(None),
         )
         .order_by(SleeperWeeklyData.player_id, SleeperWeeklyData.week.desc())
-        .all()
-    )
+    ).all()
     out: Dict[str, bool] = {}
     for row in rows:
         pid = str(row.player_id)
@@ -57,10 +59,13 @@ def _latest_starter_flags(
     return out
 
 
-def _max_stats_week(season: str, research_lt: str) -> int | None:
-    row = (
-        db.session.query(func.max(SleeperWeeklyData.week))
-        .filter(
+def _max_stats_week(
+    season: str, research_lt: str, session: Session | None = None
+) -> int | None:
+    session = session or db.session
+    row = session.scalar(
+        select(func.max(SleeperWeeklyData.week))
+        .where(
             SleeperWeeklyData.season == season,
             SleeperWeeklyData.league_type == research_lt,
             SleeperWeeklyData.week.between(
@@ -68,7 +73,6 @@ def _max_stats_week(season: str, research_lt: str) -> int | None:
                 SLEEPER_STATS_AGGREGATE_WEEK_MAX,
             ),
         )
-        .scalar()
     )
     return int(row) if row is not None else None
 
@@ -79,6 +83,7 @@ def _last_three_week_avgs(
     *,
     max_week: int,
     scoring_settings: Dict[str, Any],
+    session: Session | None = None,
 ) -> Dict[str, float]:
     """Last-3-week scoring average from league-agnostic raw stat lines.
 
@@ -90,16 +95,16 @@ def _last_three_week_avgs(
 
     week_lo = max(SLEEPER_STATS_AGGREGATE_WEEK_MIN, max_week - 2)
     id_list = [x for x in player_ids if x]
-    rows = (
-        db.session.query(NflPlayerWeekStats)
-        .filter(
+    session = session or db.session
+    rows = session.execute(
+        select(NflPlayerWeekStats)
+        .where(
             NflPlayerWeekStats.season == season,
             NflPlayerWeekStats.week.between(week_lo, max_week),
             NflPlayerWeekStats.player_id.in_(id_list),
         )
         .order_by(NflPlayerWeekStats.player_id, NflPlayerWeekStats.week)
-        .all()
-    )
+    ).scalars().all()
 
     by_player: Dict[str, list[float]] = defaultdict(list)
     for row in rows:
@@ -123,6 +128,7 @@ def load_stats_with_trajectory(
     *,
     max_week: int | None = None,
     scoring_settings: Dict[str, Any] | None = None,
+    session: Session | None = None,
 ) -> Dict[str, Dict[str, Any]]:
     """Season aggregates + ``trajectory`` (last-3-week avg vs season) + ``is_starter_latest``.
 
@@ -135,12 +141,13 @@ def load_stats_with_trajectory(
     SleeperWeeklyData table).
     """
     scoring_settings = scoring_settings or {}
+    session = session or db.session
     stats = _load_player_stats(season, scoring_settings, player_ids)
     if not stats:
         return stats
 
     if max_week is None:
-        max_week = _max_stats_week(season, research_lt)
+        max_week = _max_stats_week(season, research_lt, session=session)
     if max_week is None:
         for block in stats.values():
             block["trajectory"] = None
@@ -148,10 +155,11 @@ def load_stats_with_trajectory(
         return stats
 
     last3 = _last_three_week_avgs(
-        season, player_ids, max_week=max_week, scoring_settings=scoring_settings
+        season, player_ids, max_week=max_week, scoring_settings=scoring_settings,
+        session=session,
     )
     starter_flags = _latest_starter_flags(
-        season, research_lt, player_ids, max_week=max_week
+        season, research_lt, player_ids, max_week=max_week, session=session
     )
     for pid, block in stats.items():
         season_avg = block.get("average_points")
