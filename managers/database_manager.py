@@ -3,8 +3,8 @@ import os
 from datetime import datetime, UTC
 from typing import Any, Dict, List, Set
 
-from sqlalchemy import and_, text
-from sqlalchemy.orm import contains_eager, joinedload, selectinload
+from sqlalchemy import and_, delete, func, or_, select, text
+from sqlalchemy.orm import contains_eager, joinedload, selectinload, Session
 
 from models.entities import (
     db,
@@ -60,16 +60,17 @@ class DatabaseManager:
     """
 
     @staticmethod
-    def verify_database_connection() -> bool:
+    def verify_database_connection(session: Session | None = None) -> bool:
         """
         Verify database connection and basic functionality.
 
         Returns:
             True if connection is successful, False otherwise
         """
+        session = session or db.session
         try:
             # Test basic query
-            db.session.execute(text("SELECT 1")).fetchone()
+            session.execute(text("SELECT 1")).fetchone()
             logger.info("Database connection verified successfully")
             return True
         except Exception as e:
@@ -78,7 +79,7 @@ class DatabaseManager:
 
     @staticmethod
     def get_players_from_db(
-        league_format: str, is_redraft: bool = False
+        league_format: str, is_redraft: bool = False, session: Session | None = None
     ) -> tuple[List[Player], datetime | None]:
         """
         Retrieve players from database for specific configuration.
@@ -90,20 +91,25 @@ class DatabaseManager:
         Returns:
             Tuple of (players_list, last_updated_timestamp)
         """
+        session = session or db.session
         if league_format == '1qb':
             ktc_table = PlayerKTCOneQBValues
         else:
             ktc_table = PlayerKTCSuperflexValues
 
         players = (
-            Player.query.join(
-                ktc_table,
-                and_(
-                    Player.id == ktc_table.player_id,
-                    ktc_table.is_redraft.is_(is_redraft),
-                ),
+            session.execute(
+                select(Player)
+                .join(
+                    ktc_table,
+                    and_(
+                        Player.id == ktc_table.player_id,
+                        ktc_table.is_redraft.is_(is_redraft),
+                    ),
+                )
+                .order_by(ktc_table.rank.asc())
             )
-            .order_by(ktc_table.rank.asc())
+            .scalars()
             .all()
         )
 
@@ -116,6 +122,7 @@ class DatabaseManager:
         league_format: str,
         sleeper_ids: Set[str],
         is_redraft: bool = False,
+        session: Session | None = None,
     ) -> tuple[List[Player], datetime | None]:
         """
         Load Player rows for a bounded set of Sleeper IDs with the relevant
@@ -131,6 +138,7 @@ class DatabaseManager:
         if not id_list:
             return [], None
 
+        session = session or db.session
         if league_format == '1qb':
             ktc_table = PlayerKTCOneQBValues
             rel = Player.oneqb_values
@@ -141,18 +149,23 @@ class DatabaseManager:
             order_col = PlayerKTCSuperflexValues.rank
 
         players = (
-            Player.query.options(
-                contains_eager(rel),
+            session.execute(
+                select(Player)
+                .options(
+                    contains_eager(rel),
+                )
+                .join(
+                    ktc_table,
+                    and_(
+                        Player.id == ktc_table.player_id,
+                        ktc_table.is_redraft.is_(is_redraft),
+                    ),
+                )
+                .where(Player.sleeper_player_id.in_(id_list))
+                .order_by(order_col.asc())
             )
-            .join(
-                ktc_table,
-                and_(
-                    Player.id == ktc_table.player_id,
-                    ktc_table.is_redraft.is_(is_redraft),
-                ),
-            )
-            .filter(Player.sleeper_player_id.in_(id_list))
-            .order_by(order_col.asc())
+            .unique()
+            .scalars()
             .all()
         )
         last_updated = (
@@ -161,7 +174,7 @@ class DatabaseManager:
         return players, last_updated
 
     @staticmethod
-    def save_players_to_db(players: List[Dict[str, Any]], league_format: str, is_redraft: bool) -> int:
+    def save_players_to_db(players: List[Dict[str, Any]], league_format: str, is_redraft: bool, session: Session | None = None) -> int:
         """
         Save KTC player data to database using upsert logic.
 
@@ -182,6 +195,8 @@ class DatabaseManager:
         """
         if not players:
             raise ValueError("No players provided to save")
+
+        session = session or db.session
 
         logger.info("Starting KTC data save: %s players for %s %s format",
                     len(players), "redraft" if is_redraft else "dynasty", league_format)
@@ -240,19 +255,23 @@ class DatabaseManager:
 
                     # First try sleeper_player_id if available (most reliable for merged data)
                     if sleeper_id:
-                        existing_player = Player.query.filter_by(
-                            sleeper_player_id=sleeper_id).first()
+                        existing_player = session.execute(
+                            select(Player).filter_by(
+                                sleeper_player_id=sleeper_id)
+                        ).scalars().first()
 
                     # If no sleeper_id match, use efficient match_key lookup
                     if not existing_player:
                         match_key = create_player_match_key(
                             player_name, position)
-                        existing_player = Player.query.filter_by(
-                            match_key=match_key).first()
+                        existing_player = session.execute(
+                            select(Player).filter_by(
+                                match_key=match_key)
+                        ).scalars().first()
 
                     if existing_player:
                         DatabaseManager._update_existing_player_with_merged_data(
-                            existing_player, player_data, is_redraft)
+                            existing_player, player_data, is_redraft, session=session)
                         if not existing_player.match_key:
                             existing_player.match_key = create_player_match_key(
                                 player_name, position)
@@ -260,7 +279,7 @@ class DatabaseManager:
                             "Updated existing player: %s", player_name)
                     else:
                         new_player = DatabaseManager._create_player_with_merged_data(
-                            player_data, league_format, is_redraft)
+                            player_data, league_format, is_redraft, session=session)
                         new_player.match_key = create_player_match_key(
                             player_name, position)
                         logger.debug(
@@ -277,7 +296,7 @@ class DatabaseManager:
             # Commit all changes
             logger.info(
                 "Committing %s player records to database...", processed_count)
-            db.session.commit()
+            session.commit()
             logger.info("Successfully saved %s players (%s skipped)",
                         processed_count, skipped_count)
 
@@ -286,7 +305,7 @@ class DatabaseManager:
         except Exception as e:
             logger.error("Database save operation failed: %s", e)
             try:
-                db.session.rollback()
+                session.rollback()
                 logger.info("Database rollback completed")
             except Exception as rollback_error:
                 logger.error("Database rollback failed: %s", rollback_error)
@@ -294,39 +313,46 @@ class DatabaseManager:
             raise Exception(f"Failed to save KTC data: {e}")
 
     @staticmethod
-    def get_database_stats() -> Dict[str, Any]:
+    def get_database_stats(session: Session | None = None) -> Dict[str, Any]:
         """
         Get database statistics for debugging and monitoring.
 
         Returns:
             Dictionary containing database statistics
         """
+        session = session or db.session
         try:
             stats = {}
 
             # Get total record count
-            total_records = Player.query.count()
+            total_records = session.scalar(
+                select(func.count()).select_from(Player))
             stats['total_records'] = total_records
 
             # Get counts of players with Sleeper IDs
-            sleeper_players_count = Player.query.filter(
-                Player.sleeper_player_id.isnot(None)).count()
+            sleeper_players_count = session.scalar(
+                select(func.count()).select_from(Player).where(
+                    Player.sleeper_player_id.isnot(None)))
             stats['sleeper_players_count'] = sleeper_players_count
 
             # Get counts of players with KTC values
-            oneqb_players_count = Player.query.join(
-                PlayerKTCOneQBValues).count()
-            superflex_players_count = Player.query.join(
-                PlayerKTCSuperflexValues).count()
+            oneqb_players_count = session.scalar(
+                select(func.count()).select_from(Player).join(
+                    PlayerKTCOneQBValues))
+            superflex_players_count = session.scalar(
+                select(func.count()).select_from(Player).join(
+                    PlayerKTCSuperflexValues))
 
             stats['oneqb_players_count'] = oneqb_players_count
             stats['superflex_players_count'] = superflex_players_count
 
             # Get counts by position
-            position_counts = db.session.query(
-                Player.position,
-                db.func.count(Player.id).label('count')
-            ).group_by(Player.position).all()
+            position_counts = session.execute(
+                select(
+                    Player.position,
+                    func.count(Player.id).label('count')
+                ).group_by(Player.position)
+            ).all()
 
             stats['position_breakdown'] = [
                 {
@@ -343,7 +369,7 @@ class DatabaseManager:
             return {'error': str(e)}
 
     @staticmethod
-    def save_weekly_stats(weekly_stats: List[Dict[str, Any]], season: str, week: int, league_type: str = 'dynasty') -> Dict[str, Any]:
+    def save_weekly_stats(weekly_stats: List[Dict[str, Any]], season: str, week: int, league_type: str = 'dynasty', session: Session | None = None) -> Dict[str, Any]:
         """
         Save weekly stats data to the database.
 
@@ -356,6 +382,7 @@ class DatabaseManager:
         Returns:
             Dictionary containing save results
         """
+        session = session or db.session
         try:
             logger.info(
                 "Saving weekly stats for season: %s, week: %s", season, week)
@@ -367,12 +394,14 @@ class DatabaseManager:
             for stat_record in weekly_stats:
                 try:
                     # Check if record already exists
-                    existing_record = SleeperWeeklyData.query.filter_by(
-                        season=season,
-                        week=week,
-                        league_type=league_type,
-                        player_id=stat_record['player_id']
-                    ).first()
+                    existing_record = session.execute(
+                        select(SleeperWeeklyData).filter_by(
+                            season=season,
+                            week=week,
+                            league_type=league_type,
+                            player_id=stat_record['player_id']
+                        )
+                    ).scalars().first()
 
                     if existing_record:
                         # Update existing record
@@ -392,7 +421,7 @@ class DatabaseManager:
                             roster_id=stat_record['roster_id'],
                             is_starter=stat_record['is_starter']
                         )
-                        db.session.add(new_record)
+                        session.add(new_record)
                         saved_count += 1
 
                 except Exception as e:
@@ -401,7 +430,7 @@ class DatabaseManager:
                     continue
 
             # Commit all changes
-            db.session.commit()
+            session.commit()
 
             logger.info("Weekly stats saved successfully: %s new, %s updated, %s errors",
                         saved_count, updated_count, errors)
@@ -415,7 +444,7 @@ class DatabaseManager:
             }
 
         except Exception as e:
-            db.session.rollback()
+            session.rollback()
             logger.error("Error saving weekly stats: %s", e)
             return {
                 'status': 'error',
@@ -424,7 +453,8 @@ class DatabaseManager:
 
     @staticmethod
     def get_weekly_stats(season: str, week: int = None, league_type: str = 'dynasty',
-                         player_id: str = None, average: bool = False) -> Dict[str, Any]:
+                         player_id: str = None, average: bool = False,
+                         session: Session | None = None) -> Dict[str, Any]:
         """
         Get weekly stats data from the database.
 
@@ -438,27 +468,28 @@ class DatabaseManager:
         Returns:
             Dictionary containing weekly stats data
         """
+        session = session or db.session
         try:
-            query = SleeperWeeklyData.query.filter_by(
+            stmt = select(SleeperWeeklyData).filter_by(
                 season=season,
                 league_type=league_type
             )
 
             if week is not None:
-                query = query.filter_by(week=week)
+                stmt = stmt.filter_by(week=week)
 
             if player_id:
-                query = query.filter_by(player_id=player_id)
+                stmt = stmt.filter_by(player_id=player_id)
 
             if average:
-                query = query.filter(
+                stmt = stmt.where(
                     SleeperWeeklyData.week.between(
                         SLEEPER_STATS_AGGREGATE_WEEK_MIN,
                         SLEEPER_STATS_AGGREGATE_WEEK_MAX,
                     )
                 )
 
-            records = query.all()
+            records = session.execute(stmt).scalars().all()
 
             if average:
                 # Calculate averages by player
@@ -512,7 +543,7 @@ class DatabaseManager:
             }
 
     @staticmethod
-    def get_player_averages(season: str, league_type: str = 'dynasty') -> Dict[str, Any]:
+    def get_player_averages(season: str, league_type: str = 'dynasty', session: Session | None = None) -> Dict[str, Any]:
         """
         Get season averages for all players from the database.
 
@@ -523,18 +554,23 @@ class DatabaseManager:
         Returns:
             Dictionary containing player averages
         """
+        session = session or db.session
         try:
             weekly_records = (
-                SleeperWeeklyData.query.filter_by(
-                    season=season,
-                    league_type=league_type,
-                )
-                .filter(
-                    SleeperWeeklyData.week.between(
-                        SLEEPER_STATS_AGGREGATE_WEEK_MIN,
-                        SLEEPER_STATS_AGGREGATE_WEEK_MAX,
+                session.execute(
+                    select(SleeperWeeklyData)
+                    .filter_by(
+                        season=season,
+                        league_type=league_type,
+                    )
+                    .where(
+                        SleeperWeeklyData.week.between(
+                            SLEEPER_STATS_AGGREGATE_WEEK_MIN,
+                            SLEEPER_STATS_AGGREGATE_WEEK_MAX,
+                        )
                     )
                 )
+                .scalars()
                 .all()
             )
 
@@ -585,7 +621,8 @@ class DatabaseManager:
 
     @staticmethod
     def seed_league_stats(league_id: str, league_name: str, season: str,
-                          league_type: str = 'dynasty', scoring_settings: str = None) -> Dict[str, Any]:
+                          league_type: str = 'dynasty', scoring_settings: str = None,
+                          session: Session | None = None) -> Dict[str, Any]:
         """
         Seed or update league stats information.
 
@@ -599,10 +636,13 @@ class DatabaseManager:
         Returns:
             Dictionary containing operation results
         """
+        session = session or db.session
         try:
             # Check if league already exists
-            existing_league = SleeperLeagueStats.query.filter_by(
-                league_id=league_id).first()
+            existing_league = session.execute(
+                select(SleeperLeagueStats).filter_by(
+                    league_id=league_id)
+            ).scalars().first()
 
             if existing_league:
                 # Update existing league
@@ -622,10 +662,10 @@ class DatabaseManager:
                     league_type=league_type,
                     scoring_settings=scoring_settings
                 )
-                db.session.add(new_league)
+                session.add(new_league)
                 action = 'created'
 
-            db.session.commit()
+            session.commit()
 
             logger.info(
                 "League stats %s successfully for league: %s", action, league_id)
@@ -639,7 +679,7 @@ class DatabaseManager:
             }
 
         except Exception as e:
-            db.session.rollback()
+            session.rollback()
             logger.error("Error seeding league stats: %s", e)
             return {
                 'status': 'error',
@@ -647,7 +687,7 @@ class DatabaseManager:
             }
 
     @staticmethod
-    def cleanup_incomplete_data(league_format: str, is_redraft: bool, tep_level: str | None) -> Dict[str, Any]:
+    def cleanup_incomplete_data(league_format: str, is_redraft: bool, tep_level: str | None, session: Session | None = None) -> Dict[str, Any]:
         """
         Clean up potentially incomplete or corrupted data for a specific configuration.
 
@@ -659,13 +699,15 @@ class DatabaseManager:
         Returns:
             Dictionary containing cleanup results and statistics
         """
+        session = session or db.session
         try:
             normalized_tep = normalize_tep_level(tep_level)
             logger.info(
                 "Starting cleanup for %s, redraft=%s, tep_level=%s", league_format, is_redraft, tep_level)
 
             # Get current count of all players
-            current_count = Player.query.count()
+            current_count = session.scalar(
+                select(func.count()).select_from(Player))
 
             # Find records with missing critical data or missing value relationships
             if league_format == '1qb':
@@ -673,24 +715,26 @@ class DatabaseManager:
             else:
                 ktc_table = PlayerKTCSuperflexValues
 
-            incomplete_records = Player.query.outerjoin(
-                ktc_table,
-                and_(
-                    Player.id == ktc_table.player_id,
-                    ktc_table.is_redraft.is_(is_redraft),
-                ),
-            ).filter(
-                db.or_(
-                    Player.player_name.is_(None),
-                    Player.player_name == '',
-                    Player.position.is_(None),
-                    Player.position == '',
-                    db.and_(
-                        Player.sleeper_player_id.isnot(None),
-                        ktc_table.id.is_(None),
+            incomplete_records = session.execute(
+                select(Player).outerjoin(
+                    ktc_table,
+                    and_(
+                        Player.id == ktc_table.player_id,
+                        ktc_table.is_redraft.is_(is_redraft),
                     ),
+                ).where(
+                    or_(
+                        Player.player_name.is_(None),
+                        Player.player_name == '',
+                        Player.position.is_(None),
+                        Player.position == '',
+                        and_(
+                            Player.sleeper_player_id.isnot(None),
+                            ktc_table.id.is_(None),
+                        ),
+                    )
                 )
-            ).all()
+            ).scalars().all()
 
             incomplete_count = len(incomplete_records)
 
@@ -699,12 +743,13 @@ class DatabaseManager:
                 logger.warning(
                     "Found %s incomplete records, removing them...", incomplete_count)
                 for record in incomplete_records:
-                    db.session.delete(record)
-                db.session.commit()
+                    session.delete(record)
+                session.commit()
                 logger.info("Removed %s incomplete records", incomplete_count)
 
             # Get final count
-            final_count = Player.query.count()
+            final_count = session.scalar(
+                select(func.count()).select_from(Player))
 
             return {
                 'status': 'success',
@@ -720,7 +765,7 @@ class DatabaseManager:
 
         except Exception as e:
             logger.error("Error during cleanup: %s", e)
-            db.session.rollback()
+            session.rollback()
             return {
                 'status': 'error',
                 'error': str(e),
@@ -732,13 +777,14 @@ class DatabaseManager:
             }
 
     @staticmethod
-    def save_sleeper_data_to_db(sleeper_players: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def save_sleeper_data_to_db(sleeper_players: List[Dict[str, Any]], session: Session | None = None) -> Dict[str, Any]:
         """
         Save Sleeper player data to database as base datasource.
 
         Since Sleeper is the base datasource, we create/update player records with Sleeper data
         and then merge any existing KTC data into these Sleeper-based records.
         """
+        session = session or db.session
         try:
             from utils.player_eligibility import sleeper_api_dict_should_persist
 
@@ -750,8 +796,9 @@ class DatabaseManager:
                 len(sleeper_players),
             )
 
-            existing_sleeper_count = Player.query.filter(
-                Player.sleeper_player_id.isnot(None)).count()
+            existing_sleeper_count = session.scalar(
+                select(func.count()).select_from(Player).where(
+                    Player.sleeper_player_id.isnot(None)))
 
             updates_made = 0
             new_records_created = 0
@@ -761,13 +808,13 @@ class DatabaseManager:
             batch_size = 100
             for i in range(0, len(sleeper_players), batch_size):
                 batch = sleeper_players[i:i + batch_size]
-                batch_results = DatabaseManager._process_sleeper_batch(batch)
+                batch_results = DatabaseManager._process_sleeper_batch(batch, session=session)
 
                 updates_made += batch_results['updates']
                 new_records_created += batch_results['new_records']
                 match_failures += batch_results['match_failures']
 
-                db.session.commit()
+                session.commit()
 
             pruned_stale = 0
             if sleeper_players:
@@ -777,15 +824,17 @@ class DatabaseManager:
                     if p.get("sleeper_player_id")
                 }
                 if keep_ids:
-                    stale = Player.query.filter(
-                        Player.sleeper_player_id.isnot(None),
-                        ~Player.sleeper_player_id.in_(keep_ids),
-                    ).all()
+                    stale = session.execute(
+                        select(Player).where(
+                            Player.sleeper_player_id.isnot(None),
+                            ~Player.sleeper_player_id.in_(keep_ids),
+                        )
+                    ).scalars().all()
                     for p in stale:
-                        db.session.delete(p)
+                        session.delete(p)
                     pruned_stale = len(stale)
                     if pruned_stale:
-                        db.session.commit()
+                        session.commit()
                         logger.info(
                             "Pruned %s Sleeper-linked players not in current active export",
                             pruned_stale,
@@ -806,7 +855,7 @@ class DatabaseManager:
             }
 
         except Exception as e:
-            db.session.rollback()
+            session.rollback()
             logger.error("Error saving Sleeper data: %s", e)
             return {
                 'status': 'error',
@@ -815,11 +864,12 @@ class DatabaseManager:
             }
 
     @staticmethod
-    def save_league_data(league_data: Dict[str, Any]) -> Dict[str, Any]:
+    def save_league_data(league_data: Dict[str, Any], session: Session | None = None) -> Dict[str, Any]:
         """Save comprehensive league data to database."""
         if not league_data.get('success'):
             return {'status': 'error', 'error': 'League data fetch failed'}
 
+        session = session or db.session
         try:
             league_info = league_data['league_info']
             league_id = league_info['league_id']
@@ -827,19 +877,21 @@ class DatabaseManager:
             logger.info("Saving league data for league_id: %s", league_id)
 
             # Save all data in single transaction
-            league_result = DatabaseManager._save_league_info(league_info)
+            league_result = DatabaseManager._save_league_info(league_info, session=session)
             rosters_result = DatabaseManager._save_league_rosters(
-                league_id, league_data.get('rosters', []))
+                league_id, league_data.get('rosters', []), session=session)
             users_result = DatabaseManager._save_league_users(
-                league_id, league_data.get('users', []))
+                league_id, league_data.get('users', []), session=session)
 
             from models.entities import SleeperLeague
             picks = league_data.get('traded_picks') or []
-            league_row = SleeperLeague.query.filter_by(league_id=league_id).first()
+            league_row = session.execute(
+                select(SleeperLeague).filter_by(league_id=league_id)
+            ).scalars().first()
             if league_row is not None:
                 league_row.traded_picks = json.dumps(picks)
 
-            db.session.commit()
+            session.commit()
 
             return {
                 'status': 'success',
@@ -853,16 +905,19 @@ class DatabaseManager:
             }
 
         except Exception as e:
-            db.session.rollback()
+            session.rollback()
             logger.error("Error saving league data: %s", e)
             return {'status': 'error', 'error': str(e)}
 
     @staticmethod
-    def _upsert_record(model_class, filter_criteria: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
+    def _upsert_record(model_class, filter_criteria: Dict[str, Any], data: Dict[str, Any], session: Session | None = None) -> Dict[str, Any]:
         # TODO: finish implementing this and logic like it to reduce duplicate code
         # (e.g. type model_class as a concrete declarative base / entity type).
 
-        existing = model_class.query.filter_by(**filter_criteria).first()
+        session = session or db.session
+        existing = session.execute(
+            select(model_class).filter_by(**filter_criteria)
+        ).scalars().first()
 
         if existing:
             # Update existing record
@@ -873,14 +928,15 @@ class DatabaseManager:
         else:
             # Create new record
             new_record = model_class(**data)
-            db.session.add(new_record)
+            session.add(new_record)
             return {'saved': True, 'updated': False}
 
     @staticmethod
-    def _save_league_info(league_info: Dict[str, Any]) -> Dict[str, Any]:
+    def _save_league_info(league_info: Dict[str, Any], session: Session | None = None) -> Dict[str, Any]:
         """Save league information to database."""
         from models.entities import SleeperLeague
 
+        session = session or db.session
         league_id = league_info['league_id']
         data = {
             'league_id': league_id,
@@ -896,14 +952,15 @@ class DatabaseManager:
         }
 
         return DatabaseManager._upsert_record(
-            SleeperLeague, {'league_id': league_id}, data
+            SleeperLeague, {'league_id': league_id}, data, session=session
         )
 
     @staticmethod
-    def _save_league_rosters(league_id: str, rosters_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _save_league_rosters(league_id: str, rosters_data: List[Dict[str, Any]], session: Session | None = None) -> Dict[str, Any]:
         """Save league rosters to database using upsert."""
         from models.entities import SleeperRoster
 
+        session = session or db.session
         saved_count = 0
         updated_count = 0
 
@@ -924,7 +981,8 @@ class DatabaseManager:
                 SleeperRoster,
                 {'league_id': league_id,
                     'roster_id': roster_data.get('roster_id')},
-                data
+                data,
+                session=session
             )
 
             if result['saved']:
@@ -935,10 +993,11 @@ class DatabaseManager:
         return {'saved': saved_count, 'updated': updated_count}
 
     @staticmethod
-    def _save_league_users(league_id: str, users_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _save_league_users(league_id: str, users_data: List[Dict[str, Any]], session: Session | None = None) -> Dict[str, Any]:
         """Save league users to database using upsert."""
         from models.entities import SleeperUser
 
+        session = session or db.session
         saved_count = 0
         updated_count = 0
 
@@ -958,7 +1017,8 @@ class DatabaseManager:
             result = DatabaseManager._upsert_record(
                 SleeperUser,
                 {'league_id': league_id, 'user_id': user_data.get('user_id')},
-                data
+                data,
+                session=session
             )
 
             if result['saved']:
@@ -969,7 +1029,7 @@ class DatabaseManager:
         return {'saved': saved_count, 'updated': updated_count}
 
     @staticmethod
-    def get_league_season_only(league_id: str) -> tuple[bool, str | None]:
+    def get_league_season_only(league_id: str, session: Session | None = None) -> tuple[bool, str | None]:
         """
         Cheap lookup for dashboard cache keying when ``season`` is omitted.
 
@@ -979,17 +1039,17 @@ class DatabaseManager:
         """
         from models.entities import SleeperLeague
 
-        row = (
-            db.session.query(SleeperLeague.season)
+        session = session or db.session
+        row = session.execute(
+            select(SleeperLeague.season)
             .filter_by(league_id=league_id)
-            .one_or_none()
-        )
+        ).one_or_none()
         if row is None:
             return (False, None)
         return (True, row[0])
 
     @staticmethod
-    def get_league_data(league_id: str) -> Dict[str, Any]:
+    def get_league_data(league_id: str, session: Session | None = None) -> Dict[str, Any]:
         """
         Retrieve comprehensive league data from database.
 
@@ -999,15 +1059,21 @@ class DatabaseManager:
         Returns:
             Dictionary containing league data or error
         """
+        session = session or db.session
         try:
             from models.entities import SleeperLeague, SleeperRoster, SleeperUser
 
             league = (
-                SleeperLeague.query.options(
-                    joinedload(SleeperLeague.rosters),
-                    joinedload(SleeperLeague.users),
+                session.execute(
+                    select(SleeperLeague)
+                    .options(
+                        joinedload(SleeperLeague.rosters),
+                        joinedload(SleeperLeague.users),
+                    )
+                    .filter_by(league_id=league_id)
                 )
-                .filter_by(league_id=league_id)
+                .unique()
+                .scalars()
                 .first()
             )
             if not league:
@@ -1036,7 +1102,7 @@ class DatabaseManager:
             }
 
     @staticmethod
-    def get_research_data(season: str, week: int = 1, league_type: str = 'dynasty') -> Dict[str, Any]:
+    def get_research_data(season: str, week: int = 1, league_type: str = 'dynasty', session: Session | None = None) -> Dict[str, Any]:
         """
         Retrieve player research data from database.
 
@@ -1048,12 +1114,15 @@ class DatabaseManager:
         Returns:
             Dictionary containing research data or error
         """
+        session = session or db.session
         try:
-            research_records = SleeperWeeklyData.query.filter_by(
-                season=season,
-                week=week,
-                league_type=league_type
-            ).all()
+            research_records = session.execute(
+                select(SleeperWeeklyData).filter_by(
+                    season=season,
+                    week=week,
+                    league_type=league_type
+                )
+            ).scalars().all()
 
             if not research_records:
                 return {
@@ -1088,7 +1157,7 @@ class DatabaseManager:
             }
 
     @staticmethod
-    def _process_sleeper_batch(sleeper_batch: List[Dict[str, Any]]) -> Dict[str, int]:
+    def _process_sleeper_batch(sleeper_batch: List[Dict[str, Any]], session: Session | None = None) -> Dict[str, int]:
         """
         Process a batch of Sleeper players for database save.
 
@@ -1101,6 +1170,7 @@ class DatabaseManager:
         Returns:
             Dictionary with batch processing results
         """
+        session = session or db.session
         updates = 0
         new_records = 0
         match_failures = 0
@@ -1112,9 +1182,11 @@ class DatabaseManager:
                 if not sleeper_api_dict_should_persist(sleeper_player):
                     continue
                 # Check if we already have a record with this sleeper_player_id
-                existing_player = Player.query.filter_by(
-                    sleeper_player_id=sleeper_player.get('sleeper_player_id')
-                ).first()
+                existing_player = session.execute(
+                    select(Player).filter_by(
+                        sleeper_player_id=sleeper_player.get('sleeper_player_id')
+                    )
+                ).scalars().first()
 
                 if existing_player:
                     # Update existing record with fresh Sleeper data
@@ -1124,7 +1196,7 @@ class DatabaseManager:
                 else:
                     # Create new player record from Sleeper data
                     DatabaseManager._create_player_from_sleeper_data(
-                        sleeper_player)
+                        sleeper_player, session=session)
                     new_records += 1
 
             except Exception as e:
@@ -1236,13 +1308,14 @@ class DatabaseManager:
                      sleeper_data.get('full_name', 'Unknown'), sleeper_data.get('position', 'Unknown'))
 
     @staticmethod
-    def _create_player_from_sleeper_data(sleeper_data: Dict[str, Any]) -> None:
+    def _create_player_from_sleeper_data(sleeper_data: Dict[str, Any], session: Session | None = None) -> None:
         """
         Create new player record from Sleeper data.
 
         Args:
             sleeper_data: Sleeper player data
         """
+        session = session or db.session
         from utils.player_eligibility import sleeper_api_dict_should_persist
 
         if not sleeper_api_dict_should_persist(sleeper_data):
@@ -1322,7 +1395,7 @@ class DatabaseManager:
             player_metadata=sleeper_data.get('player_metadata')
         )
 
-        db.session.add(new_player)
+        session.add(new_player)
         logger.info("Created new player record from Sleeper data: %s (%s)",
                     sleeper_data.get('full_name', 'Unknown'), sleeper_data.get('position', 'Unknown'))
 
@@ -1331,6 +1404,7 @@ class DatabaseManager:
         existing_player: Player,
         merged_data: Dict[str, Any],
         is_redraft: bool,
+        session: Session | None = None,
     ) -> None:
         """
         Update an existing player from a KTC refresh.
@@ -1339,6 +1413,7 @@ class DatabaseManager:
         for profile/injury/search_rank updates. Only link ``sleeper_player_id`` when
         the merge discovered a match and the row was not linked yet.
         """
+        session = session or db.session
         sleeper_id = merged_data.get('sleeper_player_id')
         if sleeper_id and not existing_player.sleeper_player_id:
             existing_player.sleeper_player_id = sleeper_id
@@ -1367,7 +1442,7 @@ class DatabaseManager:
                 setattr(existing_player, ktc_key, merged_data[ktc_key])
 
         DatabaseManager._update_player_ktc_values(
-            existing_player, merged_data, is_redraft)
+            existing_player, merged_data, is_redraft, session=session)
 
         existing_player.last_updated = datetime.now(UTC)
 
@@ -1379,7 +1454,7 @@ class DatabaseManager:
         )
 
     @staticmethod
-    def _create_player_with_merged_data(merged_data: Dict[str, Any], league_format: str, is_redraft: bool) -> Player:
+    def _create_player_with_merged_data(merged_data: Dict[str, Any], league_format: str, is_redraft: bool, session: Session | None = None) -> Player:
         """
         Create new player record with merged KTC and Sleeper data.
 
@@ -1388,6 +1463,7 @@ class DatabaseManager:
             league_format: League format
             is_redraft: Whether this is redraft data
         """
+        session = session or db.session
         birth_date = _parse_date(merged_data.get('birth_date'))
         injury_start_date = _parse_date(merged_data.get('injury_start_date'))
         number = _parse_int(merged_data.get('number'))
@@ -1467,11 +1543,11 @@ class DatabaseManager:
             rotowire_id=merged_data.get('rotowire_id')
         )
 
-        db.session.add(new_player)
+        session.add(new_player)
 
         # Add KTC values
         DatabaseManager._update_player_ktc_values(
-            new_player, merged_data, is_redraft)
+            new_player, merged_data, is_redraft, session=session)
 
         logger.info("Created new player with merged data: %s (%s)",
                     merged_data.get(PLAYER_NAME_KEY, 'Unknown'), merged_data.get(POSITION_KEY, 'Unknown'))
@@ -1483,53 +1559,68 @@ class DatabaseManager:
         player: Player,
         merged_data: Dict[str, Any],
         is_redraft: bool,
+        session: Session | None = None,
     ) -> None:
         """
         Upsert KTC value rows for one dynasty/redraft mode without touching the
         other mode's rows.
         """
+        session = session or db.session
         if merged_data.get('oneqb_values'):
             oneqb_data = dict(merged_data['oneqb_values'])
 
             if player.id is not None:
-                PlayerKTCOneQBValues.query.filter_by(
-                    player_id=player.id, is_redraft=is_redraft
-                ).delete(synchronize_session=False)
+                session.execute(
+                    delete(PlayerKTCOneQBValues)
+                    .where(
+                        PlayerKTCOneQBValues.player_id == player.id,
+                        PlayerKTCOneQBValues.is_redraft == is_redraft,
+                    )
+                    .execution_options(synchronize_session=False)
+                )
 
             oneqb_values = PlayerKTCOneQBValues(
                 player=player,
                 is_redraft=is_redraft,
                 **oneqb_data,
             )
-            db.session.add(oneqb_values)
+            session.add(oneqb_values)
 
         if merged_data.get('superflex_values'):
             superflex_data = dict(merged_data['superflex_values'])
 
             if player.id is not None:
-                PlayerKTCSuperflexValues.query.filter_by(
-                    player_id=player.id, is_redraft=is_redraft
-                ).delete(synchronize_session=False)
+                session.execute(
+                    delete(PlayerKTCSuperflexValues)
+                    .where(
+                        PlayerKTCSuperflexValues.player_id == player.id,
+                        PlayerKTCSuperflexValues.is_redraft == is_redraft,
+                    )
+                    .execution_options(synchronize_session=False)
+                )
 
             superflex_values = PlayerKTCSuperflexValues(
                 player=player,
                 is_redraft=is_redraft,
                 **superflex_data,
             )
-            db.session.add(superflex_values)
+            session.add(superflex_values)
 
     @staticmethod
-    def save_nfl_week_stats(season: str, week: int, stats_by_pid: dict) -> dict:
+    def save_nfl_week_stats(season: str, week: int, stats_by_pid: dict, session: Session | None = None) -> dict:
         """Upsert league-agnostic raw stat lines for a season/week."""
+        session = session or db.session
         saved = updated = skipped = 0
         for pid, stats in (stats_by_pid or {}).items():
             if not pid or not isinstance(stats, dict):
                 skipped += 1
                 continue
-            row = NflPlayerWeekStats.query.filter_by(
-                season=season, week=week, player_id=str(pid)).first()
+            row = session.execute(
+                select(NflPlayerWeekStats).filter_by(
+                    season=season, week=week, player_id=str(pid))
+            ).scalars().first()
             if row is None:
-                db.session.add(NflPlayerWeekStats(
+                session.add(NflPlayerWeekStats(
                     season=season, week=week, player_id=str(pid),
                     stats=stats, last_updated=datetime.now(UTC)))
                 saved += 1
@@ -1537,5 +1628,5 @@ class DatabaseManager:
                 row.stats = stats
                 row.last_updated = datetime.now(UTC)
                 updated += 1
-        db.session.commit()
+        session.commit()
         return {"saved": saved, "updated": updated, "skipped": skipped}
