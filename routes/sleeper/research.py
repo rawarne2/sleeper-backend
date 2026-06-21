@@ -3,6 +3,7 @@ from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Query
+from sqlalchemy import func, select
 
 from cache.redis_dashboard import invalidate_dashboard_league_caches_for_ktc_dimensions
 from models.entities import SleeperLeague, SleeperWeeklyData
@@ -48,9 +49,7 @@ def _parse_week_param(value: Optional[str]) -> Tuple[Optional[int], bool, Option
 
 def _current_research_season() -> str:
     """Latest league season in DB, or the current calendar year as a fallback."""
-    row = (
-        db.session.query(db.func.max(SleeperLeague.season)).scalar()
-    )
+    row = db.session.scalar(select(func.max(SleeperLeague.season)))
     if row and len(str(row)) == 4 and str(row).isdigit():
         return str(row)
     return str(datetime.now(UTC).year)
@@ -99,11 +98,13 @@ def _upsert_research_rows(
 
     existing = {
         row.player_id: row
-        for row in SleeperWeeklyData.query.filter_by(
-            season=season,
-            week=week,
-            league_type=league_type,
-        ).all()
+        for row in db.session.execute(
+            select(SleeperWeeklyData).filter_by(
+                season=season,
+                week=week,
+                league_type=league_type,
+            )
+        ).scalars().all()
     }
 
     now = datetime.now(UTC)
@@ -202,15 +203,15 @@ def get_research_data(
         "Research data requested for season: %s, week: %s", season, 'all' if fetch_all_weeks else week_val)
 
     # Check database first
-    query = SleeperWeeklyData.query.filter_by(
+    stmt = select(SleeperWeeklyData).filter_by(
         season=season,
         league_type=league_type_val
     )
     if fetch_all_weeks:
-        query = query.filter(SleeperWeeklyData.week.between(1, 18))
+        stmt = stmt.where(SleeperWeeklyData.week.between(1, 18))
     else:
-        query = query.filter_by(week=week_val)
-    research_records = query.all()
+        stmt = stmt.filter_by(week=week_val)
+    research_records = db.session.execute(stmt).scalars().all()
 
     if research_records:
         logger.info("Found %s research records in database",

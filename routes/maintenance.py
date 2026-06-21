@@ -8,9 +8,11 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Body
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy import select
 from starlette.requests import Request
 
 from models.entities import SleeperLeague
+from models.extensions import db
 from routes.ktc.rankings_cache import invalidate_rankings_cache
 from services.daily_refresh import run_daily_refresh
 from utils.constants import EXAMPLE_LEAGUE_IDS
@@ -25,8 +27,8 @@ logger = setup_logging()
 def _prewarm_dashboard_caches() -> Dict[str, Any]:
     """Hit the dashboard endpoint for every persisted league so Redis is warm."""
     # Build league_id -> season map from DB; fall back to example leagues if DB empty.
-    rows = SleeperLeague.query.with_entities(
-        SleeperLeague.league_id, SleeperLeague.season
+    rows = db.session.execute(
+        select(SleeperLeague.league_id, SleeperLeague.season)
     ).all()
     leagues: list[tuple[str, str]] = [
         (r[0], str(r[1])) for r in rows if r[0] and r[1]

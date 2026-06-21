@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Set, Tuple
 
 from fastapi import APIRouter, Query
 from fastapi.responses import Response
-from sqlalchemy import func
+from sqlalchemy import func, select
 
 from cache.redis_dashboard import (
     dashboard_league_cache_key,
@@ -221,14 +221,13 @@ def _load_ownership_and_meta(
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     t_q = time.perf_counter()
     # Ownership lives in research_data; points-only weekly rows must not drive this lookup.
-    max_week = (
-        db.session.query(func.max(SleeperWeeklyData.week))
-        .filter(
+    max_week = db.session.scalar(
+        select(func.max(SleeperWeeklyData.week))
+        .where(
             SleeperWeeklyData.season == season,
             SleeperWeeklyData.league_type == research_lt,
             SleeperWeeklyData.research_data.isnot(None),
         )
-        .scalar()
     )
     if timings is not None:
         timings["ms_research_max_week"] = (time.perf_counter() - t_q) * 1000
@@ -249,13 +248,15 @@ def _load_ownership_and_meta(
 
     t_rows = time.perf_counter()
     rows = (
-        SleeperWeeklyData.query.filter(
-            SleeperWeeklyData.season == season,
-            SleeperWeeklyData.week == int(max_week),
-            SleeperWeeklyData.league_type == research_lt,
-            SleeperWeeklyData.research_data.isnot(None),
-            SleeperWeeklyData.player_id.in_(id_list),
-        ).all()
+        db.session.execute(
+            select(SleeperWeeklyData).where(
+                SleeperWeeklyData.season == season,
+                SleeperWeeklyData.week == int(max_week),
+                SleeperWeeklyData.league_type == research_lt,
+                SleeperWeeklyData.research_data.isnot(None),
+                SleeperWeeklyData.player_id.in_(id_list),
+            )
+        ).scalars().all()
     )
     if timings is not None:
         timings["ms_research_rows"] = (time.perf_counter() - t_rows) * 1000
@@ -306,16 +307,17 @@ def _load_player_stats(
 
     t_rows = time.perf_counter()
     rows = (
-        db.session.query(NflPlayerWeekStats)
-        .filter(
-            NflPlayerWeekStats.season == season,
-            NflPlayerWeekStats.week.between(
-                SLEEPER_STATS_AGGREGATE_WEEK_MIN,
-                SLEEPER_STATS_AGGREGATE_WEEK_MAX,
-            ),
-            NflPlayerWeekStats.player_id.in_(id_list),
-        )
-        .all()
+        db.session.execute(
+            select(NflPlayerWeekStats)
+            .where(
+                NflPlayerWeekStats.season == season,
+                NflPlayerWeekStats.week.between(
+                    SLEEPER_STATS_AGGREGATE_WEEK_MIN,
+                    SLEEPER_STATS_AGGREGATE_WEEK_MAX,
+                ),
+                NflPlayerWeekStats.player_id.in_(id_list),
+            )
+        ).scalars().all()
     )
     if timings is not None:
         timings["ms_player_stats"] = (time.perf_counter() - t_rows) * 1000

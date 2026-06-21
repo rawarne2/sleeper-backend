@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, Query
 from fastapi.responses import Response
+from sqlalchemy import func, select
 
 from cache.redis_players_all import (
     redis_get_players_all_bytes,
@@ -55,7 +56,9 @@ def _resolve_scoring_settings(league_id: str | None, tep: str) -> Dict[str, Any]
     """Scoring used to compute universe points for the selected league + TEP override."""
     scoring_settings: Dict[str, Any] = {}
     if league_id:
-        lg = SleeperLeague.query.filter_by(league_id=str(league_id)).first()
+        lg = db.session.execute(
+            select(SleeperLeague).filter_by(league_id=str(league_id))
+        ).scalars().first()
         if lg is not None:
             raw = getattr(lg, "scoring_settings", None) or {}
             scoring_settings = json.loads(raw) if isinstance(raw, str) else dict(raw)
@@ -76,10 +79,14 @@ def _fc_config_key(league_id: str | None, league_format: str) -> str | None:
     (config-agnostic latest) when no league is selected or it is not yet persisted."""
     if not league_id:
         return None
-    lg = SleeperLeague.query.filter_by(league_id=str(league_id)).first()
+    lg = db.session.execute(
+        select(SleeperLeague).filter_by(league_id=str(league_id))
+    ).scalars().first()
     if lg is None:
         return None
-    num_teams = SleeperRoster.query.filter_by(league_id=str(league_id)).count() or 12
+    num_teams = db.session.scalar(
+        select(func.count()).select_from(SleeperRoster).filter_by(league_id=str(league_id))
+    ) or 12
     num_qbs = 2 if league_format == "superflex" else 1
     raw = getattr(lg, "scoring_settings", None) or {}
     scoring = json.loads(raw) if isinstance(raw, str) else dict(raw)
@@ -151,14 +158,15 @@ def get_all_players(
     )
     ktc_rows_by_id: Dict[int, Any] = {}
     for row in (
-        db.session.query(ktc_model)
-        .filter_by(is_redraft=is_redraft)
-        .order_by(ktc_model.id)
-        .all()
+        db.session.execute(
+            select(ktc_model)
+            .filter_by(is_redraft=is_redraft)
+            .order_by(ktc_model.id)
+        ).scalars().all()
     ):
         ktc_rows_by_id.setdefault(row.player_id, row)
 
-    players: List[Player] = db.session.query(Player).all()
+    players: List[Player] = db.session.execute(select(Player)).scalars().all()
 
     out: List[Dict[str, Any]] = []
     for player in players:

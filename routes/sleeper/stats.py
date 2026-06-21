@@ -2,9 +2,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from managers.database_manager import DatabaseManager
 from models.entities import SleeperLeague, SleeperLeagueStats
+from models.extensions import db
 from services.daily_refresh import refresh_weekly_stats_for_league
 from utils.datetime_serialization import utc_now_rfc3339
 from utils.helpers import setup_logging
@@ -34,7 +36,7 @@ def seed_league_stats(league_id: str, body: Optional[StatsSeedBody] = None):
     league_type = data.get('league_type')
     scoring_settings = data.get('scoring_settings')
 
-    existing = SleeperLeagueStats.query.filter_by(league_id=league_id).first()
+    existing = db.session.execute(select(SleeperLeagueStats).filter_by(league_id=league_id)).scalars().first()
 
     if existing:
         league_name = league_name or existing.league_name
@@ -66,7 +68,7 @@ def seed_league_stats(league_id: str, body: Optional[StatsSeedBody] = None):
             details=result.get('error', 'Unknown error'),
         )
 
-    row = SleeperLeagueStats.query.filter_by(league_id=league_id).first()
+    row = db.session.execute(select(SleeperLeagueStats).filter_by(league_id=league_id)).scalars().first()
     start_week = (row.last_week_updated or 0) + 1 if row else 1
     weeks_to_fetch = range(start_week, 19)
 
@@ -80,7 +82,7 @@ def seed_league_stats(league_id: str, body: Optional[StatsSeedBody] = None):
             league_id, season, weeks=weeks_to_fetch, league_type=league_type,
         )
 
-    refreshed_row = SleeperLeagueStats.query.filter_by(league_id=league_id).first()
+    refreshed_row = db.session.execute(select(SleeperLeagueStats).filter_by(league_id=league_id)).scalars().first()
     last_week = refreshed_row.last_week_updated if refreshed_row else 0
 
     return {
@@ -152,12 +154,12 @@ def refresh_weekly_stats(
         raise ApiError('week must be between 1 and 18', 400)
 
     if not season or not league_type:
-        existing = SleeperLeagueStats.query.filter_by(league_id=league_id).first()
+        existing = db.session.execute(select(SleeperLeagueStats).filter_by(league_id=league_id)).scalars().first()
         if existing:
             season = season or existing.season
             league_type = league_type or existing.league_type or 'dynasty'
         else:
-            league_row = SleeperLeague.query.filter_by(league_id=league_id).first()
+            league_row = db.session.execute(select(SleeperLeague).filter_by(league_id=league_id)).scalars().first()
             season = season or (str(league_row.season) if league_row and league_row.season else None)
             league_type = league_type or 'dynasty'
 
@@ -198,7 +200,7 @@ def refresh_weekly_stats(
             details='No player scoring records found in matchup data',
         )
 
-    refreshed_row = SleeperLeagueStats.query.filter_by(league_id=league_id).first()
+    refreshed_row = db.session.execute(select(SleeperLeagueStats).filter_by(league_id=league_id)).scalars().first()
     last_week = refreshed_row.last_week_updated if refreshed_row else None
 
     return {
