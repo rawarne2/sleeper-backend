@@ -1,7 +1,12 @@
 # services/valuations/sources/ktc.py
 from __future__ import annotations
 from datetime import datetime, UTC
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from models.entities import Player, PlayerKTCSuperflexValues, PlayerKTCOneQBValues
+from models.extensions import db
 from services.valuations.base import ValuationSource, SourceMeta, ValuationRow
 
 
@@ -17,14 +22,17 @@ class KtcSource(ValuationSource):
         attribution_url="https://keeptradecut.com/",
     )
 
-    def fetch(self, *, season, league_format, league_settings) -> list[ValuationRow]:
+    def fetch(self, *, season, league_format, league_settings, session: Session | None = None) -> list[ValuationRow]:
+        session = session or db.session
         model = PlayerKTCSuperflexValues if league_format == "superflex" else PlayerKTCOneQBValues
         now = datetime.now(UTC)
         rows: list[ValuationRow] = []
-        q = (model.query.filter_by(is_redraft=False)
-             .join(Player, Player.id == model.player_id)
-             .add_entity(Player))
-        for vals, player in q.all():
+        pairs = session.execute(
+            select(model, Player)
+            .filter_by(is_redraft=False)
+            .join(Player, Player.id == model.player_id)
+        ).all()
+        for vals, player in pairs:
             if vals.value is None:
                 continue
             rows.append(ValuationRow(

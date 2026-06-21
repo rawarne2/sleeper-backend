@@ -3,6 +3,8 @@ import logging
 from datetime import datetime, UTC
 from typing import Any, Dict
 
+from sqlalchemy import select
+
 from utils.datetime_serialization import format_instant_rfc3339_utc
 from utils.constants import (
     PLAYER_NAME_KEY,
@@ -138,12 +140,11 @@ class Player(db.Model):
             return None
         sess = object_session(self)
         if sess is not None:
-            return (
-                sess.query(PlayerKTCOneQBValues)
+            return sess.execute(
+                select(PlayerKTCOneQBValues)
                 .filter_by(player_id=self.id, is_redraft=is_redraft)
                 .order_by(PlayerKTCOneQBValues.id)
-                .first()
-            )
+            ).scalars().first()
         for row in self.oneqb_values or []:
             if bool(row.is_redraft) == bool(is_redraft):
                 return row
@@ -157,12 +158,11 @@ class Player(db.Model):
             return None
         sess = object_session(self)
         if sess is not None:
-            return (
-                sess.query(PlayerKTCSuperflexValues)
+            return sess.execute(
+                select(PlayerKTCSuperflexValues)
                 .filter_by(player_id=self.id, is_redraft=is_redraft)
                 .order_by(PlayerKTCSuperflexValues.id)
-                .first()
-            )
+            ).scalars().first()
         for row in self.superflex_values or []:
             if bool(row.is_redraft) == bool(is_redraft):
                 return row

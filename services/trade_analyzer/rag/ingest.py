@@ -4,7 +4,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from models.entities import TradeFeedback
+from models.extensions import db
 from services.trade_analyzer.prompt import SYSTEM_PROMPT
 from services.trade_analyzer.rag.chunking import chunk_system_prompt
 from services.trade_analyzer.rag.embeddings.registry import get_embedding_provider
@@ -57,13 +61,13 @@ def ingest_feedback_row(row: TradeFeedback | dict[str, Any]) -> None:
         logger.warning("rag feedback ingest failed for %s", getattr(row, "id", row), exc_info=True)
 
 
-def backfill_feedback() -> int:
-    rows = (
-        TradeFeedback.query
-        .filter(TradeFeedback.context_available.is_(True))
-        .filter(TradeFeedback.agree_winner != "skipped")
-        .all()
-    )
+def backfill_feedback(session: Session | None = None) -> int:
+    session = session or db.session
+    rows = session.execute(
+        select(TradeFeedback)
+        .where(TradeFeedback.context_available.is_(True))
+        .where(TradeFeedback.agree_winner != "skipped")
+    ).scalars().all()
     count = 0
     for row in rows:
         ingest_feedback_row(row)

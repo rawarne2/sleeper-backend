@@ -8,6 +8,7 @@ from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.orm import Session
 
 from models.extensions import db
 
@@ -18,15 +19,21 @@ def _vector_literal(values: list[float]) -> str:
     return "[" + ",".join(f"{v:.8f}" for v in values) + "]"
 
 
-def delete_corpus(corpus: str) -> None:
-    db.session.execute(
+def delete_corpus(corpus: str, session: Session | None = None) -> None:
+    session = session or db.session
+    session.execute(
         text("DELETE FROM rag_documents WHERE corpus = :corpus"),
         {"corpus": corpus},
     )
-    db.session.commit()
+    session.commit()
 
 
-def upsert_documents(docs: list[dict[str, Any]], embeddings: list[list[float]]) -> int:
+def upsert_documents(
+    docs: list[dict[str, Any]],
+    embeddings: list[list[float]],
+    session: Session | None = None,
+) -> int:
+    session = session or db.session
     if len(docs) != len(embeddings):
         raise ValueError("docs and embeddings length mismatch")
     if not docs:
@@ -36,7 +43,7 @@ def upsert_documents(docs: list[dict[str, Any]], embeddings: list[list[float]]) 
     for doc, embedding in zip(docs, embeddings):
         if len(embedding) != _EMBEDDING_DIM:
             raise ValueError(f"expected {_EMBEDDING_DIM}-dim embedding, got {len(embedding)}")
-        db.session.execute(
+        session.execute(
             text(
                 """
                 INSERT INTO rag_documents (id, corpus, source_id, content, metadata, embedding, created_at)
@@ -58,7 +65,7 @@ def upsert_documents(docs: list[dict[str, Any]], embeddings: list[list[float]]) 
                 "created_at": now,
             },
         )
-    db.session.commit()
+    session.commit()
     return len(docs)
 
 
@@ -67,12 +74,14 @@ def search_similar(
     *,
     top_k: int,
     min_score: float,
+    session: Session | None = None,
 ) -> list[dict[str, Any]]:
+    session = session or db.session
     if len(query_embedding) != _EMBEDDING_DIM:
         raise ValueError(f"expected {_EMBEDDING_DIM}-dim query embedding")
 
     try:
-        rows = db.session.execute(
+        rows = session.execute(
             text(
                 """
                 SELECT corpus, source_id, content, metadata,
@@ -88,7 +97,7 @@ def search_similar(
             },
         ).mappings().all()
     except ProgrammingError:
-        db.session.rollback()
+        session.rollback()
         return []
 
     hits: list[dict[str, Any]] = []

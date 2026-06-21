@@ -3,7 +3,11 @@ from __future__ import annotations
 
 import re
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from models.entities import Player
+from models.extensions import db
 from utils.constants import SLEEPER_POSITION_RDP
 
 
@@ -72,16 +76,17 @@ def resolve_pick_to_ktc(
     league_format: str,
     tep_level: str | None,
     is_redraft: bool = False,
+    session: Session | None = None,
 ) -> tuple[Player, int | None] | None:
     """Return (Player row, ktc_value) or None when no KTC RDP row matches."""
+    session = session or db.session
     parsed = parse_pick_id(pick_id)
     for name in _candidate_names(parsed):
-        row = (
-            Player.query
-            .filter(Player.position == SLEEPER_POSITION_RDP)
-            .filter(Player.player_name == name)
-            .first()
-        )
+        row = session.execute(
+            select(Player)
+            .where(Player.position == SLEEPER_POSITION_RDP)
+            .where(Player.player_name == name)
+        ).scalars().first()
         if row is not None:
             return row, _ktc_value(
                 row, league_format, tep_level, is_redraft=is_redraft)
