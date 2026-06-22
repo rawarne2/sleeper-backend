@@ -54,7 +54,7 @@ def default_model_for(provider: str) -> str:
 
     env_key = f"TRADE_ANALYZER_{provider.upper()}_MODEL"
     fallback = {
-        "ollama": "qwen2.5:14b-instruct",
+        "ollama": "qwen2.5:14b-instruct-q4_K_M",
         "anthropic": "claude-sonnet-4-6",
         "gemini": "gemini-2.5-flash",
         "groq": "llama-3.3-70b-versatile",

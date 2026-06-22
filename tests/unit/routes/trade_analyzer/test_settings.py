@@ -83,8 +83,6 @@ def test_environment_provider_error_explicit_anthropic_rejected(prod_env):
     assert environment_provider_error("anthropic") is not None
 
 
-def test_ollama_models_include_llama_dev_default(dev_env):
-    from services.trade_analyzer.policy import models_for_provider_listing
-
-    models = models_for_provider_listing("ollama", available=True, instance=None)
-    assert "llama3.1:8b" in models
+# Ollama model resolution (env-driven, no hardcoded default) is covered by
+# tests/unit/services/trade_analyzer/test_policy.py::
+# test_models_for_provider_listing_ollama_env_only.

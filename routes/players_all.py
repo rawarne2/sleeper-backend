@@ -22,8 +22,10 @@ from models.extensions import db
 from routes.dashboard_league import (
     _attach_research_latest,
     _attach_stats,
+    _attach_stats_prev,
     _load_ownership_and_meta,
     _load_player_stats,
+    _load_prev_season_stats,
     _player_to_dashboard_dict,
     _research_league_type_label,
 )
@@ -177,8 +179,10 @@ def get_all_players():
         research_lt = _research_league_type_label(is_redraft)
         all_ids = {d["sleeper_player_id"] for d in out if d.get("sleeper_player_id")}
         stats_by_pid = _load_player_stats(season_param, scoring_settings, all_ids)
+        prev_stats_by_pid = _load_prev_season_stats(season_param, scoring_settings, all_ids)
         ownership, research_meta = _load_ownership_and_meta(season_param, research_lt, all_ids)
         _attach_stats(out, stats_by_pid)
+        _attach_stats_prev(out, prev_stats_by_pid)
         _attach_research_latest(out, ownership, research_meta)
 
     payload = {
