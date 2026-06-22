@@ -42,11 +42,11 @@ def effective_default_provider() -> str:
 
 
 # Dev UI selectable models when TRADE_ANALYZER_{PROVIDER}_MODELS is unset.
+# Ollama is env-only (TRADE_ANALYZER_OLLAMA_MODEL / _OLLAMA_MODELS) — never `ollama list`.
 _STATIC_SELECTABLE_MODELS: dict[str, tuple[str, ...]] = {
     "anthropic": ("claude-sonnet-4-6", "claude-haiku-4-5"),
     "gemini": ("gemini-2.5-flash", "gemini-2.0-flash"),
     "echo": ("echo",),
-    "ollama": ("qwen2.5:14b-instruct", "llama3.1:8b"),
 }
 
 
@@ -84,18 +84,7 @@ def models_for_provider_listing(
     if env_raw:
         raw_models = [m.strip() for m in env_raw.split(",") if m.strip()]
     elif provider == "ollama":
-        if instance is None:
-            try:
-                instance = get_provider("ollama")
-            except Exception:
-                instance = None
-        list_fn = getattr(instance, "list_models",
-                          None) if instance is not None else None
-        discovered = list(list_fn()) if callable(list_fn) else []
-        raw_models = list(_STATIC_SELECTABLE_MODELS.get("ollama", ()))
-        for name in discovered:
-            if name not in raw_models:
-                raw_models.append(name)
+        raw_models = [default] if default else []
     else:
         raw_models = list(_STATIC_SELECTABLE_MODELS.get(provider, ()))
 
