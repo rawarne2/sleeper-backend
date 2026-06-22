@@ -8,9 +8,11 @@ from managers.database_manager import DatabaseManager
 from routes.dashboard_league import (
     _attach_research_latest,
     _attach_stats,
+    _attach_stats_prev,
     _fc_config_key,
     _ktc_players_for_roster,
     _load_ownership_and_meta,
+    _load_prev_season_stats,
     _research_league_type_label,
     _roster_player_ids,
 )
@@ -62,7 +64,9 @@ def load_league_bundle(
     stats_by_pid = load_stats_with_trajectory(
         season, research_lt, needed, max_week=max_week, scoring_settings=scoring_settings
     )
+    prev_stats_by_pid = _load_prev_season_stats(season, scoring_settings, needed)
     players = _attach_stats(players, stats_by_pid)
+    players = _attach_stats_prev(players, prev_stats_by_pid)
     players = _attach_research_latest(players, ownership, research_meta)
 
     rosters = db_league.get("rosters") or []

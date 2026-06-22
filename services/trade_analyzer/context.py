@@ -279,6 +279,7 @@ def _player_trade(
     _put_if_populated(out, "trajectory", stats.get("trajectory"))
     _put_if_populated(out, "games_played", stats.get("games_played"))
     _put_if_populated(out, "avg_points", stats.get("average_points"))
+    _put_if_populated(out, "stats_prev", player.get("stats_prev"))
     _put_if_populated(out, "usage", player.get("usage"))
     _put_if_populated(out, "market_owned_pct", own.get("owned"))
     _put_if_populated(out, "market_started_pct", own.get("started"))

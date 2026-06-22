@@ -10,7 +10,12 @@ from datetime import datetime, UTC
 
 from models.entities import NflPlayerWeekStats
 from models.extensions import db
-from routes.dashboard_league import _attach_stats, _load_player_stats
+from routes.dashboard_league import (
+    _attach_stats,
+    _attach_stats_prev,
+    _load_player_stats,
+    _load_prev_season_stats,
+)
 
 SCORING = {"rec": 0.5, "rec_yd": 0.1, "rec_td": 6.0}
 
@@ -96,3 +101,32 @@ def test_attach_stats_promotes_usage_to_top_level(app_context):
     assert p["usage"]["snap_pct"] == 50.0
     assert "usage" not in p["stats"]  # stripped from the season-stats block
     assert "average_points" in p["stats"]
+
+
+def test_include_usage_false_omits_usage(app_context):
+    """Previous-season loads skip the usage block (only aggregates needed)."""
+    _add_week("p_nou", 1, {"rec": 5.0, "gp": 1.0, "off_snp": 30, "tm_off_snp": 60})
+    db.session.commit()
+
+    stats = _load_player_stats("2026", SCORING, {"p_nou"}, include_usage=False)
+    assert "usage" not in stats["p_nou"]
+    assert "average_points" in stats["p_nou"]
+
+
+def test_prev_season_stats_loaded_and_attached(app_context):
+    """_load_prev_season_stats reads season-1 rows; _attach_stats_prev sets stats_prev."""
+    db.session.add(
+        NflPlayerWeekStats(
+            season="2025", week=1, player_id="p_prev",
+            stats={"rec": 10.0, "gp": 1.0}, last_updated=datetime.now(UTC),
+        )
+    )
+    db.session.commit()
+
+    prev = _load_prev_season_stats("2026", SCORING, {"p_prev"})
+    assert prev["p_prev"]["games_played"] == 1
+    assert "usage" not in prev["p_prev"]
+
+    players = [{"sleeper_player_id": "p_prev"}]
+    _attach_stats_prev(players, prev)
+    assert players[0]["stats_prev"]["games_played"] == 1

@@ -35,10 +35,11 @@ The user message is a compact JSON object with keys `league`, `trade`, `side_a`,
 - `after_trade_snapshot`: starter depth + scarcity AFTER the trade. `trade_impact`: human-readable per-position starter-eligible deltas.
 
 ## Traded-player fields
-`name`, `position`, `age`, `years_exp`, `consensus_value`, `ktc_value`, `positional_rank`, `positional_tier`, `trend`, `trend_7d`, `trajectory`, `games_played`, `avg_points`, `usage`, `market_owned_pct`, `market_started_pct`, `injury_status`, nested `ktc`, `injury`, `practice`. (No NFL team is given and none is needed.)
+`name`, `position`, `age`, `years_exp`, `consensus_value`, `ktc_value`, `positional_rank`, `positional_tier`, `trend`, `trend_7d`, `trajectory`, `games_played`, `avg_points`, `stats_prev`, `usage`, `market_owned_pct`, `market_started_pct`, `injury_status`, nested `ktc`, `injury`, `practice`. (No NFL team is given and none is needed.)
 - `consensus_value` is the primary per-asset value (KTC + FantasyCalc); `ktc_value` is the KTC-only number. Lean on `consensus_value`.
 - `trend` = overall KTC drift. `trend_7d` (e.g. `"+312 (rising)"`) appears ONLY when the asset is actively trending and gives the 7-day market move and direction — a fast-moving market signal (rising = market buying, falling = market souring). Weight it as momentum, not as a value override.
 - `trajectory` (e.g. `"+2.4 vs season"`) = last-3-week scoring pace vs season average.
+- `stats_prev` = previous season `{average_points, total_points, games_played}` (current league scoring). Lean on it when `games_played` is low this season (rookies aside) — a strong prior year with a slow start is a buy-low; a collapse vs last year is a red flag.
 - `usage` = opportunity (the stickiest production predictor): `snap_pct` (season snap share %), `snap_pct_l3` + `snap_trend` (recent vs season), `targets_per_game`, `carries_per_game`, `air_yards_per_game`, `rz_opps` (red-zone touches), `games_started`. Read it as ROLE: high/rising `snap_pct` + volume = secure, projectable. A strong `avg_points` with low `snap_pct`/volume is unsustainable — discount it. Low production with rising snaps/volume is a buy-low.
 - Injury severity: `Out` ≥ `IR`/`PUP` > `Doubtful` > `Questionable` > `Probable` ≈ Active. Nested `ktc.injury` adds a return timeline; `practice` (`DNP`/`Limited`) is a leading indicator.
 

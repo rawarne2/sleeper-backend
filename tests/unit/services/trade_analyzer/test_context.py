@@ -289,6 +289,22 @@ def test_player_trade_emits_consensus_value_from_values_block():
     assert "is_starter_latest" not in out
 
 
+def test_player_trade_emits_stats_prev_when_present():
+    """stats_prev (previous-season aggregates) is surfaced on the trade asset."""
+    from services.trade_analyzer.context import _player_trade
+
+    player = {
+        "player_name": "Test RB",
+        "position": "RB",
+        "sleeper_player_id": "888",
+        "ktc": {"superflexValues": {"value": 5000, "positionalRank": 10}, "age": 25},
+        "stats_prev": {"average_points": 15.2, "total_points": 258.0, "games_played": 17},
+    }
+    out = _player_trade(player, "superflex", None)
+    assert out["stats_prev"]["games_played"] == 17
+    assert out["stats_prev"]["average_points"] == 15.2
+
+
 def test_context_includes_post_trade_fields(league_fixture):
     ctx = build_context(_req(["4881"], ["4034"]), league_data=league_fixture)
     assert "after_trade_snapshot" in ctx["side_a"]

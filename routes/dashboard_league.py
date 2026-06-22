@@ -287,6 +287,7 @@ def _load_player_stats(
     player_ids: Set[str],
     *,
     timings: Dict[str, float] | None = None,
+    include_usage: bool = True,
 ) -> Dict[str, Dict[str, Any]]:
     """Compute league-accurate season points from raw Sleeper weekly stat lines.
 
@@ -325,13 +326,15 @@ def _load_player_stats(
 
     # Opportunity/usage metrics from the same raw rows (one scan feeds both the
     # dashboard bundle and the trade analyzer). See services.scoring.usage.
-    weeks_by_player: Dict[str, List[Tuple[int, Dict[str, Any]]]] = defaultdict(list)
-    for r in rows:
-        weeks_by_player[str(r.player_id)].append((int(r.week), r.stats or {}))
-    for pid, block in result.items():
-        usage = season_usage(sorted(weeks_by_player.get(pid, [])))
-        if usage:
-            block["usage"] = usage
+    # Skipped for previous-season loads (stats_prev), which only need the aggregates.
+    if include_usage:
+        weeks_by_player: Dict[str, List[Tuple[int, Dict[str, Any]]]] = defaultdict(list)
+        for r in rows:
+            weeks_by_player[str(r.player_id)].append((int(r.week), r.stats or {}))
+        for pid, block in result.items():
+            usage = season_usage(sorted(weeks_by_player.get(pid, [])))
+            if usage:
+                block["usage"] = usage
 
     return result
 
@@ -397,6 +400,43 @@ def _attach_stats(
                 p["usage"] = block.pop("usage")
             p["stats"] = block
     return players_slim
+
+
+def _prev_season(season: str | None) -> str | None:
+    """Previous season string, e.g. ``"2026" -> "2025"``."""
+    try:
+        return str(int(season) - 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def _attach_stats_prev(
+    players_slim: List[Dict[str, Any]],
+    prev_by_pid: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Attach previous-season ``stats_prev`` aggregates (no usage) per player."""
+    for p in players_slim:
+        pid = p.get("sleeper_player_id")
+        if pid and pid in prev_by_pid:
+            p["stats_prev"] = prev_by_pid[pid]
+    return players_slim
+
+
+def _load_prev_season_stats(
+    season: str | None,
+    scoring_settings: Dict[str, Any],
+    player_ids: Set[str],
+) -> Dict[str, Dict[str, Any]]:
+    """Previous-season ``{average_points, total_points, games_played}`` per player.
+
+    Uses the same league-accurate scoring path as the current season but skips the
+    usage block (not needed for the prior-year summary). Returns ``{}`` when the
+    prior season has no ingested ``NflPlayerWeekStats`` rows.
+    """
+    prev = _prev_season(season)
+    if prev is None:
+        return {}
+    return _load_player_stats(prev, scoring_settings, player_ids, include_usage=False)
 
 
 def _fc_config_key(
@@ -575,17 +615,24 @@ def get_dashboard_league(league_id: str):
                 season, scoring_settings, needed_ids, timings=own_timings
             )
 
+    def _run_prev_stats():
+        with flask_app.app_context():
+            return _load_prev_season_stats(season, scoring_settings, needed_ids)
+
     t_parallel = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    with ThreadPoolExecutor(max_workers=4) as pool:
         f_players = pool.submit(_run_players)
         f_ownership = pool.submit(_run_ownership)
         f_stats = pool.submit(_run_stats)
+        f_prev_stats = pool.submit(_run_prev_stats)
         players, ktc_last_updated = f_players.result()
         ownership, research_meta = f_ownership.result()
         player_stats = f_stats.result()
+        prev_stats = f_prev_stats.result()
     ms_parallel = (time.perf_counter() - t_parallel) * 1000
 
     players = _attach_stats(players, player_stats)
+    players = _attach_stats_prev(players, prev_stats)
     players = _attach_research_latest(players, ownership, research_meta)
 
     from managers.sleeper_picks import compute_owned_picks
