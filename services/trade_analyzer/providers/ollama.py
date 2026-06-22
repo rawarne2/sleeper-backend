@@ -65,7 +65,7 @@ def _client():
 
 class OllamaProvider(LLMProvider):
     name = "ollama"
-    default_model = "qwen2.5:14b-instruct"
+    default_model = "qwen2.5:14b-instruct-q4_K_M"
 
     def generate(self, system_prompt, user_prompt, *, model, timeout_s, **opts):
         client = _client()
