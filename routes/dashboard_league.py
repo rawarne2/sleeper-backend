@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, UTC
 from typing import Any, Dict, List, Set, Tuple
@@ -26,6 +27,7 @@ from utils.constants import (
     SLEEPER_STATS_AGGREGATE_WEEK_MIN,
 )
 from services.scoring.engine import season_points_for_players
+from services.scoring.usage import season_usage
 from services.valuations.latest import latest_player_values
 from utils.datetime_serialization import format_instant_rfc3339_utc
 from utils.helpers import validate_parameters
@@ -164,7 +166,7 @@ def _player_to_dashboard_dict(
     }
 
     vmap = values_by_player_id or {}
-    result["values"] = vmap.get(player.id) or {"blended": None, "sources": {}, "projection": {}}
+    result["values"] = vmap.get(player.id) or {"consensus": None, "sources": {}, "projection": {}}
     return result
 
 
@@ -319,7 +321,19 @@ def _load_player_stats(
     if timings is not None:
         timings["ms_player_stats"] = (time.perf_counter() - t_rows) * 1000
 
-    return season_points_for_players(scoring_settings or {}, rows)
+    result = season_points_for_players(scoring_settings or {}, rows)
+
+    # Opportunity/usage metrics from the same raw rows (one scan feeds both the
+    # dashboard bundle and the trade analyzer). See services.scoring.usage.
+    weeks_by_player: Dict[str, List[Tuple[int, Dict[str, Any]]]] = defaultdict(list)
+    for r in rows:
+        weeks_by_player[str(r.player_id)].append((int(r.week), r.stats or {}))
+    for pid, block in result.items():
+        usage = season_usage(sorted(weeks_by_player.get(pid, [])))
+        if usage:
+            block["usage"] = usage
+
+    return result
 
 
 def _ktc_players_for_roster(
@@ -369,12 +383,35 @@ def _attach_stats(
     players_slim: List[Dict[str, Any]],
     stats_by_pid: Dict[str, Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """Merge per-player season stats into the already-slim payload."""
+    """Merge per-player season stats into the already-slim payload.
+
+    ``usage`` is surfaced as a top-level player attribute (not part of the
+    season-points ``stats`` block) so both the dashboard bundle and the trade
+    analyzer read it from the same place.
+    """
     for p in players_slim:
         pid = p.get("sleeper_player_id")
         if pid and pid in stats_by_pid:
-            p["stats"] = stats_by_pid[pid]
+            block = stats_by_pid[pid]
+            if isinstance(block, dict) and "usage" in block:
+                p["usage"] = block.pop("usage")
+            p["stats"] = block
     return players_slim
+
+
+def _fc_config_key(
+    league_format: str,
+    rosters: List[Dict[str, Any]] | None,
+    scoring_settings: Dict[str, Any] | None,
+) -> str:
+    """FantasyCalc snapshot key ``"{teams}-{num_qbs}-{ppr}"`` for this league.
+
+    FantasyCalc values vary by PPR and team count; KTC/sleeper_proj ignore it.
+    """
+    num_qbs = 2 if league_format == "superflex" else 1
+    num_teams = len(rosters or []) or 12
+    league_rec = float((scoring_settings or {}).get("rec", 0.5) or 0.5)
+    return f"{num_teams}-{num_qbs}-{league_rec}"
 
 
 def _attach_research_latest(
@@ -506,13 +543,11 @@ def get_dashboard_league(league_id: str):
     raw_scoring = (db_league.get("league") or {}).get("scoring_settings") or {}
     scoring_settings = json.loads(raw_scoring) if isinstance(raw_scoring, str) else raw_scoring
 
-    # FantasyCalc values vary by this league's PPR and team count; KTC/sleeper_proj
-    # ignore config_key. num_teams is derived from the loaded rosters (no total_rosters
-    # column on SleeperLeague).
-    num_qbs = 2 if league_format == "superflex" else 1
-    num_teams = len(db_league.get("rosters") or []) or 12
-    league_rec = float((scoring_settings or {}).get("rec", 0.5) or 0.5)
-    fc_config_key = f"{num_teams}-{num_qbs}-{league_rec}"
+    # num_teams is derived from the loaded rosters (no total_rosters column on
+    # SleeperLeague).
+    fc_config_key = _fc_config_key(
+        league_format, db_league.get("rosters"), scoring_settings
+    )
     player_values = latest_player_values(league_format, fc_config_key=fc_config_key)
 
     own_timings: Dict[str, float] = {}
@@ -574,9 +609,9 @@ def get_dashboard_league(league_id: str):
             except PickIdError:
                 pass
             pick_values_block = (
-                {"blended": float(ktc_value), "sources": {"ktc": {"value": float(ktc_value)}}, "projection": {}}
+                {"consensus": float(ktc_value), "sources": {"ktc": {"value": float(ktc_value)}}, "projection": {}}
                 if ktc_value is not None
-                else {"blended": None, "sources": {}, "projection": {}}
+                else {"consensus": None, "sources": {}, "projection": {}}
             )
             out.append({**p, "ktc_value": ktc_value, "values": pick_values_block})
         picks_by_roster[str(rid)] = out

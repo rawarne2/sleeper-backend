@@ -271,6 +271,24 @@ def test_context_omits_additional_context_in_json(league_fixture):
     assert "additional_context" not in ctx
 
 
+def test_player_trade_emits_consensus_value_from_values_block():
+    """consensus_value comes from values.consensus; ktc_value stays the KTC number."""
+    from services.trade_analyzer.context import _player_trade
+
+    player = {
+        "player_name": "Test WR",
+        "position": "WR",
+        "sleeper_player_id": "999",
+        "ktc": {"superflexValues": {"value": 7000, "positionalRank": 5}, "age": 24},
+        "values": {"consensus": 7250.0, "sources": {}, "projection": {}},
+    }
+    out = _player_trade(player, "superflex", None)
+    assert out["consensus_value"] == 7250.0
+    assert out["ktc_value"] == 7000
+    assert "team" not in out
+    assert "is_starter_latest" not in out
+
+
 def test_context_includes_post_trade_fields(league_fixture):
     ctx = build_context(_req(["4881"], ["4034"]), league_data=league_fixture)
     assert "after_trade_snapshot" in ctx["side_a"]

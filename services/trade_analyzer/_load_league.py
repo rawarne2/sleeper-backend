@@ -8,12 +8,14 @@ from managers.database_manager import DatabaseManager
 from routes.dashboard_league import (
     _attach_research_latest,
     _attach_stats,
+    _fc_config_key,
     _ktc_players_for_roster,
     _load_ownership_and_meta,
     _research_league_type_label,
     _roster_player_ids,
 )
 from services.trade_analyzer.player_stats import load_stats_with_trajectory
+from services.valuations.latest import latest_player_values
 
 
 class LeagueNotFound(LookupError):
@@ -37,8 +39,15 @@ def load_league_bundle(
     scoring_settings = json.loads(raw_scoring) if isinstance(raw_scoring, str) else raw_scoring
 
     needed: Set[str] = _roster_player_ids(db_league)
+    # Load FantasyCalc + KTC consensus values so each player carries
+    # values.consensus (the trade analyzer anchors on consensus, not raw KTC).
+    fc_config_key = _fc_config_key(
+        league_format, db_league.get("rosters"), scoring_settings
+    )
+    player_values = latest_player_values(league_format, fc_config_key=fc_config_key)
     players, _ts = _ktc_players_for_roster(
-        league_format, tep_level or "", needed, is_redraft
+        league_format, tep_level or "", needed, is_redraft,
+        values_by_player_id=player_values,
     )
 
     research_lt = _research_league_type_label(is_redraft)

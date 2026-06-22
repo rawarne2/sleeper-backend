@@ -27,4 +27,4 @@ def test_player_payload_includes_values_block(app_context):
     assert "values" in out
     assert out["values"]["sources"]["ktc"]["value"] == 8200.0
     assert out["values"]["sources"]["fantasycalc"]["value"] == 7900.0
-    assert out["values"]["blended"] is not None
+    assert out["values"]["consensus"] is not None

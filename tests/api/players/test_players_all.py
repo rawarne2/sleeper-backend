@@ -105,8 +105,8 @@ class TestPlayersAll:
         assert "ktc" in player
         assert "values" in player
 
-    def test_player_values_block_has_blended_and_sources(self, client):
-        """Each player's values block has blended and sources with ktc/fantasycalc."""
+    def test_player_values_block_has_consensus_and_sources(self, client):
+        """Each player's values block has consensus and sources with ktc/fantasycalc."""
         p = _seed_player("CeeDee Lamb", "WR", "6845", "ceeDee-WR")
         _seed_superflex_values(p.id, 8200, 2)
         _seed_value_snapshot(p.id, "ktc", "superflex", 8200, 2)
@@ -118,7 +118,7 @@ class TestPlayersAll:
         player = next((pl for pl in players if pl.get("sleeper_player_id") == "6845"), None)
         assert player is not None
 
-        assert player["values"]["blended"] is not None
+        assert player["values"]["consensus"] is not None
         assert "ktc" in player["values"]["sources"]
         assert player["values"]["sources"]["ktc"]["value"] == 8200.0
         assert "fantasycalc" in player["values"]["sources"]
