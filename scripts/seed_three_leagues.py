@@ -110,6 +110,7 @@ def main() -> int:
         return 2
 
     import app  # noqa: F401,E402 - importing configures the db engine (db.configure)
+    from sqlalchemy import func, select  # noqa: E402
     from models.extensions import db, session_scope  # noqa: E402
     from managers.database_manager import DatabaseManager  # noqa: E402
     from models.entities import Player  # noqa: E402
@@ -124,7 +125,7 @@ def main() -> int:
         else:
             db.create_all()
 
-        existing_players = Player.query.count()
+        existing_players = db.session.scalar(select(func.count()).select_from(Player))
         print(f"Existing players in DB: {existing_players}")
 
         if args.skip_nfl:

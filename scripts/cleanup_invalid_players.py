@@ -66,7 +66,7 @@ def main() -> int:
     import app  # noqa: F401,E402 - importing configures the db engine (db.configure)
     from models.entities import Player  # noqa: E402
     from models.extensions import db, session_scope  # noqa: E402
-    from sqlalchemy import or_  # noqa: E402
+    from sqlalchemy import func, or_, select  # noqa: E402
     from utils.constants import SLEEPER_SEARCH_RANK_EXCLUDE  # noqa: E402
 
     invalid = or_(
@@ -83,12 +83,12 @@ def main() -> int:
             ex = SLEEPER_SEARCH_RANK_EXCLUDE
             print(
                 "  breakdown (overlapping): "
-                f"match_key NULL={Player.query.filter(Player.match_key.is_(None)).count()}, "
-                f"match_key ''={Player.query.filter(Player.match_key == '').count()}, "
-                f"search_rank=={ex}={Player.query.filter(Player.search_rank == ex).count()}"
+                f"match_key NULL={db.session.scalar(select(func.count()).select_from(Player).where(Player.match_key.is_(None)))}, "
+                f"match_key ''={db.session.scalar(select(func.count()).select_from(Player).where(Player.match_key == ''))}, "
+                f"search_rank=={ex}={db.session.scalar(select(func.count()).select_from(Player).where(Player.search_rank == ex))}"
             )
 
-        n = Player.query.filter(invalid).count()
+        n = db.session.scalar(select(func.count()).select_from(Player).where(invalid))
         print(f"Rows matching cleanup criteria: {n}")
         if n == 0:
             return 0
@@ -98,7 +98,7 @@ def main() -> int:
 
         deleted = 0
         while True:
-            batch = Player.query.filter(invalid).limit(_BATCH).all()
+            batch = db.session.execute(select(Player).where(invalid).limit(_BATCH)).scalars().all()
             if not batch:
                 break
             for row in batch:

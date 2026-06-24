@@ -13,6 +13,7 @@ Usage:
     python scripts/manual_player_merge.py
 """
 
+from sqlalchemy import select
 from data_types.normalization import normalize_name_for_matching
 from utils.helpers import create_player_match_key
 import app  # noqa: F401 - importing configures the db engine (db.configure)
@@ -180,26 +181,32 @@ class ManualPlayerMerger:
         position = position.upper()
 
         # Try exact match first
-        player = Player.query.filter_by(
-            player_name=name, position=position).first()
+        player = db.session.execute(
+            select(Player).filter_by(player_name=name, position=position)
+        ).scalars().first()
         if player:
             return player
 
         # Try match using full_name field
-        player = Player.query.filter_by(
-            full_name=name, position=position).first()
+        player = db.session.execute(
+            select(Player).filter_by(full_name=name, position=position)
+        ).scalars().first()
         if player:
             return player
 
         # Try normalized name matching
         match_key = create_player_match_key(name, position)
-        player = Player.query.filter_by(match_key=match_key).first()
+        player = db.session.execute(
+            select(Player).filter_by(match_key=match_key)
+        ).scalars().first()
         if player:
             return player
 
         # Try fuzzy matching on normalized names
         normalized_search = normalize_name_for_matching(name)
-        players = Player.query.filter_by(position=position).all()
+        players = db.session.execute(
+            select(Player).filter_by(position=position)
+        ).scalars().all()
 
         for player in players:
             # Check player_name
@@ -227,9 +234,13 @@ class ManualPlayerMerger:
         keys = _match_keys_for_pair(ktc_name, sleeper_name, pos)
         by_id: Dict[int, Player] = {}
         for mk in keys:
-            for p in Player.query.filter_by(position=pos, match_key=mk).all():
+            for p in db.session.execute(
+                select(Player).filter_by(position=pos, match_key=mk)
+            ).scalars().all():
                 by_id[p.id] = p
-        for p in Player.query.filter_by(position=pos).all():
+        for p in db.session.execute(
+            select(Player).filter_by(position=pos)
+        ).scalars().all():
             if p.id in by_id:
                 continue
             if not (p.player_name or '').strip():
@@ -245,7 +256,9 @@ class ManualPlayerMerger:
             normalize_name_for_matching(sleeper_name),
         }
         nl_targets.discard('')
-        for p in Player.query.filter_by(position=pos).all():
+        for p in db.session.execute(
+            select(Player).filter_by(position=pos)
+        ).scalars().all():
             if p.id in by_id:
                 continue
             pn = normalize_name_for_matching(p.player_name or '')
@@ -256,7 +269,9 @@ class ManualPlayerMerger:
             before = len(by_id)
             kid_set = {p.ktc_player_id for p in by_id.values() if p.ktc_player_id}
             for kid in kid_set:
-                for p in Player.query.filter_by(position=pos, ktc_player_id=kid).all():
+                for p in db.session.execute(
+                    select(Player).filter_by(position=pos, ktc_player_id=kid)
+                ).scalars().all():
                     by_id[p.id] = p
             if len(by_id) == before:
                 break
@@ -444,7 +459,9 @@ class ManualPlayerMerger:
             positions = ['QB', 'RB', 'WR', 'TE']
 
             for position in positions:
-                players = Player.query.filter_by(position=position).all()
+                players = db.session.execute(
+                    select(Player).filter_by(position=position)
+                ).scalars().all()
 
                 # Group by match_key (suffix-stripped, same as merge pipeline)
                 name_groups = {}

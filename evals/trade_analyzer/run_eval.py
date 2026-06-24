@@ -44,15 +44,19 @@ def run_feedback_eval() -> Dict[str, Any]:
     from sqlalchemy.exc import ProgrammingError
 
     import app  # noqa: F401 - importing configures the db engine (db.configure)
+    from sqlalchemy import select
     from models.entities import TradeFeedback
-    from models.extensions import session_scope
+    from models.extensions import db, session_scope
 
     with session_scope():
         try:
             rows = (
-                TradeFeedback.query
-                .filter(TradeFeedback.context_available.is_(True))
-                .filter(TradeFeedback.agree_winner.in_(("agree", "disagree", "unsure")))
+                db.session.execute(
+                    select(TradeFeedback)
+                    .where(TradeFeedback.context_available.is_(True))
+                    .where(TradeFeedback.agree_winner.in_(("agree", "disagree", "unsure")))
+                )
+                .scalars()
                 .all()
             )
         except ProgrammingError as exc:
