@@ -83,7 +83,7 @@ class _Db:
         factory = sessionmaker(bind=self._engine, autoflush=False,
                                autocommit=False, future=True)
         self.session = scoped_session(factory, scopefunc=_scope_id)
-        self.Model.query = self.session.query_property()
+        # Model.query is intentionally not provided; use db.session + select()
         return self._engine
 
     @property

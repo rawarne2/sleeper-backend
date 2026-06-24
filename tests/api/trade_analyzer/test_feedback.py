@@ -1,5 +1,6 @@
 from models.entities import TradeFeedback
 from models.extensions import db
+from sqlalchemy import select
 
 
 def test_feedback_persists_degraded_without_stash(client):
@@ -8,7 +9,7 @@ def test_feedback_persists_degraded_without_stash(client):
         "agree_winner": "disagree", "grade": "C", "note": "meh"})
     assert resp.status_code == 200, resp.text
     db.session.expire_all()
-    row = TradeFeedback.query.get("fid1")
+    row = db.session.get(TradeFeedback, "fid1")
     assert row.agree_winner == "disagree" and row.context_available is False
 
 
@@ -17,7 +18,7 @@ def test_feedback_skip(client):
         "analysis_id": "fid2", "client_id": "c1", "league_id": "L1", "skipped": True})
     assert resp.status_code == 200
     db.session.expire_all()
-    assert TradeFeedback.query.get("fid2").agree_winner == "skipped"
+    assert db.session.get(TradeFeedback, "fid2").agree_winner == "skipped"
 
 
 def test_feedback_400_on_missing_fields(client):

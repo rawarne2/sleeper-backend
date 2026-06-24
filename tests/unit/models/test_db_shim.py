@@ -1,6 +1,8 @@
 """The db shim must expose the Flask-SQLAlchemy surface the codebase uses."""
 import threading
 
+from sqlalchemy import func, select
+
 from models.extensions import db, session_scope
 
 
@@ -11,7 +13,7 @@ def test_db_exposes_sqlalchemy_names():
         assert hasattr(db, name), f"db.{name} missing"
 
 
-def test_model_query_and_session_roundtrip():
+def test_session_roundtrip():
     from models.entities import Player
     db.configure("sqlite:///:memory:", None)
     db.create_all()
@@ -19,8 +21,8 @@ def test_model_query_and_session_roundtrip():
         p = Player(player_name="Test Guy", position="WR")
         db.session.add(p)
         db.session.commit()
-        assert Player.query.count() == 1
-        assert Player.query.filter_by(position="WR").first().player_name == "Test Guy"
+        assert db.session.scalar(select(func.count()).select_from(Player)) == 1
+        assert db.session.execute(select(Player).filter_by(position="WR")).scalars().first().player_name == "Test Guy"
     finally:
         db.drop_all()
         db.session.remove()

@@ -4,6 +4,7 @@ from datetime import datetime, UTC
 from managers.database_manager import DatabaseManager
 from models.entities import Player, PlayerKTCSuperflexValues
 from models.extensions import db
+from sqlalchemy import select
 from utils.constants import PLAYER_NAME_KEY, POSITION_KEY, TEAM_KEY, AGE_KEY, ROOKIE_KEY
 
 
@@ -37,7 +38,7 @@ def test_ktc_merge_without_sleeper_match_preserves_sleeper_fields(app_context):
         player, ktc_only, is_redraft=False)
     db.session.commit()
 
-    refreshed = Player.query.filter_by(sleeper_player_id='4881').one()
+    refreshed = db.session.execute(select(Player).filter_by(sleeper_player_id='4881')).scalars().one()
     assert refreshed.search_rank == 12
     assert refreshed.height == "6'5\""
     assert refreshed.college == 'Wyoming'
@@ -76,7 +77,7 @@ def test_ktc_dynasty_and_redraft_values_coexist(app_context):
         player, redraft, is_redraft=True)
     db.session.commit()
 
-    rows = PlayerKTCSuperflexValues.query.filter_by(player_id=player.id).all()
+    rows = db.session.execute(select(PlayerKTCSuperflexValues).filter_by(player_id=player.id)).scalars().all()
     assert len(rows) == 2
     by_mode = {bool(r.is_redraft): r for r in rows}
     assert by_mode[False].value == 5000

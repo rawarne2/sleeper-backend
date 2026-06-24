@@ -1,5 +1,6 @@
 from models.entities import RagDocument
 from models.extensions import db
+from sqlalchemy import select
 
 
 def test_rag_document_roundtrip_sqlite(app_context):
@@ -15,6 +16,6 @@ def test_rag_document_roundtrip_sqlite(app_context):
     )
     db.session.add(row)
     db.session.commit()
-    loaded = RagDocument.query.filter_by(source_id="grading").one()
+    loaded = db.session.execute(select(RagDocument).filter_by(source_id="grading")).scalars().one()
     assert loaded.corpus == "strategy_kb"
     assert loaded.metadata_["section"] == "Grading"

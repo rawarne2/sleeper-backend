@@ -5,6 +5,7 @@ from datetime import datetime, UTC
 from managers.sleeper_picks import compute_owned_picks
 from models.entities import SleeperLeague, SleeperRoster
 from models.extensions import db
+from sqlalchemy import select
 
 
 def _seed_league(*, status="pre_draft", picks=None, roster_count=12, current_season="2026"):
@@ -70,7 +71,7 @@ def test_pick_id_canonical_format(app_context):
 
 def test_slot_buckets_12_team_thirds(app_context):
     _seed_league(status="pre_draft", roster_count=12)
-    rosters = SleeperRoster.query.filter_by(league_id="L1").all()
+    rosters = db.session.execute(select(SleeperRoster).filter_by(league_id="L1")).scalars().all()
     for r in rosters:
         s = json.loads(r.settings)
         s["fpts"] = r.roster_id

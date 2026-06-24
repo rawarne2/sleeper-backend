@@ -3,6 +3,7 @@ from datetime import datetime, UTC
 from unittest.mock import patch
 from models.entities import Player, ValueSnapshot
 from models.extensions import db
+from sqlalchemy import select
 from services.valuations.base import ValuationRow
 from scrapers.pipelines import ingest_valuations
 
@@ -31,6 +32,6 @@ def test_ingest_persists_config_key(app_context):
         ingest_valuations(["fantasycalc"], season="2026",
                           league_format="superflex", league_settings={})
 
-    snaps = ValueSnapshot.query.filter_by(source_key="fantasycalc").all()
+    snaps = db.session.execute(select(ValueSnapshot).filter_by(source_key="fantasycalc")).scalars().all()
     assert len(snaps) == 1
     assert snaps[0].config_key == "12-2-0.5"

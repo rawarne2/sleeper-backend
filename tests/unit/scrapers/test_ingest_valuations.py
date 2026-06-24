@@ -3,6 +3,7 @@ from datetime import datetime, UTC
 from unittest.mock import patch
 from models.entities import Player, ValueSnapshot, ValueSource
 from models.extensions import db
+from sqlalchemy import select
 from services.valuations.base import ValuationRow
 from scrapers.pipelines import ingest_valuations
 
@@ -35,7 +36,7 @@ def test_ingest_resolves_by_sleeper_id_and_skips_picks(app_context):
         result = ingest_valuations(["fantasycalc"], season="2026",
                                    league_format="superflex", league_settings={})
 
-    snaps = ValueSnapshot.query.filter_by(source_key="fantasycalc").all()
+    snaps = db.session.execute(select(ValueSnapshot).filter_by(source_key="fantasycalc")).scalars().all()
     assert len(snaps) == 1                 # PICK row skipped
     assert snaps[0].player_id == p.id      # resolved by sleeper_id "4984"
-    assert ValueSource.query.get("fantasycalc").last_synced_at is not None
+    assert db.session.get(ValueSource, "fantasycalc").last_synced_at is not None

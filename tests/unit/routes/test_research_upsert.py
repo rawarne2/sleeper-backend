@@ -8,6 +8,7 @@ import pytest
 
 from models.entities import SleeperWeeklyData
 from models.extensions import db
+from sqlalchemy import select
 from routes.sleeper.research import (
     _upsert_research_rows,
     research_weeks_to_persist,
@@ -41,18 +42,18 @@ def test_upsert_preserves_existing_points_when_research_arrives(app_context):
     assert counts["inserted"] == 1
     assert counts["updated"] == 1
 
-    josh = SleeperWeeklyData.query.filter_by(
+    josh = db.session.execute(select(SleeperWeeklyData).filter_by(
         season="2026", week=5, league_type="dynasty", player_id="4881"
-    ).one()
+    )).scalars().one()
     # Matchup data must survive the research upsert
     assert float(josh.points) == pytest.approx(23.4)
     assert josh.roster_id == 3
     assert josh.is_starter is True
     assert json.loads(josh.research_data) == {"owned": 88.0, "started": 72.5}
 
-    new_row = SleeperWeeklyData.query.filter_by(
+    new_row = db.session.execute(select(SleeperWeeklyData).filter_by(
         season="2026", week=5, league_type="dynasty", player_id="5500"
-    ).one()
+    )).scalars().one()
     # Inserted rows are research-only; points stays null until matchup sync runs
     assert new_row.points is None
     assert new_row.is_starter in (False, None)
@@ -72,7 +73,7 @@ def test_upsert_refreshes_research_for_existing_research_row(app_context):
     assert counts["updated"] == 1
     assert counts["inserted"] == 0
 
-    row = SleeperWeeklyData.query.filter_by(player_id="9999").one()
+    row = db.session.execute(select(SleeperWeeklyData).filter_by(player_id="9999")).scalars().one()
     assert json.loads(row.research_data) == {"owned": 7.5, "started": 0.4}
 
 

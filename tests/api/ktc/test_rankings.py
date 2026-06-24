@@ -5,8 +5,10 @@ KTC Rankings API endpoint tests.
 import time
 
 import pytest
+from sqlalchemy import select
 
 from models.entities import Player as PlayerModel
+from models.extensions import db
 import services.ktc_refresh_async as ktc_refresh_async
 
 
@@ -107,7 +109,7 @@ def test_refresh_stores_data(client):
         assert operations_summary['database_saved_count'] > 0
 
         # Verify data was stored in database
-        players = PlayerModel.query.all()
+        players = db.session.execute(select(PlayerModel)).scalars().all()
         assert len(players) > 0
     else:
         # Expected to fail in test environment due to scraping issues

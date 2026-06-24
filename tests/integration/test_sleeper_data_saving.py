@@ -9,6 +9,7 @@ from datetime import datetime, UTC
 from models.entities import Player
 from models.extensions import db
 from managers.database_manager import DatabaseManager
+from sqlalchemy import select
 
 
 def test_sleeper_data_saving_integration(app_context):
@@ -134,7 +135,7 @@ def test_sleeper_data_saving_integration(app_context):
     assert result['total_processed'] >= 0
 
     # Verify players exist in database
-    josh_allen = Player.query.filter_by(sleeper_player_id='4881').first()
+    josh_allen = db.session.execute(select(Player).filter_by(sleeper_player_id='4881')).scalars().first()
     assert josh_allen is not None
     assert josh_allen.full_name == 'Josh Allen'
     assert josh_allen.position == 'QB'
@@ -146,7 +147,7 @@ def test_sleeper_data_saving_integration(app_context):
     assert josh_allen.birth_state == 'California'
     assert josh_allen.news_updated == 1640995200000
 
-    mccaffrey = Player.query.filter_by(sleeper_player_id='4035').first()
+    mccaffrey = db.session.execute(select(Player).filter_by(sleeper_player_id='4035')).scalars().first()
     assert mccaffrey is not None
     assert mccaffrey.full_name == 'Christian McCaffrey'
     assert mccaffrey.position == 'RB'
@@ -195,11 +196,11 @@ def test_sleeper_data_merge_with_existing_ktc(app_context):
     assert result['updates_made'] == 0
 
     # Verify we now have two players (KTC original + new Sleeper record)
-    all_players = Player.query.all()
+    all_players = db.session.execute(select(Player)).scalars().all()
     assert len(all_players) == 2
 
     # Verify the new Sleeper record was created
-    sleeper_player = Player.query.filter_by(sleeper_player_id='4881').first()
+    sleeper_player = db.session.execute(select(Player).filter_by(sleeper_player_id='4881')).scalars().first()
     assert sleeper_player is not None
     assert sleeper_player.full_name == 'Josh Allen'
     assert sleeper_player.birth_date.strftime('%Y-%m-%d') == '1996-05-21'
