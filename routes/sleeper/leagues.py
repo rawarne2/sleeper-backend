@@ -131,7 +131,8 @@ def get_league_users(league_id: str):
     }
 
 
-@router.api_route("/{league_id}", methods=["POST", "PUT"], summary="Refresh/Update league data")
+@router.post("/{league_id}", operation_id="refresh_league_data_post", summary="Refresh/Update league data")
+@router.put("/{league_id}", operation_id="refresh_league_data_put", summary="Refresh/Update league data")
 def refresh_league_data(league_id: str):
     """
     Refresh all league data from Sleeper API (league info, rosters, users).

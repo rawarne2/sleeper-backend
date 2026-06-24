@@ -258,7 +258,8 @@ def get_research_data(
     }
 
 
-@router.api_route("/research/{season}", methods=["POST", "PUT"], summary="Refresh/Update research data")
+@router.post("/research/{season}", operation_id="refresh_research_post", summary="Refresh/Update research data")
+@router.put("/research/{season}", operation_id="refresh_research_put", summary="Refresh/Update research data")
 def refresh_research_data(
     season: str,
     week: str | None = Query(None),

@@ -101,7 +101,8 @@ class NightlySyncBody(BaseModel):
     skip_prewarm: bool = False
 
 
-@router.api_route("/nightly-sync", methods=["GET", "POST"], summary="Run nightly sync pipeline")
+@router.get("/nightly-sync", operation_id="nightly_sync_get", summary="Run nightly sync pipeline")
+@router.post("/nightly-sync", operation_id="nightly_sync_post", summary="Run nightly sync pipeline")
 def nightly_sync(request: Request, body: Optional[NightlySyncBody] = Body(None)):
     """
     Full ingest pipeline for scheduled jobs (Vercel Cron uses GET + CRON_SECRET).

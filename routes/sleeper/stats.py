@@ -23,8 +23,10 @@ class StatsSeedBody(BaseModel):
     scoring_settings: Optional[str] = None
 
 
-@router.api_route("/{league_id}/stats/seed", methods=["POST", "PUT"],
-                  summary="Seed league stats information")
+@router.post("/{league_id}/stats/seed", operation_id="seed_league_stats_post",
+             summary="Seed league stats information")
+@router.put("/{league_id}/stats/seed", operation_id="seed_league_stats_put",
+            summary="Seed league stats information")
 def seed_league_stats(league_id: str, body: Optional[StatsSeedBody] = None):
     """
     Seed or update league information needed for weekly stats functionality.
@@ -138,8 +140,10 @@ def get_weekly_stats(
     }
 
 
-@router.api_route("/{league_id}/stats/week/{week}", methods=["POST", "PUT"],
-                  summary="Refresh/Update weekly stats for a specific week")
+@router.post("/{league_id}/stats/week/{week}", operation_id="refresh_weekly_stats_post",
+             summary="Refresh/Update weekly stats for a specific week")
+@router.put("/{league_id}/stats/week/{week}", operation_id="refresh_weekly_stats_put",
+            summary="Refresh/Update weekly stats for a specific week")
 def refresh_weekly_stats(
     league_id: str,
     week: int,

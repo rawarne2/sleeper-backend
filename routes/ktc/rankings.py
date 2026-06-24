@@ -39,8 +39,10 @@ def _wants_sync(sync: str | None, async_: str | None) -> bool:
     return False
 
 
-@router.api_route("/refresh", methods=["POST", "PUT"],
-                  summary="Refresh/Update KTC player rankings")
+@router.post("/refresh", operation_id="refresh_rankings_post",
+             summary="Refresh/Update KTC player rankings")
+@router.put("/refresh", operation_id="refresh_rankings_put",
+            summary="Refresh/Update KTC player rankings")
 def refresh_rankings(request: Request,
                      is_redraft: str = Query("false"),
                      league_format: str = Query("1qb"),
