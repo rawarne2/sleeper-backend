@@ -65,7 +65,7 @@ def _client():
 
 class OllamaProvider(LLMProvider):
     name = "ollama"
-    default_model = "qwen2.5:14b-instruct"
+    default_model = "qwen2.5:14b-instruct-q4_K_M"
 
     def generate(self, system_prompt, user_prompt, *, model, timeout_s, **opts):
         client = _client()
@@ -89,25 +89,6 @@ class OllamaProvider(LLMProvider):
             return resp["message"]["content"]
         except (KeyError, TypeError) as exc:
             raise ProviderError(f"Unexpected Ollama response shape: {resp!r}") from exc
-
-    def list_models(self) -> list[str]:
-        """Installed Ollama model names from ``Client.list()``."""
-        try:
-            resp = _client().list()
-        except Exception:
-            return []
-        raw = resp.get("models") if isinstance(resp, dict) else getattr(resp, "models", None)
-        if not isinstance(raw, list):
-            return []
-        names: list[str] = []
-        for item in raw:
-            if isinstance(item, dict):
-                name = item.get("name")
-            else:
-                name = getattr(item, "name", None)
-            if isinstance(name, str) and name.strip():
-                names.append(name.strip())
-        return sorted(set(names))
 
     def health_check(self):
         try:

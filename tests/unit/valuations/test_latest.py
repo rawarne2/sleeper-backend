@@ -22,5 +22,5 @@ def test_latest_player_values_blends_and_keeps_sources(app_context):
     out = latest_player_values("superflex")
     assert out[1]["sources"]["ktc"]["value"] == 8200.0   # latest, not 8000
     assert out[1]["sources"]["fantasycalc"]["value"] == 7900.0
-    assert out[1]["blended"] is not None
-    assert out[1]["blended"] > out[2]["blended"]          # player 1 ranks above player 2
+    assert out[1]["consensus"] is not None
+    assert out[1]["consensus"] > out[2]["consensus"]      # player 1 ranks above player 2

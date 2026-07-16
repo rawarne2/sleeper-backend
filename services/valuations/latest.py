@@ -46,7 +46,7 @@ def latest_player_values(
     rows = _latest_rows(league_format, fc_config_key, session=session)
     out: Dict[int, Dict[str, Any]] = {}
     for r in rows:
-        entry = out.setdefault(r.player_id, {"sources": {}, "projection": {}, "blended": None})
+        entry = out.setdefault(r.player_id, {"sources": {}, "projection": {}, "consensus": None})
         if r.metric_key == "value":
             src = entry["sources"].setdefault(r.source_key, {})
             src["value"] = r.metric_value
@@ -62,5 +62,5 @@ def latest_player_values(
         for s in _BLEND_SOURCES
     }
     for pid, val in blend_values(per_source, default_weights()).items():
-        out[pid]["blended"] = val
+        out[pid]["consensus"] = val
     return out

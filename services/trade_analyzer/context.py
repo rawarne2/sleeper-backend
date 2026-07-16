@@ -41,7 +41,6 @@ _KTC_VALUE_EXTRA_KEYS = (
     "overallTier",
     "positionalTier",
     "positionalTrend",
-    "overall7DayTrend",
     "positional7DayTrend",
     "startSitValue",
     "kept",
@@ -54,7 +53,7 @@ _KTC_VALUE_EXTRA_KEYS = (
     "tradeCount",
 )
 
-_KTC_FLAG_KEYS = ("pickRound", "pickNum", "isTrending", "draftYear", "byeWeek")
+_KTC_FLAG_KEYS = ("pickRound", "pickNum", "draftYear", "byeWeek")
 
 _NAME_KEYS = (PLAYER_NAME_KEY, "player_name", "full_name", "name")
 
@@ -223,6 +222,24 @@ def _positional_tier_label(pos_upper: str | None, positional_rank: Any) -> str |
     return f"{pos_upper or 'UNK'}{rank}"
 
 
+def _trend_7d_label(values: Dict[str, Any], ktc_flags: Dict[str, Any]) -> str | None:
+    """7-day KTC movement as signed magnitude + direction, only when actively trending.
+
+    Replaces the bare ``isTrending`` boolean: the model gets *how much* and *which way*
+    (e.g. ``"+312 (rising)"``) instead of just "this is trending".
+    """
+    if not ktc_flags.get("isTrending"):
+        return None
+    delta = values.get("overall7DayTrend")
+    try:
+        d = int(round(float(delta)))
+    except (TypeError, ValueError):
+        return None
+    if d == 0:
+        return None
+    return f"{d:+d} ({'rising' if d > 0 else 'falling'})"
+
+
 def _ownership_pct(
     player: Dict[str, Any],
     ownership: Dict[str, Dict[str, Any]] | None,
@@ -251,17 +268,19 @@ def _player_trade(
     out: Dict[str, Any] = {}
     _put_if_populated(out, "name", _display_name(player))
     _put_if_populated(out, "position", pos_upper)
-    _put_if_populated(out, "team", player.get("team"))
     _put_if_populated(out, "age", ktc.get("age"))
     _put_if_populated(out, "years_exp", player.get("years_exp"))
+    _put_if_populated(out, "consensus_value", (player.get("values") or {}).get("consensus"))
     _put_if_populated(out, "ktc_value", values.get("value"))
-    _put_if_populated(out, "blended_value", (player.get("values") or {}).get("blended"))
     _put_if_populated(out, "positional_rank", pr)
     _put_if_populated(out, "positional_tier", _positional_tier_label(pos_upper, pr))
     _put_if_populated(out, "trend", values.get("overallTrend"))
+    _put_if_populated(out, "trend_7d", _trend_7d_label(values, ktc))
     _put_if_populated(out, "trajectory", stats.get("trajectory"))
     _put_if_populated(out, "games_played", stats.get("games_played"))
     _put_if_populated(out, "avg_points", stats.get("average_points"))
+    _put_if_populated(out, "stats_prev", player.get("stats_prev"))
+    _put_if_populated(out, "usage", player.get("usage"))
     _put_if_populated(out, "market_owned_pct", own.get("owned"))
     _put_if_populated(out, "market_started_pct", own.get("started"))
     _put_if_populated(out, "injury_status", _headline_injury_status(player, ktc))
@@ -269,7 +288,6 @@ def _player_trade(
     _put_if_populated(out, "ktc", _ktc_block_slim(values, ktc))
     _put_if_populated(out, "injury", _injury_block(player))
     _put_if_populated(out, "practice", _practice_block(player))
-    _put_if_populated(out, "is_starter_latest", stats.get("is_starter_latest"))
     return out
 
 
@@ -310,18 +328,18 @@ def _pick_label(parsed: Dict[str, Any]) -> str:
 def _pick_asset(
     pick_id: str,
     ktc_value: int | None,
-    blended_value: float | None = None,
+    consensus_value: float | None = None,
 ) -> Dict[str, Any]:
     parsed = parse_pick_id(pick_id)
     out: Dict[str, Any] = {"kind": "pick", "label": _pick_label(parsed)}
     if ktc_value is not None:
         out["ktc_value"] = ktc_value
-    # blended_value falls back to ktc_value when not explicitly supplied
-    effective_blended = blended_value if blended_value is not None else (
+    # consensus_value falls back to ktc_value when not explicitly supplied
+    effective_consensus = consensus_value if consensus_value is not None else (
         float(ktc_value) if ktc_value is not None else None
     )
-    if effective_blended is not None:
-        out["blended_value"] = effective_blended
+    if effective_consensus is not None:
+        out["consensus_value"] = effective_consensus
     return out
 
 
@@ -626,11 +644,11 @@ def _sum_ktc(items: List[Dict[str, Any]]) -> int:
     return sum(int(x.get("ktc_value") or 0) for x in items)
 
 
-def _sum_blended(items: List[Dict[str, Any]]) -> float:
-    """Sum each asset's blended_value, falling back to ktc_value when blended is None."""
+def _sum_consensus(items: List[Dict[str, Any]]) -> float:
+    """Sum each asset's consensus_value, falling back to ktc_value when consensus is None."""
     total = 0.0
     for x in items:
-        v = x.get("blended_value")
+        v = x.get("consensus_value")
         if v is None:
             v = x.get("ktc_value") or 0
         total += float(v)
@@ -638,8 +656,8 @@ def _sum_blended(items: List[Dict[str, Any]]) -> float:
 
 
 def _consensus_totals(a_out: List[Dict[str, Any]], b_out: List[Dict[str, Any]]) -> Dict[str, Any]:
-    a = _sum_blended(a_out)
-    b = _sum_blended(b_out)
+    a = _sum_consensus(a_out)
+    b = _sum_consensus(b_out)
     return {
         "side_a": {"out": a, "in": b, "net": round(b - a, 1)},
         "side_b": {"out": b, "in": a, "net": round(a - b, 1)},
@@ -734,7 +752,7 @@ def build_context(req: TradeRequest, *, league_data: Dict[str, Any]) -> Dict[str
         "side_a": {"out": a_out_sum, "in": b_out_sum, "net": b_out_sum - a_out_sum},
         "side_b": {"out": b_out_sum, "in": a_out_sum, "net": a_out_sum - b_out_sum},
     }
-    anchor = os.getenv("TRADE_ANALYZER_ANCHOR", "blended")
+    anchor = os.getenv("TRADE_ANALYZER_ANCHOR", "consensus")
     consensus_totals = (
         ktc_only_totals if anchor == "ktc" else _consensus_totals(a_out, b_out)
     )
