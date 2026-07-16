@@ -4,11 +4,10 @@ Exposes a small ``db`` facade mimicking the subset of the Flask-SQLAlchemy API t
 codebase uses (``db.Model``, ``db.session``, ``db.Column`` & friends, ``db.create_all``/
 ``db.drop_all``/``db.engine``), backed by a plain SQLAlchemy engine + ``scoped_session``.
 
-The session is scoped per logical request via a ContextVar that WILL be set by an ASGI
-middleware added in a later migration task; until then (and for background worker threads,
-scripts, and the Flask bridge) it falls back to the current thread id. ``session_scope()``
-gives non-request callers (threads/CLI/scripts) a clean unit-of-work that removes the
-session on exit.
+The session is scoped per logical request via a ContextVar set by the ASGI middleware
+(``web/middleware.py``); for background worker threads and scripts (no request context) it
+falls back to the current thread id. ``session_scope()`` gives non-request callers
+(threads/CLI/scripts) a clean unit-of-work that removes the session on exit.
 """
 from __future__ import annotations
 

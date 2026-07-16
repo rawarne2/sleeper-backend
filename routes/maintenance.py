@@ -34,8 +34,8 @@ def _prewarm_dashboard_caches() -> Dict[str, Any]:
         (r[0], str(r[1])) for r in rows if r[0] and r[1]
     ] or list(EXAMPLE_LEAGUE_IDS)
 
-    # Import lazily to avoid circular imports; works whether the dashboard route
-    # is still Flask-bridged or has been migrated to native FastAPI.
+    # Import lazily to avoid circular imports; drive the dashboard route
+    # in-process via the ASGI test client so the cache warms without a network hop.
     from starlette.testclient import TestClient
     from app import app as fastapi_app
     client = TestClient(fastapi_app)

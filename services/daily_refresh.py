@@ -1,7 +1,7 @@
 """
 Orchestration for daily / scheduled data refresh (KTC + leagues + research + weekly stats).
 
-Kept separate from route handlers so it can be called from Flask or a CLI later.
+Kept separate from route handlers so it can be called from a route or a CLI.
 """
 from __future__ import annotations
 

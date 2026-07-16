@@ -4,7 +4,7 @@ Delete players rows that should never be persisted:
   - missing/empty match_key, or
   - search_rank == SLEEPER_SEARCH_RANK_EXCLUDE (Sleeper placeholder / non-rosterable).
 
-Uses the Flask app DB URI from the environment (e.g. Supabase DATABASE_URL).
+Uses the app DB URI from the environment (e.g. Supabase DATABASE_URL).
 
 If both TEST_DATABASE_URI and DATABASE_URL are set (common for local pytest),
 loads .env then drops TEST_DATABASE_URI when DATABASE_URL is present so cleanup

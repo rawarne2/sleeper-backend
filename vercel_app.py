@@ -1,4 +1,4 @@
-"""Vercel-compatible Flask application with Supabase integration."""
+"""Vercel-compatible FastAPI application with Supabase integration."""
 import os
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 

@@ -80,9 +80,8 @@ def setup_databases():
     print("🎉 Database setup completed successfully!")
     print()
     print("Next steps:")
-    print("1. Start your application: python app.py")
-    print("2. Initialize tables: flask init_db")
-    print("3. Or use Docker: docker-compose up")
+    print("1. Start your application: ./startup.sh (or python app.py)")
+    print("2. Or use Docker: ./docker-compose.sh up")
 
     return True
 
