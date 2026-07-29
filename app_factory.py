@@ -13,6 +13,7 @@ import services.valuations.sources  # noqa: F401 -- register default valuation s
 from utils.cors import EXPLICIT_ORIGINS
 from web.errors import register_exception_handlers
 from web.middleware import DbSessionScopeMiddleware
+from web.observability import RequestContextMiddleware
 from web.openapi import (
     OPENAPI_DESCRIPTION,
     OPENAPI_TAGS,
@@ -46,6 +47,10 @@ def create_app(db_url: str, engine_options: dict[str, Any] | None = None) -> Fas
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
     )
+    # Added last so it is the outermost middleware: its request-id ContextVar,
+    # timing header, and per-request log line then wrap CORS/compression and
+    # cover every response.
+    app.add_middleware(RequestContextMiddleware)
 
     from routes.health import router as health_router
     from routes.ktc.rankings import router as ktc_rankings_router
