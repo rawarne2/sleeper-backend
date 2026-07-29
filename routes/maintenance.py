@@ -168,7 +168,7 @@ def nightly_sync(request: Request, body: Optional[NightlySyncBody] = Body(None))
                 ingest_valuations(["fantasycalc"], season=current_season,
                                   league_format=fmt, league_settings=ls)
         for fmt in ("superflex", "1qb"):
-            ingest_valuations(["ktc", "sleeper_proj"], season=current_season,
+            ingest_valuations(["ktc", "sleeper_proj", "tank01"], season=current_season,
                               league_format=fmt, league_settings={})
     except Exception as exc:  # noqa: BLE001 - never fail the cron on valuation ingest
         logger.warning("valuation ingest skipped: %s", exc)

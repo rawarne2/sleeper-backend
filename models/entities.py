@@ -866,6 +866,53 @@ class NflPlayerWeekStats(db.Model):
     )
 
 
+class PlayerInjuryReport(db.Model):
+    """Official multi-source injury report (e.g. nflverse). One row per player/source/season/week.
+
+    Kept separate from the single-value Player.injury_* columns (which the Sleeper refresh
+    overwrites) so provenance and per-source history are preserved.
+    """
+    __tablename__ = "player_injury_reports"
+
+    id = db.Column(db.Integer, primary_key=True)
+    player_id = db.Column(db.Integer, db.ForeignKey("players.id"), nullable=False, index=True)
+    source = db.Column(db.String(30), nullable=False, index=True)
+    season = db.Column(db.String(4), nullable=False)
+    week = db.Column(db.Integer, nullable=False)
+    report_status = db.Column(db.String(40))
+    report_primary_injury = db.Column(db.String(80))
+    report_secondary_injury = db.Column(db.String(80))
+    practice_status = db.Column(db.String(80))
+    practice_primary_injury = db.Column(db.String(80))
+    raw = db.Column(db.JSON, default=dict)
+    fetched_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(UTC))
+
+    __table_args__ = (
+        db.UniqueConstraint("player_id", "source", "season", "week", name="uq_player_injury_report"),
+        db.Index("ix_player_injury_report_latest", "player_id", "source", "season", "week"),
+    )
+
+
+class PlayerNews(db.Model):
+    """Player/team news headline from an external source (e.g. Tank01). Multi-row per player."""
+    __tablename__ = "player_news"
+
+    id = db.Column(db.Integer, primary_key=True)
+    player_id = db.Column(db.Integer, db.ForeignKey("players.id"), nullable=True, index=True)
+    source = db.Column(db.String(30), nullable=False, index=True)
+    headline = db.Column(db.String(500), nullable=False)
+    url = db.Column(db.String(600), nullable=False)
+    image_url = db.Column(db.String(600))
+    published_at = db.Column(db.DateTime)
+    raw = db.Column(db.JSON, default=dict)
+    fetched_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(UTC))
+
+    __table_args__ = (
+        db.UniqueConstraint("source", "url", "player_id", name="uq_player_news_source_url_player"),
+        db.Index("ix_player_news_player_published", "player_id", "published_at"),
+    )
+
+
 class RagDocument(db.Model):
     """Embedded chunk for trade-analyzer RAG (strategy KB or feedback corpus)."""
     __tablename__ = "rag_documents"

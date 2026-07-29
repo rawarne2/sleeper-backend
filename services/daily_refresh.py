@@ -24,6 +24,8 @@ from routes.sleeper.research import (
 from scrapers.ktc_scraper import KTCScraper
 from scrapers.pipelines import scrape_and_save_all_ktc_data
 from scrapers.sleeper_scraper import SleeperScraper
+from services.news_ingest import ingest_player_news
+from services.nflverse_ingest import ingest_nflverse_injuries
 from services.types import DailyRefreshSummary
 from utils.constants import EXAMPLE_LEAGUE_IDS
 from utils.helpers import setup_logging
@@ -418,5 +420,26 @@ def run_daily_refresh(
                         {"step": "nfl_week_stats", "season": s, "error": str(e)}
                     )
             summary["nfl_week_stats"] = nfl_stats
+
+    # Official injury reports (nflverse, CC-BY, no key) + per-player news (Tank01,
+    # needs RAPIDAPI_KEY). Each is isolated so a failure never aborts the cron.
+    injury_seasons = {
+        s for s in (seasons or league_seasons or [_current_season()]) if s and str(s).strip()
+    }
+    if injury_seasons:
+        injuries: Dict[str, Any] = {}
+        for s in sorted(injury_seasons):
+            try:
+                injuries[str(s)] = ingest_nflverse_injuries(str(s), session=session)
+            except Exception as e:
+                logger.exception("nflverse injuries ingest failed for season %s", s)
+                summary["errors"].append({"step": "injuries", "season": s, "error": str(e)})
+        summary["injuries"] = injuries
+
+    try:
+        summary["news"] = ingest_player_news(session=session)
+    except Exception as e:
+        logger.exception("Player news ingest failed")
+        summary["errors"].append({"step": "news", "error": str(e)})
 
     return summary

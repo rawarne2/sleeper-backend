@@ -53,7 +53,7 @@ def latest_player_values(
             src["rank"] = r.rank
         elif r.metric_key in ("redraft_value", "trade_frequency", "volatility", "trend_30day"):
             entry["sources"].setdefault(r.source_key, {})[r.metric_key] = r.metric_value
-        elif r.metric_key in ("proj_ros", "proj_week"):
+        elif r.metric_key in ("proj_ros", "proj_week", "tank_proj_week"):
             entry["projection"][r.metric_key] = r.metric_value
 
     per_source = {
