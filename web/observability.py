@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 import uuid
 
@@ -42,3 +43,19 @@ class RequestContextMiddleware:
             logger.info("request method=%s path=%s status=%s ms=%.1f",
                         scope.get("method"), scope.get("path"), status["code"], elapsed)
             request_id_var.reset(token)
+
+
+def init_sentry() -> bool:
+    """Initialize Sentry when SENTRY_DSN is set; safe no-op otherwise."""
+    dsn = (os.getenv("SENTRY_DSN") or "").strip()
+    if not dsn:
+        return False
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=dsn,
+        environment=os.getenv("VERCEL_ENV") or "local",
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0")),
+        send_default_pii=False,
+    )
+    logger.info("sentry initialized environment=%s", os.getenv("VERCEL_ENV") or "local")
+    return True

@@ -9,9 +9,11 @@ from sqlalchemy.pool import NullPool
 from app_factory import create_app
 from models.extensions import db
 from utils.helpers import setup_logging
+from web.observability import init_sentry
 
 load_dotenv()
 logger = setup_logging(__name__)
+init_sentry()
 
 
 def _resolve_vercel_db_url() -> str:

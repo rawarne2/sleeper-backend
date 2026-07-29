@@ -52,6 +52,7 @@ rpds-py==0.30.0
 referencing==0.37.0
 requests==2.32.4
 s3transfer==0.13.0
+sentry-sdk[fastapi]==2.66.1
 six==1.17.0
 soupsieve==2.7
 SQLAlchemy==2.0.41

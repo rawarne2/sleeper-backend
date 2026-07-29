@@ -64,7 +64,9 @@ async def _http_exception_handler(_: Request, exc: HTTPException) -> JSONRespons
 
 
 async def _unhandled_handler(_: Request, exc: Exception) -> JSONResponse:
-    logger.error("Unexpected error: %s", exc)
+    import sentry_sdk
+    sentry_sdk.capture_exception(exc)  # no-op when init_sentry() was skipped
+    logger.exception("Unexpected error: %s", exc)   # was logger.error — keep the traceback
     return JSONResponse(error_body("Internal server error", details=str(exc)),
                         status_code=500)
 

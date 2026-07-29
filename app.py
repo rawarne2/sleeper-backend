@@ -6,9 +6,11 @@ from dotenv import load_dotenv
 from app_factory import create_app
 from utils.constants import DATABASE_URI
 from utils.helpers import setup_logging
+from web.observability import init_sentry
 
 load_dotenv()
 logger = setup_logging(__name__)
+init_sentry()
 
 database_uri = os.getenv("TEST_DATABASE_URI", DATABASE_URI)
 
