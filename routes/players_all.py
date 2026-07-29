@@ -31,6 +31,9 @@ from routes.dashboard_league import (
     _player_to_dashboard_dict,
     _research_league_type_label,
 )
+from services.data_sources import data_sources_for_bundle
+from services.injuries import latest_injury_reports
+from services.news import latest_player_news
 from services.valuations.latest import latest_player_values
 from utils.datetime_serialization import utc_now_rfc3339
 from web.errors import ApiError
@@ -153,6 +156,8 @@ def get_all_players(
     values_by_player_id = latest_player_values(
         league_format, fc_config_key=_fc_config_key(league_id, league_format)
     )
+    news_by_player_id = latest_player_news()
+    injury_reports_by_player_id = latest_injury_reports()
 
     # Bulk-load the format's KTC value rows once (one query, not per player).
     ktc_model = (
@@ -176,6 +181,8 @@ def get_all_players(
             player, league_format, tep, is_redraft,
             values_by_player_id=values_by_player_id,
             ktc_rows_by_id=ktc_rows_by_id,
+            news_by_player_id=news_by_player_id,
+            injury_reports_by_player_id=injury_reports_by_player_id,
         )
         if d is not None:
             out.append(d)
@@ -202,6 +209,7 @@ def get_all_players(
         "tep_level": tep,
         "count": len(out),
         "players": out,
+        "data_sources": data_sources_for_bundle(),
     }
     if research_meta is not None:
         payload["researchMeta"] = research_meta

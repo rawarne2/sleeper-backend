@@ -16,6 +16,8 @@ from routes.dashboard_league import (
     _research_league_type_label,
     _roster_player_ids,
 )
+from services.injuries import latest_injury_reports
+from services.news import latest_player_news
 from services.trade_analyzer.player_stats import load_stats_with_trajectory
 from services.valuations.latest import latest_player_values
 
@@ -50,6 +52,8 @@ def load_league_bundle(
     players, _ts = _ktc_players_for_roster(
         league_format, tep_level or "", needed, is_redraft,
         values_by_player_id=player_values,
+        news_by_player_id=latest_player_news(),
+        injury_reports_by_player_id=latest_injury_reports(),
     )
 
     research_lt = _research_league_type_label(is_redraft)

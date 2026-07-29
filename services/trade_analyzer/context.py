@@ -252,6 +252,29 @@ def _ownership_pct(
     return ownership.get(str(sid)) or {}
 
 
+def _official_injury_block(player: Dict[str, Any]) -> Dict[str, Any] | None:
+    """Compact nflverse official injury report (report/practice status), when present."""
+    report = player.get("injury_report")
+    if not isinstance(report, dict):
+        return None
+    out: Dict[str, Any] = {}
+    _put_if_populated(out, "report_status", report.get("report_status"))
+    _put_if_populated(out, "practice_status", report.get("practice_status"))
+    _put_if_populated(out, "primary_injury", report.get("report_primary_injury"))
+    return out or None
+
+
+def _recent_news(player: Dict[str, Any], limit: int = 2) -> list[str] | None:
+    news = player.get("news")
+    if not isinstance(news, list) or not news:
+        return None
+    headlines = [
+        n.get("headline") for n in news[:limit]
+        if isinstance(n, dict) and n.get("headline")
+    ]
+    return headlines or None
+
+
 def _player_trade(
     player: Dict[str, Any],
     league_format: str,
@@ -288,6 +311,8 @@ def _player_trade(
     _put_if_populated(out, "ktc", _ktc_block_slim(values, ktc))
     _put_if_populated(out, "injury", _injury_block(player))
     _put_if_populated(out, "practice", _practice_block(player))
+    _put_if_populated(out, "injury_report", _official_injury_block(player))
+    _put_if_populated(out, "recent_news", _recent_news(player))
     return out
 
 
@@ -308,6 +333,7 @@ def _player_roster(
     _put_if_populated(out, "age", ktc.get("age"))
     _put_if_populated(out, "injury_status", _headline_injury_status(player, ktc))
     _put_if_populated(out, "injury", _injury_block(player))
+    _put_if_populated(out, "injury_report", _official_injury_block(player))
     _put_if_populated(out, "ktc_injury", _ktc_injury_payload(ktc))
     _put_if_populated(out, "market_owned_pct", own.get("owned"))
     _put_if_populated(out, "market_started_pct", own.get("started"))

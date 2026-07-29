@@ -26,6 +26,9 @@ from utils.constants import (
     SLEEPER_STATS_AGGREGATE_WEEK_MAX,
     SLEEPER_STATS_AGGREGATE_WEEK_MIN,
 )
+from services.data_sources import data_sources_for_bundle
+from services.injuries import latest_injury_reports
+from services.news import latest_player_news
 from services.scoring.engine import season_points_for_players
 from services.scoring.usage import season_usage
 from services.valuations.latest import latest_player_values
@@ -91,6 +94,8 @@ def _player_to_dashboard_dict(
     player: Player, league_format: str, tep_level: str, is_redraft: bool = False,
     values_by_player_id: Dict[int, Dict[str, Any]] | None = None,
     ktc_rows_by_id: Dict[int, Any] | None = None,
+    news_by_player_id: Dict[int, list] | None = None,
+    injury_reports_by_player_id: Dict[int, Dict[str, Any]] | None = None,
 ) -> Dict[str, Any] | None:
     """
     Slim per-player payload for the dashboard.
@@ -168,6 +173,8 @@ def _player_to_dashboard_dict(
 
     vmap = values_by_player_id or {}
     result["values"] = vmap.get(player.id) or {"consensus": None, "sources": {}, "projection": {}}
+    result["news"] = (news_by_player_id or {}).get(player.id, [])
+    result["injury_report"] = (injury_reports_by_player_id or {}).get(player.id)
     return result
 
 
@@ -348,6 +355,8 @@ def _ktc_players_for_roster(
     needed_ids: Set[str],
     is_redraft: bool = False,
     values_by_player_id: Dict[int, Dict[str, Any]] | None = None,
+    news_by_player_id: Dict[int, list] | None = None,
+    injury_reports_by_player_id: Dict[int, Dict[str, Any]] | None = None,
 ) -> Tuple[List[Dict[str, Any]], str | None]:
     """Load slim dashboard player dicts from the DB for the roster's Sleeper IDs."""
     players, last_updated = DatabaseManager.get_players_for_sleeper_ids(
@@ -361,6 +370,8 @@ def _ktc_players_for_roster(
         slim = _player_to_dashboard_dict(
             p, league_format, tep_level or "", is_redraft,
             values_by_player_id=values_by_player_id,
+            news_by_player_id=news_by_player_id,
+            injury_reports_by_player_id=injury_reports_by_player_id,
         )
         if slim is not None:
             out.append(slim)
@@ -594,6 +605,8 @@ def get_dashboard_league(
         league_format, db_league.get("rosters"), scoring_settings
     )
     player_values = latest_player_values(league_format, fc_config_key=fc_config_key)
+    player_news = latest_player_news()
+    injury_reports = latest_injury_reports()
 
     own_timings: Dict[str, float] = {}
 
@@ -602,6 +615,8 @@ def get_dashboard_league(
         result = _ktc_players_for_roster(
             league_format, tep_level, needed_ids, is_redraft,
             values_by_player_id=player_values,
+            news_by_player_id=player_news,
+            injury_reports_by_player_id=injury_reports,
         )
         own_timings["ms_run_players"] = (time.perf_counter() - t) * 1000
         return result
@@ -673,6 +688,7 @@ def get_dashboard_league(
         "ktcLastUpdated": ktc_last_updated,
         "picks_by_roster": picks_by_roster,
         "bundleSeason": season,
+        "data_sources": data_sources_for_bundle(),
     }
 
     t_json = time.perf_counter()

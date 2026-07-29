@@ -237,6 +237,36 @@ def test_player_to_dashboard_dict_superflex_with_tep_override():
     assert "practice_participation" in out
 
 
+def test_player_to_dashboard_dict_attaches_news_and_injury_report():
+    p = _fake_player(superflex=_fake_ktc_values())
+    news = {42: [{"source": "tank01", "headline": "Big news", "url": "https://x/1",
+                  "image_url": None, "published_at": "2026-07-20T00:00:00Z"}]}
+    reports = {42: {"source": "nflverse", "season": "2025", "week": 5,
+                    "report_status": "Questionable", "report_primary_injury": "Knee"}}
+    out = _player_to_dashboard_dict(
+        p, "superflex", "tep",
+        news_by_player_id=news, injury_reports_by_player_id=reports)
+    assert out["news"] == news[42]
+    assert out["injury_report"]["report_status"] == "Questionable"
+    assert out["injury_report"]["report_primary_injury"] == "Knee"
+
+
+def test_player_to_dashboard_dict_defaults_news_and_report_when_absent():
+    p = _fake_player(superflex=_fake_ktc_values())
+    out = _player_to_dashboard_dict(p, "superflex", "tep")
+    assert out["news"] == []
+    assert out["injury_report"] is None
+
+
+def test_data_sources_for_bundle_lists_all_sources(app_context):
+    from services.data_sources import data_sources_for_bundle
+    srcs = data_sources_for_bundle()
+    keys = {s["key"] for s in srcs}
+    assert {"ktc", "sleeper", "fantasycalc", "nflverse", "tank01"} <= keys
+    for s in srcs:
+        assert s["display_name"] and s["url"] and "last_synced_at" in s
+
+
 def test_player_to_dashboard_dict_parses_ktc_injury_json():
     p = _fake_player(superflex=_fake_ktc_values(),
                      injury='{"injuryCode": "Q", "summary": "ankle"}')

@@ -21,7 +21,7 @@ from cache.settings import players_all_redis_ttl_seconds
 
 logger = logging.getLogger(__name__)
 
-_PREFIX = "players:all:v2:"
+_PREFIX = "players:all:v3:"
 
 
 def _redis_key(

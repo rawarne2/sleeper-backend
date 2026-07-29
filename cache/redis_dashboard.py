@@ -1,9 +1,9 @@
 """
 Redis cache for GET /api/dashboard/league/:id JSON responses.
 
-Cache key (v1, all segments from normalized query params):
+Cache key (v2, all segments from normalized query params):
 
-  dashboard:league:v1:{league_id}:{season}:{league_format}:{tep_level}:{is_redraft}
+  dashboard:league:v2:{league_id}:{season}:{league_format}:{tep_level}:{is_redraft}
 
 ``tep_level`` is empty string when omitted. ``is_redraft`` is 0 or 1.
 Invalidation: per-league via ``invalidate_dashboard_league``; KTC ranking
@@ -27,7 +27,7 @@ from cache.settings import dashboard_league_redis_ttl_seconds
 
 logger = logging.getLogger(__name__)
 
-_PREFIX = "dashboard:league:v1:"
+_PREFIX = "dashboard:league:v2:"
 
 
 def dashboard_league_cache_key(
