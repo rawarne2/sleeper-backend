@@ -7,7 +7,7 @@ from utils.helpers import setup_logging
 from web.errors import ApiError
 
 router = APIRouter(prefix="/api/sleeper", tags=["Sleeper Players"])
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 
 @router.post("/refresh", summary="Refresh Sleeper player data")

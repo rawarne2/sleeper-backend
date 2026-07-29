@@ -15,7 +15,7 @@ from starlette.exceptions import HTTPException
 from utils.datetime_serialization import utc_now_rfc3339
 from utils.helpers import setup_logging
 
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 
 def _detail_to_str(value: Any) -> str:

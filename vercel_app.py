@@ -11,7 +11,7 @@ from models.extensions import db
 from utils.helpers import setup_logging
 
 load_dotenv()
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 
 def _resolve_vercel_db_url() -> str:

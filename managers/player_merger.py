@@ -11,7 +11,7 @@ from utils.constants import (
 )
 from utils.helpers import ktc_write_unmatched_merge_report_enabled, setup_logging
 
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 
 class PlayerMerger:

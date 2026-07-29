@@ -1,4 +1,5 @@
 """Logging, validation, and cross-cutting helpers."""
+import json
 import logging
 import os
 from datetime import datetime, UTC
@@ -9,13 +10,56 @@ from utils.constants import VALID_TEP_LEVELS
 logger = logging.getLogger(__name__)
 
 
-def setup_logging():
-    """Configure logging for the application."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    return logging.getLogger(__name__)
+_LOG_CONFIGURED = False
+
+
+class RequestIdFilter(logging.Filter):
+    """Stamp every record with the current request id ('-' outside a request)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        from utils.request_context import request_id_var
+        record.request_id = request_id_var.get() or "-"
+        return True
+
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "ts": datetime.now(UTC).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "request_id": getattr(record, "request_id", "-"),
+        }
+        if record.exc_info:
+            payload["exc_info"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def _json_logging_enabled() -> bool:
+    raw = os.getenv("LOG_JSON")
+    if raw is not None:
+        return raw.strip().lower() in ("1", "true", "yes")
+    return bool(os.getenv("VERCEL"))  # JSON by default on Vercel, plain in dev
+
+
+def setup_logging(name: str | None = None) -> logging.Logger:
+    """Configure root logging once; return a logger named for the calling module.
+
+    Previous behavior returned getLogger('utils.helpers') for every caller.
+    """
+    global _LOG_CONFIGURED
+    if not _LOG_CONFIGURED:
+        handler = logging.StreamHandler()
+        handler.addFilter(RequestIdFilter())
+        handler.setFormatter(
+            JsonFormatter() if _json_logging_enabled()
+            else logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+        root = logging.getLogger()
+        root.addHandler(handler)
+        root.setLevel(logging.INFO)
+        _LOG_CONFIGURED = True
+    return logging.getLogger(name)
 
 
 def validate_parameters(is_redraft: str, league_format: str, tep_level: str) -> tuple[bool, str, str | None, str | None]:

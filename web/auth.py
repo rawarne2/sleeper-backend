@@ -4,7 +4,7 @@ import os
 from starlette.requests import Request
 from utils.helpers import setup_logging
 
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 CRON_AUTH_HINT = (
     "Set CRON_SECRET in the server environment and send "

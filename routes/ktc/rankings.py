@@ -21,7 +21,7 @@ from web.params import validate_ktc_params
 from web.schemas import KtcRefreshAccepted, KtcRefreshJobStatus
 
 router = APIRouter(prefix="/api/ktc", tags=["KTC Player Rankings"])
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 _SYNC_TRUE = {"1", "true", "yes"}
 _SYNC_FALSE = {"0", "false", "no"}

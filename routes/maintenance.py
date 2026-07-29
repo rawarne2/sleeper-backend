@@ -21,7 +21,7 @@ from web.auth import CRON_AUTH_HINT, cron_authorized
 from web.errors import ApiError
 
 router = APIRouter(prefix="/api/maintenance", tags=["Maintenance"])
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 
 def _prewarm_dashboard_caches() -> Dict[str, Any]:

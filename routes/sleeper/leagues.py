@@ -9,7 +9,7 @@ from utils.helpers import setup_logging
 from web.errors import ApiError
 
 router = APIRouter(prefix="/api/sleeper/league", tags=["Sleeper Leagues"])
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 
 @router.get("/{league_id}", summary="Get comprehensive league data")

@@ -30,7 +30,7 @@ from services.types import DailyRefreshSummary
 from utils.constants import EXAMPLE_LEAGUE_IDS
 from utils.helpers import setup_logging
 
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 REGULAR_SEASON_WEEKS = range(1, 19)  # Sleeper uses weeks 1..18 for regular season + week 18
 

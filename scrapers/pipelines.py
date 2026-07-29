@@ -8,7 +8,7 @@ from models.extensions import db
 from utils.helpers import save_and_verify_database, setup_logging
 from services.valuations import registry
 
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 
 def load_sleeper_players_for_merge_from_db(

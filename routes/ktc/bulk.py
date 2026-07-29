@@ -10,7 +10,7 @@ from utils.helpers import setup_logging
 from web.errors import ApiError
 
 router = APIRouter(prefix="/api/ktc", tags=["Bulk Operations"])
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 
 @router.post("/refresh/all", summary="Comprehensive KTC refresh")

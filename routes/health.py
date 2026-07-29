@@ -6,7 +6,7 @@ from utils.datetime_serialization import utc_now_rfc3339
 from utils.helpers import setup_logging
 
 router = APIRouter(prefix="/api", tags=["Health"])
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 
 @router.get("/ktc/health", summary="Check API and database health status")

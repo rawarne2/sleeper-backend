@@ -8,7 +8,7 @@ from utils.constants import DATABASE_URI
 from utils.helpers import setup_logging
 
 load_dotenv()
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 database_uri = os.getenv("TEST_DATABASE_URI", DATABASE_URI)
 

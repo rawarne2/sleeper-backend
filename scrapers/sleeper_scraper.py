@@ -19,7 +19,7 @@ from utils.constants import (
 from utils.helpers import setup_logging
 from utils.player_eligibility import sleeper_api_dict_should_persist
 
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 
 class SleeperScraper:

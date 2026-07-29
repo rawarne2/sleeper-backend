@@ -13,7 +13,7 @@ from utils.helpers import setup_logging
 from web.errors import ApiError
 
 router = APIRouter(prefix="/api/sleeper/league", tags=["Sleeper Weekly Stats"])
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 
 class StatsSeedBody(BaseModel):

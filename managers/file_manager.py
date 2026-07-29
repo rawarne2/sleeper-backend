@@ -9,7 +9,7 @@ from botocore.exceptions import NoCredentialsError, ClientError
 
 from utils.helpers import setup_logging
 
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 class FileManager:
     """Handles file operations for JSON data storage and S3 uploads."""

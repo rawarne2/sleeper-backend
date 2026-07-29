@@ -14,7 +14,7 @@ from utils.helpers import setup_logging
 from web.errors import ApiError
 
 router = APIRouter(prefix="/api/sleeper/players", tags=["Sleeper Research"])
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 _RESEARCH_LEAGUE_TYPES = frozenset({'dynasty', 'redraft'})
 

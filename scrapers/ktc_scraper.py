@@ -18,7 +18,7 @@ from utils.constants import (
 )
 from utils.helpers import setup_logging
 
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 
 class KTCScraper:

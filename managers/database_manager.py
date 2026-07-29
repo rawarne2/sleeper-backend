@@ -28,7 +28,7 @@ from utils.constants import (
 from utils.datetime_serialization import format_instant_rfc3339_utc, utc_now_rfc3339
 from utils.helpers import create_player_match_key, normalize_tep_level, setup_logging
 
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 
 def _parse_date(value: Any):

@@ -28,7 +28,7 @@ from utils.helpers import (
     setup_logging,
 )
 
-logger = setup_logging()
+logger = setup_logging(__name__)
 
 _lock = threading.Lock()
 _jobs: Dict[str, Dict[str, Any]] = {}
