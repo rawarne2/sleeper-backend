@@ -1,0 +1,3708 @@
+{
+  "components": {
+    "schemas": {
+      "DashboardLeagueBundle": {
+        "additionalProperties": false,
+        "properties": {
+          "bundleSeason": {
+            "title": "Bundleseason",
+            "type": "string"
+          },
+          "data_sources": {
+            "items": {
+              "$ref": "#/components/schemas/DataSource"
+            },
+            "title": "Data Sources",
+            "type": "array"
+          },
+          "ktcLastUpdated": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ktclastupdated"
+          },
+          "league": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeagueInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ownership": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/OwnershipEntry"
+            },
+            "title": "Ownership",
+            "type": "object"
+          },
+          "picks_by_roster": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/DashboardPick"
+              },
+              "type": "array"
+            },
+            "title": "Picks By Roster",
+            "type": "object"
+          },
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardPlayer"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "researchMeta": {
+            "$ref": "#/components/schemas/ResearchMeta"
+          },
+          "rosters": {
+            "items": {
+              "$ref": "#/components/schemas/RosterInfo"
+            },
+            "title": "Rosters",
+            "type": "array"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/UserInfo"
+            },
+            "title": "Users",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rosters",
+          "users",
+          "players",
+          "ownership",
+          "researchMeta",
+          "picks_by_roster",
+          "bundleSeason",
+          "data_sources"
+        ],
+        "title": "DashboardLeagueBundle",
+        "type": "object"
+      },
+      "DashboardLeagueResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DashboardLeagueBundle"
+          },
+          "status": {
+            "const": "success",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "data"
+        ],
+        "title": "DashboardLeagueResponse",
+        "type": "object"
+      },
+      "DashboardPick": {
+        "additionalProperties": false,
+        "properties": {
+          "ktc_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ktc Value"
+          },
+          "original_roster_id": {
+            "title": "Original Roster Id",
+            "type": "integer"
+          },
+          "pick_id": {
+            "title": "Pick Id",
+            "type": "string"
+          },
+          "round": {
+            "title": "Round",
+            "type": "integer"
+          },
+          "season": {
+            "title": "Season",
+            "type": "string"
+          },
+          "slot_bucket": {
+            "title": "Slot Bucket",
+            "type": "string"
+          },
+          "values": {
+            "$ref": "#/components/schemas/ValuesBlock"
+          }
+        },
+        "required": [
+          "pick_id",
+          "season",
+          "round",
+          "original_roster_id",
+          "slot_bucket",
+          "values"
+        ],
+        "title": "DashboardPick",
+        "type": "object"
+      },
+      "DashboardPlayer": {
+        "additionalProperties": false,
+        "description": "Shape of ``_player_to_dashboard_dict`` + the stats/usage/research attach helpers.",
+        "properties": {
+          "birth_city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth City"
+          },
+          "birth_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth Date"
+          },
+          "birth_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Birth State"
+          },
+          "college": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "College"
+          },
+          "depth_chart_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depth Chart Order"
+          },
+          "depth_chart_position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depth Chart Position"
+          },
+          "fantasy_positions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fantasy Positions"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "high_school": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High School"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "injury_body_part": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury Body Part"
+          },
+          "injury_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury Notes"
+          },
+          "injury_report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InjuryReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "injury_start_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury Start Date"
+          },
+          "injury_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury Status"
+          },
+          "ktc": {
+            "$ref": "#/components/schemas/KtcPlayerBlock"
+          },
+          "last_updated": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Updated"
+          },
+          "news": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/NewsItem"
+            },
+            "title": "News",
+            "type": "array"
+          },
+          "news_updated": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "News Updated"
+          },
+          "number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number"
+          },
+          "playerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playername"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "practice_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Practice Description"
+          },
+          "practice_participation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Practice Participation"
+          },
+          "research_latest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResearchLatest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rookie_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rookie Year"
+          },
+          "sleeper_player_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sleeper Player Id"
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeasonStats"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stats_prev": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeasonStats"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsageBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "values": {
+            "$ref": "#/components/schemas/ValuesBlock"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          },
+          "years_exp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Years Exp"
+          }
+        },
+        "required": [
+          "id",
+          "ktc",
+          "values"
+        ],
+        "title": "DashboardPlayer",
+        "type": "object"
+      },
+      "DataSource": {
+        "additionalProperties": false,
+        "description": "Attribution entry from ``services/data_sources.py::data_sources_for_bundle``.",
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "license_note": {
+            "title": "License Note",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "display_name",
+          "url",
+          "kind",
+          "license_note"
+        ],
+        "title": "DataSource",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InjuryReport": {
+        "additionalProperties": false,
+        "description": "Latest official injury report from ``services/injuries.py::latest_injury_reports``.",
+        "properties": {
+          "practice_primary_injury": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Practice Primary Injury"
+          },
+          "practice_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Practice Status"
+          },
+          "report_primary_injury": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Primary Injury"
+          },
+          "report_secondary_injury": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Secondary Injury"
+          },
+          "report_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Status"
+          },
+          "season": {
+            "title": "Season",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "week": {
+            "title": "Week",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source",
+          "season",
+          "week"
+        ],
+        "title": "InjuryReport",
+        "type": "object"
+      },
+      "KtcPlayerBlock": {
+        "additionalProperties": false,
+        "properties": {
+          "age": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age"
+          },
+          "byeWeek": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Byeweek"
+          },
+          "draftYear": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draftyear"
+          },
+          "injury": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Injury"
+          },
+          "isTrending": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Istrending"
+          },
+          "is_redraft": {
+            "title": "Is Redraft",
+            "type": "boolean"
+          },
+          "oneQBValues": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KtcValuesBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pickNum": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Picknum"
+          },
+          "pickRound": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickround"
+          },
+          "superflexValues": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KtcValuesBlock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "is_redraft"
+        ],
+        "title": "KtcPlayerBlock",
+        "type": "object"
+      },
+      "KtcRefreshAccepted": {
+        "additionalProperties": false,
+        "description": "202 body of POST/PUT /api/ktc/refresh (async mode).",
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "already_running": {
+            "title": "Already Running",
+            "type": "boolean"
+          },
+          "hint": {
+            "title": "Hint",
+            "type": "string"
+          },
+          "is_redraft": {
+            "title": "Is Redraft",
+            "type": "boolean"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "league_format": {
+            "enum": [
+              "1qb",
+              "superflex"
+            ],
+            "title": "League Format",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "poll_url": {
+            "title": "Poll Url",
+            "type": "string"
+          },
+          "status": {
+            "const": "queued",
+            "title": "Status",
+            "type": "string"
+          },
+          "tep_level": {
+            "title": "Tep Level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accepted",
+          "status",
+          "job_id",
+          "already_running",
+          "message",
+          "poll_url",
+          "is_redraft",
+          "league_format",
+          "tep_level",
+          "hint"
+        ],
+        "title": "KtcRefreshAccepted",
+        "type": "object"
+      },
+      "KtcRefreshJobStatus": {
+        "additionalProperties": false,
+        "description": "GET /api/ktc/refresh/status/{job_id} \u2014 validated at runtime (route returns a dict).",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "is_redraft": {
+            "title": "Is Redraft",
+            "type": "boolean"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "league_format": {
+            "title": "League Format",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KtcRefreshJobSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tep_level": {
+            "title": "Tep Level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "status",
+          "created_at",
+          "league_format",
+          "is_redraft",
+          "tep_level"
+        ],
+        "title": "KtcRefreshJobStatus",
+        "type": "object"
+      },
+      "KtcRefreshJobSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "database_saved_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Database Saved Count"
+          },
+          "file_saved": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Saved"
+          },
+          "players_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Players Count"
+          },
+          "s3_uploaded": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "S3 Uploaded"
+          }
+        },
+        "title": "KtcRefreshJobSummary",
+        "type": "object"
+      },
+      "KtcTierValues": {
+        "additionalProperties": false,
+        "properties": {
+          "overallTier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overalltier"
+          },
+          "positionalRank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Positionalrank"
+          },
+          "positionalTier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Positionaltier"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "title": "KtcTierValues",
+        "type": "object"
+      },
+      "KtcValuesBlock": {
+        "additionalProperties": false,
+        "description": "Base fields plus the three TEP variants (``_ktc_values_block_for_dashboard``).",
+        "properties": {
+          "overallTier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overalltier"
+          },
+          "positionalRank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Positionalrank"
+          },
+          "positionalTier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Positionaltier"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "tep": {
+            "$ref": "#/components/schemas/KtcTierValues"
+          },
+          "tepp": {
+            "$ref": "#/components/schemas/KtcTierValues"
+          },
+          "teppp": {
+            "$ref": "#/components/schemas/KtcTierValues"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "tep",
+          "tepp",
+          "teppp"
+        ],
+        "title": "KtcValuesBlock",
+        "type": "object"
+      },
+      "LeagueInfo": {
+        "additionalProperties": true,
+        "properties": {
+          "league_id": {
+            "title": "League Id",
+            "type": "string"
+          },
+          "league_settings": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "League Settings"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "roster_positions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roster Positions"
+          },
+          "scoring_settings": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scoring Settings"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "league_id"
+        ],
+        "title": "LeagueInfo",
+        "type": "object"
+      },
+      "NewsItem": {
+        "additionalProperties": false,
+        "description": "One headline from ``services/news.py::latest_player_news``.",
+        "properties": {
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "published_at": {
+            "title": "Published At",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "headline",
+          "url",
+          "published_at"
+        ],
+        "title": "NewsItem",
+        "type": "object"
+      },
+      "NightlySyncBody": {
+        "properties": {
+          "league_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "League Ids"
+          },
+          "research_week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Week"
+          },
+          "seasons": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seasons"
+          },
+          "skip_ktc": {
+            "default": false,
+            "title": "Skip Ktc",
+            "type": "boolean"
+          },
+          "skip_leagues": {
+            "default": false,
+            "title": "Skip Leagues",
+            "type": "boolean"
+          },
+          "skip_prewarm": {
+            "default": false,
+            "title": "Skip Prewarm",
+            "type": "boolean"
+          },
+          "skip_research": {
+            "default": false,
+            "title": "Skip Research",
+            "type": "boolean"
+          }
+        },
+        "title": "NightlySyncBody",
+        "type": "object"
+      },
+      "OwnershipEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "owned": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owned"
+          },
+          "started": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started"
+          }
+        },
+        "title": "OwnershipEntry",
+        "type": "object"
+      },
+      "PlayersAllResponse": {
+        "additionalProperties": false,
+        "description": "Flat envelope \u2014 deliberately NOT the ``{status, data}`` wrapper.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "data_sources": {
+            "items": {
+              "$ref": "#/components/schemas/DataSource"
+            },
+            "title": "Data Sources",
+            "type": "array"
+          },
+          "is_redraft": {
+            "title": "Is Redraft",
+            "type": "boolean"
+          },
+          "league_format": {
+            "enum": [
+              "1qb",
+              "superflex"
+            ],
+            "title": "League Format",
+            "type": "string"
+          },
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardPlayer"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "researchMeta": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResearchMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "const": "success",
+            "title": "Status",
+            "type": "string"
+          },
+          "tep_level": {
+            "enum": [
+              "",
+              "tep",
+              "tepp",
+              "teppp"
+            ],
+            "title": "Tep Level",
+            "type": "string"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "timestamp",
+          "league_format",
+          "is_redraft",
+          "tep_level",
+          "count",
+          "players",
+          "data_sources"
+        ],
+        "title": "PlayersAllResponse",
+        "type": "object"
+      },
+      "ProjectionBlock": {
+        "additionalProperties": false,
+        "properties": {
+          "proj_ros": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proj Ros"
+          },
+          "proj_week": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proj Week"
+          }
+        },
+        "title": "ProjectionBlock",
+        "type": "object"
+      },
+      "ResearchLatest": {
+        "additionalProperties": false,
+        "properties": {
+          "owned": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owned"
+          },
+          "started": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started"
+          },
+          "week": {
+            "title": "Week",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "week"
+        ],
+        "title": "ResearchLatest",
+        "type": "object"
+      },
+      "ResearchMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "last_updated": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Updated"
+          },
+          "league_type": {
+            "title": "League Type",
+            "type": "integer"
+          },
+          "season": {
+            "title": "Season",
+            "type": "string"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week"
+          }
+        },
+        "required": [
+          "season",
+          "league_type"
+        ],
+        "title": "ResearchMeta",
+        "type": "object"
+      },
+      "RosterInfo": {
+        "additionalProperties": true,
+        "properties": {
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "players": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "roster_id": {
+            "title": "Roster Id",
+            "type": "integer"
+          },
+          "settings": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Settings",
+            "type": "object"
+          },
+          "starters": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Starters",
+            "type": "array"
+          }
+        },
+        "required": [
+          "roster_id"
+        ],
+        "title": "RosterInfo",
+        "type": "object"
+      },
+      "SeasonStats": {
+        "additionalProperties": false,
+        "properties": {
+          "average_points": {
+            "title": "Average Points",
+            "type": "number"
+          },
+          "games_played": {
+            "title": "Games Played",
+            "type": "integer"
+          },
+          "total_points": {
+            "title": "Total Points",
+            "type": "number"
+          }
+        },
+        "required": [
+          "average_points",
+          "total_points",
+          "games_played"
+        ],
+        "title": "SeasonStats",
+        "type": "object"
+      },
+      "SourceValue": {
+        "additionalProperties": false,
+        "properties": {
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "redraft_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Redraft Value"
+          },
+          "trade_frequency": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Frequency"
+          },
+          "trend_30day": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trend 30Day"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "volatility": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volatility"
+          }
+        },
+        "title": "SourceValue",
+        "type": "object"
+      },
+      "StatsSeedBody": {
+        "properties": {
+          "league_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "League Name"
+          },
+          "league_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "League Type"
+          },
+          "scoring_settings": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scoring Settings"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season"
+          }
+        },
+        "title": "StatsSeedBody",
+        "type": "object"
+      },
+      "UsageBlock": {
+        "additionalProperties": false,
+        "properties": {
+          "air_yards_per_game": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Air Yards Per Game"
+          },
+          "carries_per_game": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carries Per Game"
+          },
+          "games_started": {
+            "title": "Games Started",
+            "type": "integer"
+          },
+          "rz_opps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rz Opps"
+          },
+          "snap_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snap Pct"
+          },
+          "snap_pct_l3": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snap Pct L3"
+          },
+          "snap_trend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snap Trend"
+          },
+          "targets_per_game": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Targets Per Game"
+          }
+        },
+        "required": [
+          "games_started"
+        ],
+        "title": "UsageBlock",
+        "type": "object"
+      },
+      "UserInfo": {
+        "additionalProperties": true,
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "UserInfo",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "ValuationsRefreshBody": {
+        "properties": {
+          "league_format": {
+            "default": "superflex",
+            "title": "League Format",
+            "type": "string"
+          },
+          "league_settings": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "League Settings",
+            "type": "object"
+          },
+          "season": {
+            "default": "2026",
+            "title": "Season",
+            "type": "string"
+          },
+          "sources": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sources"
+          }
+        },
+        "title": "ValuationsRefreshBody",
+        "type": "object"
+      },
+      "ValuesBlock": {
+        "additionalProperties": false,
+        "properties": {
+          "consensus": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consensus"
+          },
+          "projection": {
+            "$ref": "#/components/schemas/ProjectionBlock"
+          },
+          "sources": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SourceValue"
+            },
+            "title": "Sources",
+            "type": "object"
+          }
+        },
+        "required": [
+          "sources",
+          "projection"
+        ],
+        "title": "ValuesBlock",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "A comprehensive fantasy football API aggregating KeepTradeCut (KTC) and Sleeper data: player rankings & trade values (Dynasty/Redraft, 1QB/Superflex, TEP variations), league management, research/projections, a dashboard bundle, and an AI trade analyzer.",
+    "title": "Sleeper Backend API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/dashboard/league/{league_id}": {
+      "get": {
+        "description": "``GET /api/dashboard/league/<league_id>`` \u2014 league snapshot with rosters, slim KTC rows,\naggregated season points (weeks per ``SLEEPER_STATS_AGGREGATE_WEEK_*``), and research ownership.\n\nQuery: ``season``, ``league_format`` (1qb|superflex), ``is_redraft``, ``tep_level``.\nCache: ``X-Dashboard-League-Cache`` (HIT|MISS); body is JSON with ``status`` and ``data``.",
+        "operationId": "get_dashboard_league_api_dashboard_league__league_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "league_id",
+            "required": true,
+            "schema": {
+              "title": "League Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Season",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "league_format",
+            "required": false,
+            "schema": {
+              "default": "1qb",
+              "title": "League Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_redraft",
+            "required": false,
+            "schema": {
+              "default": "false",
+              "title": "Is Redraft",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tep_level",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Tep Level",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardLeagueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get dashboard league bundle",
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/ktc/cleanup": {
+      "post": {
+        "operationId": "cleanup_database_api_ktc_cleanup_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "is_redraft",
+            "required": false,
+            "schema": {
+              "default": "false",
+              "title": "Is Redraft",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "league_format",
+            "required": false,
+            "schema": {
+              "default": "1qb",
+              "title": "League Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tep_level",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Tep Level",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clean up incomplete data",
+        "tags": [
+          "KTC Player Rankings"
+        ]
+      }
+    },
+    "/api/ktc/health": {
+      "get": {
+        "description": "Verify API process and database connectivity.",
+        "operationId": "health_check_api_ktc_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Check API and database health status",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/ktc/rankings": {
+      "get": {
+        "operationId": "get_rankings_api_ktc_rankings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "is_redraft",
+            "required": false,
+            "schema": {
+              "default": "false",
+              "title": "Is Redraft",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "league_format",
+            "required": false,
+            "schema": {
+              "default": "1qb",
+              "title": "League Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tep_level",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Tep Level",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get stored player rankings",
+        "tags": [
+          "KTC Player Rankings"
+        ]
+      }
+    },
+    "/api/ktc/refresh": {
+      "post": {
+        "description": "Refresh/Update KTC player rankings.\n\nDefault returns 202 and enqueues scrape + DB save in a background thread; pass\n``sync=1`` (or ``async=0``) to run the full pipeline in the request and get 200.",
+        "operationId": "refresh_rankings_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "is_redraft",
+            "required": false,
+            "schema": {
+              "default": "false",
+              "title": "Is Redraft",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "league_format",
+            "required": false,
+            "schema": {
+              "default": "1qb",
+              "title": "League Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tep_level",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Tep Level",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sync",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sync"
+            }
+          },
+          {
+            "in": "query",
+            "name": "async",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Async"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Blocking sync=1 pipeline result"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KtcRefreshAccepted"
+                }
+              }
+            },
+            "description": "Refresh accepted; poll poll_url"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh/Update KTC player rankings",
+        "tags": [
+          "KTC Player Rankings"
+        ]
+      },
+      "put": {
+        "description": "Refresh/Update KTC player rankings.\n\nDefault returns 202 and enqueues scrape + DB save in a background thread; pass\n``sync=1`` (or ``async=0``) to run the full pipeline in the request and get 200.",
+        "operationId": "refresh_rankings_put",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "is_redraft",
+            "required": false,
+            "schema": {
+              "default": "false",
+              "title": "Is Redraft",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "league_format",
+            "required": false,
+            "schema": {
+              "default": "1qb",
+              "title": "League Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tep_level",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Tep Level",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sync",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sync"
+            }
+          },
+          {
+            "in": "query",
+            "name": "async",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Async"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KtcRefreshAccepted"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh/Update KTC player rankings",
+        "tags": [
+          "KTC Player Rankings"
+        ]
+      }
+    },
+    "/api/ktc/refresh/all": {
+      "post": {
+        "description": "Scrape and save ALL KTC data (dynasty + redraft, 1QB + Superflex, all TEP levels).",
+        "operationId": "refresh_ktc_all_api_ktc_refresh_all_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Comprehensive KTC refresh",
+        "tags": [
+          "Bulk Operations"
+        ]
+      }
+    },
+    "/api/ktc/refresh/status/{job_id}": {
+      "get": {
+        "operationId": "refresh_status_api_ktc_refresh_status__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KtcRefreshJobStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Poll async KTC refresh job status",
+        "tags": [
+          "KTC Player Rankings"
+        ]
+      }
+    },
+    "/api/maintenance/health": {
+      "get": {
+        "description": "``GET /api/maintenance/health`` \u2014 JSON map of maintenance paths and auth expectations (no pipeline run).",
+        "operationId": "maintenance_health_api_maintenance_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Maintenance health check",
+        "tags": [
+          "Maintenance"
+        ]
+      }
+    },
+    "/api/maintenance/nightly-sync": {
+      "get": {
+        "description": "Full ingest pipeline for scheduled jobs (Vercel Cron uses GET + CRON_SECRET).\n\nSchedule: see vercel.json (UTC). Repo default 30 15 * * * ~= 11:30 AM Eastern when DST.\n\nPipeline: KTC all formats -> leagues -> research per season.\nScraping is scoped to the current season by default (prior seasons are\nimmutable); pass explicit league_ids/seasons to back-fill older data.\nNFL player ingest is NOT included; use POST /api/sleeper/refresh separately (rare).\n\nOptional JSON body (POST only):\n  { \"league_ids\": [\"...\"], \"seasons\": [\"2025\"], \"research_week\": 1,\n    \"skip_ktc\": false, \"skip_leagues\": false, \"skip_research\": false, \"skip_prewarm\": false }",
+        "operationId": "nightly_sync_get",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/NightlySyncBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run nightly sync pipeline",
+        "tags": [
+          "Maintenance"
+        ]
+      },
+      "post": {
+        "description": "Full ingest pipeline for scheduled jobs (Vercel Cron uses GET + CRON_SECRET).\n\nSchedule: see vercel.json (UTC). Repo default 30 15 * * * ~= 11:30 AM Eastern when DST.\n\nPipeline: KTC all formats -> leagues -> research per season.\nScraping is scoped to the current season by default (prior seasons are\nimmutable); pass explicit league_ids/seasons to back-fill older data.\nNFL player ingest is NOT included; use POST /api/sleeper/refresh separately (rare).\n\nOptional JSON body (POST only):\n  { \"league_ids\": [\"...\"], \"seasons\": [\"2025\"], \"research_week\": 1,\n    \"skip_ktc\": false, \"skip_leagues\": false, \"skip_research\": false, \"skip_prewarm\": false }",
+        "operationId": "nightly_sync_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/NightlySyncBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run nightly sync pipeline",
+        "tags": [
+          "Maintenance"
+        ]
+      }
+    },
+    "/api/maintenance/prewarm": {
+      "get": {
+        "description": "``GET /api/maintenance/prewarm`` \u2014 same as nightly-sync prewarm; requires cron auth.",
+        "operationId": "prewarm_api_maintenance_prewarm_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Prewarm dashboard caches",
+        "tags": [
+          "Maintenance"
+        ]
+      }
+    },
+    "/api/players/all": {
+      "get": {
+        "description": "``GET /api/players/all`` \u2014 full player universe in the unified dashboard shape.\n\nQuery params:\n  ``league_format`` (superflex|1qb, default superflex)\n  ``is_redraft`` (true|false, default false)\n  ``tep_level`` ('', tep, tepp, teppp, default '')\n  ``season`` (optional 4-digit year; enables season points + ownership)\n  ``league_id`` (optional; loads that league's scoring for season points)\n\nReturns every ``Player`` row that has a KTC values row for the requested\nformat, serialized with the same ``_player_to_dashboard_dict`` the dashboard\nbundle uses. Players with no KTC row for the format are excluded.\n\nWhen ``season`` is supplied, season points are computed for the whole player\nuniverse via the scoring engine using the selected league's ``scoring_settings``\n(or a half-PPR baseline when no ``league_id`` is given). The ``tep`` dropdown\noverrides ``bonus_rec_te`` to preview other TE-premium configs.\n\nThe full universe only changes on a KTC refresh, so responses are cached in\nRedis (keyed by league/config/season, invalidated on refresh). On a cache miss\nthe KTC value rows are bulk-loaded in one query rather than per-player, avoiding\nan N+1 over ~500+ players.",
+        "operationId": "get_all_players_api_players_all_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "league_format",
+            "required": false,
+            "schema": {
+              "default": "superflex",
+              "title": "League Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "is_redraft",
+            "required": false,
+            "schema": {
+              "default": "false",
+              "title": "Is Redraft",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tep_level",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Tep Level",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Season",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "league_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "League Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayersAllResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get all players in dashboard shape",
+        "tags": [
+          "Dashboard"
+        ]
+      }
+    },
+    "/api/sleeper/league/{league_id}": {
+      "get": {
+        "description": "Get comprehensive league data (league info, rosters, users). Returns complete league\nconfiguration, all rosters with player IDs, and user information. Checks database\nfirst, falls back to Sleeper API.",
+        "operationId": "get_league_data_api_sleeper_league__league_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "league_id",
+            "required": true,
+            "schema": {
+              "title": "League Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get comprehensive league data",
+        "tags": [
+          "Sleeper Leagues"
+        ]
+      },
+      "post": {
+        "description": "Refresh all league data from Sleeper API (league info, rosters, users).\n\nReturns the full results dict even on 404/500 \u2014 the HTTP status code signals\nthe outcome but the body is always the results object (not the error envelope).",
+        "operationId": "refresh_league_data_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "league_id",
+            "required": true,
+            "schema": {
+              "title": "League Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh/Update league data",
+        "tags": [
+          "Sleeper Leagues"
+        ]
+      },
+      "put": {
+        "description": "Refresh all league data from Sleeper API (league info, rosters, users).\n\nReturns the full results dict even on 404/500 \u2014 the HTTP status code signals\nthe outcome but the body is always the results object (not the error envelope).",
+        "operationId": "refresh_league_data_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "league_id",
+            "required": true,
+            "schema": {
+              "title": "League Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh/Update league data",
+        "tags": [
+          "Sleeper Leagues"
+        ]
+      }
+    },
+    "/api/sleeper/league/{league_id}/rosters": {
+      "get": {
+        "description": "Get league rosters data for all teams in the league.",
+        "operationId": "get_league_rosters_api_sleeper_league__league_id__rosters_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "league_id",
+            "required": true,
+            "schema": {
+              "title": "League Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get league rosters",
+        "tags": [
+          "Sleeper Leagues"
+        ]
+      }
+    },
+    "/api/sleeper/league/{league_id}/stats/seed": {
+      "post": {
+        "description": "Seed or update league information needed for weekly stats functionality.\nThis endpoint should be called once per league before fetching weekly stats.",
+        "operationId": "seed_league_stats_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "league_id",
+            "required": true,
+            "schema": {
+              "title": "League Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/StatsSeedBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seed league stats information",
+        "tags": [
+          "Sleeper Weekly Stats"
+        ]
+      },
+      "put": {
+        "description": "Seed or update league information needed for weekly stats functionality.\nThis endpoint should be called once per league before fetching weekly stats.",
+        "operationId": "seed_league_stats_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "league_id",
+            "required": true,
+            "schema": {
+              "title": "League Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/StatsSeedBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seed league stats information",
+        "tags": [
+          "Sleeper Weekly Stats"
+        ]
+      }
+    },
+    "/api/sleeper/league/{league_id}/stats/week/{week}": {
+      "get": {
+        "description": "Get weekly fantasy points and roster information for all players in a specific week.\nReturns player scoring data including points, roster ID, and starter status.",
+        "operationId": "get_weekly_stats_api_sleeper_league__league_id__stats_week__week__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "league_id",
+            "required": true,
+            "schema": {
+              "title": "League Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "week",
+            "required": true,
+            "schema": {
+              "title": "Week",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "default": "2024",
+              "title": "Season",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "league_type",
+            "required": false,
+            "schema": {
+              "default": "dynasty",
+              "title": "League Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "average",
+            "required": false,
+            "schema": {
+              "default": "false",
+              "title": "Average",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get weekly stats for a specific week",
+        "tags": [
+          "Sleeper Weekly Stats"
+        ]
+      },
+      "post": {
+        "description": "Fetch fresh weekly stats data from Sleeper API for a specific week and save to database.\nThis endpoint fetches matchup data and extracts player scoring information.",
+        "operationId": "refresh_weekly_stats_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "league_id",
+            "required": true,
+            "schema": {
+              "title": "League Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "week",
+            "required": true,
+            "schema": {
+              "title": "Week",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season"
+            }
+          },
+          {
+            "in": "query",
+            "name": "league_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "League Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh/Update weekly stats for a specific week",
+        "tags": [
+          "Sleeper Weekly Stats"
+        ]
+      },
+      "put": {
+        "description": "Fetch fresh weekly stats data from Sleeper API for a specific week and save to database.\nThis endpoint fetches matchup data and extracts player scoring information.",
+        "operationId": "refresh_weekly_stats_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "league_id",
+            "required": true,
+            "schema": {
+              "title": "League Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "week",
+            "required": true,
+            "schema": {
+              "title": "Week",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "season",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Season"
+            }
+          },
+          {
+            "in": "query",
+            "name": "league_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "League Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh/Update weekly stats for a specific week",
+        "tags": [
+          "Sleeper Weekly Stats"
+        ]
+      }
+    },
+    "/api/sleeper/league/{league_id}/users": {
+      "get": {
+        "description": "Get league users data for all participants in the league.",
+        "operationId": "get_league_users_api_sleeper_league__league_id__users_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "league_id",
+            "required": true,
+            "schema": {
+              "title": "League Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get league users",
+        "tags": [
+          "Sleeper Leagues"
+        ]
+      }
+    },
+    "/api/sleeper/players/research/{season}": {
+      "get": {
+        "description": "Get player research data for a specific season. Returns comprehensive research metrics\nincluding rankings, projections, performance data, and statistical analysis.\nChecks database first.",
+        "operationId": "get_research_data_api_sleeper_players_research__season__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season",
+            "required": true,
+            "schema": {
+              "title": "Season",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "week",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Week"
+            }
+          },
+          {
+            "in": "query",
+            "name": "league_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "League Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get player research data",
+        "tags": [
+          "Sleeper Research"
+        ]
+      },
+      "post": {
+        "description": "Refresh research data from Sleeper API for a specific season.\n``week=all`` refreshes weeks 1\u201318; ``week=<n>`` refreshes a single week.",
+        "operationId": "refresh_research_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season",
+            "required": true,
+            "schema": {
+              "title": "Season",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "week",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Week"
+            }
+          },
+          {
+            "in": "query",
+            "name": "league_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "League Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh/Update research data",
+        "tags": [
+          "Sleeper Research"
+        ]
+      },
+      "put": {
+        "description": "Refresh research data from Sleeper API for a specific season.\n``week=all`` refreshes weeks 1\u201318; ``week=<n>`` refreshes a single week.",
+        "operationId": "refresh_research_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "season",
+            "required": true,
+            "schema": {
+              "title": "Season",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "week",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Week"
+            }
+          },
+          {
+            "in": "query",
+            "name": "league_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "League Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh/Update research data",
+        "tags": [
+          "Sleeper Research"
+        ]
+      }
+    },
+    "/api/sleeper/refresh": {
+      "post": {
+        "description": "Refresh Sleeper player data and merge with existing KTC data.\n\nReturns comprehensive player data including physical attributes, career info,\nfantasy data, injury status, and metadata. Merges with KTC players by name/position.\n\n**Performance Note**: This operation takes 30-60 seconds as it fetches from external APIs.",
+        "operationId": "refresh_sleeper_data_api_sleeper_refresh_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Refresh Sleeper player data",
+        "tags": [
+          "Sleeper Players"
+        ]
+      }
+    },
+    "/api/trade-analyzer/analyze": {
+      "post": {
+        "operationId": "analyze_trade_api_trade_analyzer_analyze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Trade",
+        "tags": [
+          "Trade Analyzer"
+        ]
+      }
+    },
+    "/api/trade-analyzer/feedback": {
+      "post": {
+        "operationId": "submit_feedback_api_trade_analyzer_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Feedback",
+        "tags": [
+          "Trade Analyzer"
+        ]
+      }
+    },
+    "/api/trade-analyzer/preview": {
+      "post": {
+        "operationId": "preview_trade_api_trade_analyzer_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Trade",
+        "tags": [
+          "Trade Analyzer"
+        ]
+      }
+    },
+    "/api/trade-analyzer/providers": {
+      "get": {
+        "operationId": "list_providers_api_trade_analyzer_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Providers",
+        "tags": [
+          "Trade Analyzer"
+        ]
+      }
+    },
+    "/api/valuations/refresh": {
+      "post": {
+        "operationId": "refresh_valuations_api_valuations_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ValuationsRefreshBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Valuations",
+        "tags": [
+          "Maintenance"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "System health and status endpoints",
+      "name": "Health"
+    },
+    {
+      "description": "KeepTradeCut player rankings and values",
+      "name": "KTC Player Rankings"
+    },
+    {
+      "description": "Bulk refresh operations for scheduled tasks",
+      "name": "Bulk Operations"
+    },
+    {
+      "description": "Sleeper player data management",
+      "name": "Sleeper Players"
+    },
+    {
+      "description": "Sleeper league management endpoints",
+      "name": "Sleeper Leagues"
+    },
+    {
+      "description": "Sleeper player research and analytics data",
+      "name": "Sleeper Research"
+    },
+    {
+      "description": "Sleeper weekly fantasy stats and rosters",
+      "name": "Sleeper Weekly Stats"
+    },
+    {
+      "description": "Aggregated dashboard payload endpoints",
+      "name": "Dashboard"
+    },
+    {
+      "description": "Operator-only maintenance and cron endpoints",
+      "name": "Maintenance"
+    },
+    {
+      "description": "AI-powered trade analysis endpoints",
+      "name": "Trade Analyzer"
+    }
+  ]
+}

@@ -25,3 +25,10 @@ jobs:
         env:
           TEST_DATABASE_URI: "sqlite:///:memory:"
         run: pytest tests/ --tb=short
+
+      - name: Verify openapi.json is current
+        env:
+          TEST_DATABASE_URI: "sqlite:///:memory:"
+        run: |
+          python scripts/export_openapi.py
+          git diff --exit-code openapi.json
