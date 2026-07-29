@@ -26,6 +26,10 @@ interface. Deployed serverlessly on Vercel with a scheduled nightly ingest.
 - **AI Trade Analyzer** — grades trades through a provider-agnostic layer
   (Anthropic, Google Gemini, Groq, Ollama) with structured output and per-client
   rate limiting.
+- **Trade-analyzer eval harness** — a gold trade set plus structural/feedback/RAG
+  metrics with JSON reports (`python -m evals.trade_analyzer --mode all`, or
+  `structural` / `feedback` / `gold` / `rag`); results land in
+  `evals/trade_analyzer/results/`.
 - **Dynasty research** — ownership and start-percentage ingestion per season/week.
 - **Async, rate-limited refresh** — long-running scrapes return immediately with a
   job id to poll; expensive refresh endpoints are throttled.
@@ -114,3 +118,7 @@ POSTGRES_URL=<prod_url> alembic -c migrations/alembic.ini upgrade head
 CI (`.github/workflows/ci.yml`) runs the suite on push / pull request. See
 [tests/README.md](tests/README.md) for layout and the
 [Trade Analyzer payload reference](docs/trade-analyzer-payload.md) for prompt details.
+
+Trade-analyzer evals run separately from pytest: `python -m evals.trade_analyzer
+--mode structural` needs no DB or network; `feedback` / `gold` / `rag` exercise
+the DB and the echo provider. See [Features](#features) above for details.
