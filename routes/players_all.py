@@ -38,6 +38,7 @@ from services.valuations.latest import latest_player_values
 from utils.datetime_serialization import utc_now_rfc3339
 from web.errors import ApiError
 from web.params import validate_ktc_params
+from web.schemas import PlayersAllResponse
 
 router = APIRouter(prefix="/api/players", tags=["Dashboard"])
 logger = logging.getLogger(__name__)
@@ -99,7 +100,11 @@ def _fc_config_key(league_id: str | None, league_format: str) -> str | None:
     return f"{num_teams}-{num_qbs}-{rec}"
 
 
-@router.get("/all", summary="Get all players in dashboard shape")
+@router.get(
+    "/all",
+    summary="Get all players in dashboard shape",
+    response_model=PlayersAllResponse,
+)
 def get_all_players(
     league_format: str = Query("superflex"),
     is_redraft: str = Query("false"),

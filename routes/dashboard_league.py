@@ -35,6 +35,7 @@ from services.valuations.latest import latest_player_values
 from utils.datetime_serialization import format_instant_rfc3339_utc
 from web.errors import ApiError
 from web.params import validate_ktc_params
+from web.schemas import DashboardLeagueResponse
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 logger = logging.getLogger(__name__)
@@ -492,7 +493,11 @@ def _attach_research_latest(
     return players_slim
 
 
-@router.get("/league/{league_id}", summary="Get dashboard league bundle")
+@router.get(
+    "/league/{league_id}",
+    summary="Get dashboard league bundle",
+    response_model=DashboardLeagueResponse,
+)
 def get_dashboard_league(
     league_id: str,
     season: str = Query(""),

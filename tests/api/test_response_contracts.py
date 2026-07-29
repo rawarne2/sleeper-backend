@@ -172,3 +172,10 @@ def test_ktc_refresh_status_matches_schema(client):
         r = client.get("/api/ktc/refresh/status/j1")
     assert r.status_code == 200, r.text
     KtcRefreshJobStatus.model_validate(r.json())
+
+
+def test_openapi_exposes_contract_schemas(client):
+    schemas = client.get("/openapi.json").json()["components"]["schemas"]
+    for name in ("DashboardLeagueResponse", "PlayersAllResponse",
+                 "KtcRefreshAccepted", "KtcRefreshJobStatus"):
+        assert name in schemas

@@ -18,6 +18,7 @@ from utils.datetime_serialization import format_instant_rfc3339_utc, utc_now_rfc
 from utils.helpers import setup_logging
 from web.errors import ApiError
 from web.params import validate_ktc_params
+from web.schemas import KtcRefreshAccepted, KtcRefreshJobStatus
 
 router = APIRouter(prefix="/api/ktc", tags=["KTC Player Rankings"])
 logger = setup_logging()
@@ -40,9 +41,15 @@ def _wants_sync(sync: str | None, async_: str | None) -> bool:
 
 
 @router.post("/refresh", operation_id="refresh_rankings_post",
-             summary="Refresh/Update KTC player rankings")
+             summary="Refresh/Update KTC player rankings",
+             responses={
+                 202: {"model": KtcRefreshAccepted,
+                       "description": "Refresh accepted; poll poll_url"},
+                 200: {"description": "Blocking sync=1 pipeline result"},
+             })
 @router.put("/refresh", operation_id="refresh_rankings_put",
-            summary="Refresh/Update KTC player rankings")
+            summary="Refresh/Update KTC player rankings",
+            responses={202: {"model": KtcRefreshAccepted}})
 def refresh_rankings(request: Request,
                      is_redraft: str = Query("false"),
                      league_format: str = Query("1qb"),
@@ -86,7 +93,8 @@ def refresh_rankings(request: Request,
     }, status_code=202)
 
 
-@router.get("/refresh/status/{job_id}", summary="Poll async KTC refresh job status")
+@router.get("/refresh/status/{job_id}", summary="Poll async KTC refresh job status",
+            response_model=KtcRefreshJobStatus)
 def refresh_status(job_id: str):
     rec = get_refresh_job(job_id)
     if not rec:
