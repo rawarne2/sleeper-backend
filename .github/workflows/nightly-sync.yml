@@ -1,0 +1,55 @@
+name: Nightly sync
+
+# Primary driver for /api/maintenance/nightly-sync: one request per step so each stays
+# under Vercel's function limit. The vercel.json cron (30 15 * * * UTC) is the backup.
+# Repo secrets: BACKEND_ORIGIN (e.g. https://sleeper-backend.vercel.app), CRON_SECRET.
+
+on:
+  schedule:
+    - cron: "7 14 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      BACKEND_ORIGIN: ${{ secrets.BACKEND_ORIGIN }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Later steps still run after a failure (each is independent); the job ends red.
+      - name: KTC values
+        run: scripts/nightly_sync_step.sh ktc
+      - name: Leagues
+        if: ${{ !cancelled() }}
+        run: scripts/nightly_sync_step.sh leagues
+      - name: Research
+        if: ${{ !cancelled() }}
+        run: scripts/nightly_sync_step.sh research
+      - name: Weekly matchup stats
+        if: ${{ !cancelled() }}
+        run: scripts/nightly_sync_step.sh weekly_stats
+      - name: NFL stat lines
+        if: ${{ !cancelled() }}
+        run: scripts/nightly_sync_step.sh nfl_stats
+      - name: Injuries
+        if: ${{ !cancelled() }}
+        run: scripts/nightly_sync_step.sh injuries
+      - name: News
+        if: ${{ !cancelled() }}
+        run: scripts/nightly_sync_step.sh news
+      - name: Valuations
+        if: ${{ !cancelled() }}
+        run: scripts/nightly_sync_step.sh valuations
+      - name: Prewarm dashboard cache
+        if: ${{ !cancelled() }}
+        run: scripts/nightly_sync_step.sh prewarm

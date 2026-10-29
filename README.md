@@ -33,9 +33,11 @@ interface. Deployed serverlessly on Vercel with a scheduled nightly ingest.
 - **Dynasty research** — ownership and start-percentage ingestion per season/week.
 - **Async, rate-limited refresh** — long-running scrapes return immediately with a
   job id to poll; expensive refresh endpoints are throttled.
-- **Scheduled nightly sync** — a single cron entrypoint refreshes valuations,
-  leagues, research, and stats, then warms the cache — scoped to the current
-  season since prior seasons are immutable.
+- **Scheduled nightly sync** — one maintenance entrypoint refreshes KTC, leagues,
+  research, stats, injuries/news, and valuations (incl. Sleeper week + rest-of-season
+  projections), then warms the cache — scoped to the current season since prior
+  seasons are immutable. GitHub Actions runs it step by step; see
+  [Scheduled sync](#scheduled-sync).
 
 ## Architecture
 
@@ -46,7 +48,7 @@ read-heavy endpoints; Postgres (or SQLite locally) is the system of record.
 ```mermaid
 flowchart LR
     Client[Dashboard / API clients] -->|HTTP| Routes[routes/ — APIRouters]
-    Cron[Vercel Cron] -->|nightly-sync| Routes
+    Cron[GitHub Actions + Vercel Cron] -->|nightly-sync| Routes
     Routes --> Services[services/ — scoring, daily_refresh, trade_analyzer]
     Services --> Managers[managers/ — DB writes & player merge]
     Services --> Scrapers[scrapers/ — KTC & Sleeper]
@@ -106,6 +108,42 @@ DATABASE_URL=<db_url> alembic -c migrations/alembic.ini upgrade head
 # Production (run before deploying code that needs it):
 POSTGRES_URL=<prod_url> alembic -c migrations/alembic.ini upgrade head
 ```
+
+## Scheduled sync
+
+`POST /api/maintenance/nightly-sync` (Bearer `CRON_SECRET`) runs the ingest pipeline.
+The whole pipeline in one request can outlive Vercel's 300s function limit, so
+[`.github/workflows/nightly-sync.yml`](.github/workflows/nightly-sync.yml) is the
+primary driver: daily at 14:07 UTC (plus manual **Run workflow**) it calls
+[`scripts/nightly_sync_step.sh`](scripts/nightly_sync_step.sh) once per step, each
+its own request with its own time budget:
+
+`ktc` → `leagues` → `research` → `weekly_stats` → `nfl_stats` → `injuries` → `news` →
+`valuations` → `prewarm`
+
+A failed step marks the run red (GitHub emails the repo owner) but later steps still
+run. A step fails on a non-2xx response, a timeout, or any entry in `summary.errors`.
+The `vercel.json` cron (`30 15 * * *` UTC) stays as a backup and runs every step in a
+single GET.
+
+Setup (repo **Settings → Secrets and variables → Actions**):
+
+| Secret | Value |
+| --- | --- |
+| `BACKEND_ORIGIN` | Deployed backend origin, e.g. `https://sleeper-backend.vercel.app` (not the Supabase host) |
+| `CRON_SECRET` | Same value as the Vercel project's `CRON_SECRET` env var |
+
+Scheduled workflows only run from the default branch, and GitHub pauses them after
+60 days without repository activity. Run a single step by hand with:
+
+```bash
+BACKEND_ORIGIN=https://sleeper-backend.vercel.app CRON_SECRET=... scripts/nightly_sync_step.sh research
+```
+
+Request body fields: `steps` (subset of the list above; omit for all),
+`league_ids` / `seasons` to back-fill older data, and `research_week` (defaults to
+Sleeper's current NFL week; `DAILY_REFRESH_RESEARCH_WEEK` pins it). If one step nears
+the limit on its own, split it further with `league_ids`.
 
 ## Testing
 
