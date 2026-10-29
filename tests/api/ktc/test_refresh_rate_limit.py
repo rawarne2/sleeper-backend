@@ -1,17 +1,19 @@
 """The expensive KTC refresh endpoints are rate limited (429 when over budget)."""
+import routes.ktc.rankings as ktc_rankings_route
 import services.ktc_refresh_async as ktc_refresh_async
 
 
 def _stub_pipeline(monkeypatch):
     """Make the sync refresh path return instantly without scraping or a DB."""
-    monkeypatch.setattr(
-        ktc_refresh_async, "execute_ktc_refresh_pipeline",
-        lambda *a, **k: ktc_refresh_async.KTCRefreshOutcome(
-            True, 200, {"operations_summary": {"players_count": 0,
-                                               "database_saved_count": 0,
-                                               "file_saved": False,
-                                               "s3_uploaded": False}}),
-    )
+    stub = lambda *a, **k: ktc_refresh_async.KTCRefreshOutcome(
+        True, 200, {"operations_summary": {"players_count": 0,
+                                           "database_saved_count": 0,
+                                           "file_saved": False,
+                                           "s3_uploaded": False}})
+    # Patch the name the route actually calls (imported into its namespace),
+    # and the source module so other callers in the test also see the stub.
+    monkeypatch.setattr(ktc_rankings_route, "execute_ktc_refresh_pipeline", stub)
+    monkeypatch.setattr(ktc_refresh_async, "execute_ktc_refresh_pipeline", stub)
     monkeypatch.setattr(
         ktc_refresh_async.DatabaseManager, "verify_database_connection",
         staticmethod(lambda: True),
