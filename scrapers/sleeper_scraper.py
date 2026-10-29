@@ -708,3 +708,14 @@ class SleeperScraper:
             return None
 
 
+
+    @staticmethod
+    def fetch_nfl_state() -> Optional[Dict[str, Any]]:
+        """Fetch Sleeper's NFL state (``week``, ``season``, ``season_type``: pre|regular|post|off)."""
+        try:
+            resp = requests.get("https://api.sleeper.app/v1/state/nfl", timeout=15)
+            resp.raise_for_status()
+            return resp.json()
+        except (requests.RequestException, ValueError) as e:
+            logger.error("Failed to fetch NFL state: %s", e)
+            return None

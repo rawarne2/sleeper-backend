@@ -154,6 +154,8 @@ def nightly_sync(request: Request, body: Optional[NightlySyncBody] = Body(None))
 
     try:
         from scrapers.pipelines import ingest_valuations
+        from services.valuations.base import SourceUnavailable
+        from services.valuations.sources.sleeper_proj import resolve_current_week
         current_season = str(datetime.now(UTC).year)
         # FantasyCalc varies by league config (teams-qbs-ppr), so ingest one snapshot
         # per distinct example-league config. KTC + sleeper_proj are config-agnostic.
@@ -167,9 +169,13 @@ def nightly_sync(request: Request, body: Optional[NightlySyncBody] = Body(None))
             for ls in EXAMPLE_FC_CONFIGS:
                 ingest_valuations(["fantasycalc"], season=current_season,
                                   league_format=fmt, league_settings=ls)
+        try:
+            week_settings = {"current_week": resolve_current_week({})}
+        except SourceUnavailable:
+            week_settings = {}
         for fmt in ("superflex", "1qb"):
             ingest_valuations(["ktc", "sleeper_proj", "tank01"], season=current_season,
-                              league_format=fmt, league_settings={})
+                              league_format=fmt, league_settings=week_settings)
     except Exception as exc:  # noqa: BLE001 - never fail the cron on valuation ingest
         logger.warning("valuation ingest skipped: %s", exc)
 
