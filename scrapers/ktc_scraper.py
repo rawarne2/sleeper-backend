@@ -63,10 +63,12 @@ class KTCScraper:
 
     @staticmethod
     def extract_players_array(html_content: str) -> List[Dict[str, Any]]:
-        """Extract the playersArray from the JavaScript in the HTML source."""
+        """Extract the players JSON: the ``ktc-players`` script tag, else the legacy inline ``playersArray``."""
         try:
-            pattern = r'var playersArray = (\[.*?\]);'
-            match = re.search(pattern, html_content, re.DOTALL)
+            match = (
+                re.search(r'<script[^>]*\bid="ktc-players"[^>]*>(.*?)</script>', html_content, re.DOTALL)
+                or re.search(r'var playersArray = (\[.*?\]);', html_content, re.DOTALL)
+            )
 
             if not match:
                 logger.error("Could not find playersArray in HTML source")

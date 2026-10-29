@@ -97,12 +97,9 @@ def scrape_and_process_data(
             merged_players = ktc_players
 
         def get_sort_key(player):
-            if league_format == '1qb':
-                oneqb_values = player.get('oneqb_values', {})
-                return oneqb_values.get('rank') if oneqb_values else float('inf')
-            else:  # superflex
-                superflex_values = player.get('superflex_values', {})
-                return superflex_values.get('rank') if superflex_values else float('inf')
+            values = player.get('oneqb_values' if league_format == '1qb' else 'superflex_values') or {}
+            rank = values.get('rank')
+            return rank if rank is not None else float('inf')
 
         players_sorted = sorted(merged_players, key=get_sort_key)
         logger.info("Sorted %s players by %s rankings",
