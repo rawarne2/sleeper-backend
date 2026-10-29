@@ -56,7 +56,9 @@ def test_run_daily_refresh_scopes_scraping_to_current_season(app_context):
         return_value={"leagues": [], "errors": []},
     ), patch.object(
         dr, "ingest_nfl_week_stats", return_value={"saved": 0}
-    ) as m_nfl:
+    ) as m_nfl, patch.object(
+        dr.SleeperScraper, "fetch_nfl_state", return_value={"week": 8, "season_type": "regular"}
+    ):
         dr.run_daily_refresh(skip_ktc=True)
 
     # Only the current-season league is scraped.
@@ -84,7 +86,43 @@ def test_explicit_league_ids_override_season_scope(app_context):
         return_value={"leagues": [], "errors": []},
     ), patch.object(
         dr, "ingest_nfl_week_stats", return_value={"saved": 0}
+    ), patch.object(
+        dr.SleeperScraper, "fetch_nfl_state", return_value={"week": 8, "season_type": "regular"}
     ):
         dr.run_daily_refresh(skip_ktc=True, league_ids=["old_league_1"])
 
     m_leagues.assert_called_once_with(["old_league_1"])
+
+
+@pytest.mark.parametrize("state, env, expected", [
+    ({"week": 8, "season_type": "regular"}, None, 8),
+    ({"week": 1, "season_type": "pre"}, None, 1),
+    ({"week": 20, "season_type": "post"}, None, 18),
+    (None, None, 1),
+    ({"week": 8, "season_type": "regular"}, "3", 3),
+])
+def test_default_research_week_follows_nfl_state(monkeypatch, state, env, expected):
+    if env is None:
+        monkeypatch.delenv("DAILY_REFRESH_RESEARCH_WEEK", raising=False)
+    else:
+        monkeypatch.setenv("DAILY_REFRESH_RESEARCH_WEEK", env)
+    with patch.object(dr.SleeperScraper, "fetch_nfl_state", return_value=state):
+        assert dr._default_research_week() == expected
+
+
+def test_scheduled_research_uses_current_nfl_week(app_context, monkeypatch):
+    monkeypatch.delenv("DAILY_REFRESH_RESEARCH_WEEK", raising=False)
+    with patch.object(
+        dr, "refresh_leagues", return_value={"leagues": {}, "errors": [], "seasons": [CURRENT]},
+    ), patch.object(
+        dr, "persist_research", return_value={"status": "success"}
+    ) as m_research, patch.object(
+        dr, "refresh_weekly_stats_for_leagues", return_value={"leagues": [], "errors": []},
+    ), patch.object(
+        dr, "ingest_nfl_week_stats", return_value={"saved": 0}
+    ), patch.object(
+        dr.SleeperScraper, "fetch_nfl_state", return_value={"week": 8, "season_type": "regular"}
+    ):
+        dr.run_daily_refresh(skip_ktc=True, league_ids=["cur_league"])
+
+    assert {call.kwargs["week"] for call in m_research.call_args_list} == {8}

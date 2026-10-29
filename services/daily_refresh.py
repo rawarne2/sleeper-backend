@@ -270,6 +270,19 @@ def refresh_weekly_stats_for_leagues(
     return out
 
 
+def _default_research_week() -> int:
+    """``DAILY_REFRESH_RESEARCH_WEEK`` override, else Sleeper's current regular-season week."""
+    override = os.getenv("DAILY_REFRESH_RESEARCH_WEEK")
+    if override:
+        return int(override)
+    state = SleeperScraper.fetch_nfl_state() or {}
+    if state.get("season_type") == "regular" and state.get("week"):
+        return min(int(state["week"]), REGULAR_SEASON_WEEKS[-1])
+    if state.get("season_type") == "post":
+        return REGULAR_SEASON_WEEKS[-1]
+    return 1
+
+
 def run_daily_refresh(
     *,
     league_ids: Optional[List[str]] = None,
@@ -306,8 +319,8 @@ def run_daily_refresh(
         if league_ids is not None
         else _current_season_league_ids(current_season, session=session)
     )
-    week = research_week if research_week is not None else int(
-        os.getenv("DAILY_REFRESH_RESEARCH_WEEK", "1")
+    week = research_week if research_week is not None else (
+        1 if skip_research else _default_research_week()
     )
 
     summary: DailyRefreshSummary = {
