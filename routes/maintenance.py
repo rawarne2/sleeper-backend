@@ -3,7 +3,7 @@ Maintenance and batch operations (nightly sync, prewarm).
 """
 import time
 from datetime import datetime, UTC
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, get_args
 
 from fastapi import APIRouter, Body
 from fastapi.responses import JSONResponse
@@ -91,7 +91,51 @@ def maintenance_health():
     }
 
 
+NightlyStep = Literal[
+    "ktc", "leagues", "research", "weekly_stats", "nfl_stats",
+    "injuries", "news", "valuations", "prewarm",
+]
+ALL_STEPS: tuple[str, ...] = get_args(NightlyStep)
+_DAILY_STEPS = ("ktc", "leagues", "research", "weekly_stats", "nfl_stats", "injuries", "news")
+
+# FantasyCalc varies by league config (teams-qbs-ppr), so ingest one snapshot
+# per distinct example-league config. KTC + sleeper_proj are config-agnostic.
+_EXAMPLE_FC_CONFIGS = [
+    {"total_rosters": 12, "roster_positions": ["SUPER_FLEX"], "scoring_settings": {"rec": 0.5}},
+    {"total_rosters": 12, "roster_positions": ["SUPER_FLEX"], "scoring_settings": {"rec": 1.0}},
+    {"total_rosters": 10, "roster_positions": ["SUPER_FLEX"], "scoring_settings": {"rec": 1.0}},
+    {"total_rosters": 10, "roster_positions": ["QB"], "scoring_settings": {"rec": 1.0}},
+]
+
+
+def _ingest_valuations() -> Dict[str, Any]:
+    """Snapshot every valuation source for both formats; per-source fail-soft."""
+    from scrapers.pipelines import ingest_valuations
+    from services.valuations.base import SourceUnavailable
+    from services.valuations.sources.sleeper_proj import resolve_current_week
+
+    current_season = str(datetime.now(UTC).year)
+    try:
+        week_settings = {"current_week": resolve_current_week({})}
+    except SourceUnavailable:
+        week_settings = {}
+    results: Dict[str, Any] = {}
+    for fmt in ("superflex", "1qb"):
+        fmt_results: Dict[str, Any] = {"fantasycalc": []}
+        for ls in _EXAMPLE_FC_CONFIGS:
+            fmt_results["fantasycalc"].append(ingest_valuations(
+                ["fantasycalc"], season=current_season, league_format=fmt, league_settings=ls,
+            )["fantasycalc"])
+        fmt_results.update(ingest_valuations(
+            ["ktc", "sleeper_proj", "tank01"], season=current_season,
+            league_format=fmt, league_settings=week_settings,
+        ))
+        results[fmt] = fmt_results
+    return results
+
+
 class NightlySyncBody(BaseModel):
+    steps: Optional[List[NightlyStep]] = None
     league_ids: Optional[List[str]] = None
     seasons: Optional[List[str]] = None
     research_week: Optional[int] = None
@@ -107,16 +151,20 @@ def nightly_sync(request: Request, body: Optional[NightlySyncBody] = Body(None))
     """
     Full ingest pipeline for scheduled jobs (Vercel Cron uses GET + CRON_SECRET).
 
-    Schedule: see vercel.json (UTC). Repo default 30 15 * * * ~= 11:30 AM Eastern when DST.
+    Schedule: GitHub Actions (``.github/workflows/nightly-sync.yml``) drives it as one
+    request per step so each stays under Vercel's function limit; the vercel.json
+    cron (30 15 * * * UTC) runs every step in one GET as a backup.
 
-    Pipeline: KTC all formats -> leagues -> research per season.
-    Scraping is scoped to the current season by default (prior seasons are
-    immutable); pass explicit league_ids/seasons to back-fill older data.
-    NFL player ingest is NOT included; use POST /api/sleeper/refresh separately (rare).
+    Steps, in order: ktc -> leagues -> research -> weekly_stats -> nfl_stats ->
+    injuries -> news -> valuations -> prewarm. Scraping is scoped to the current
+    season by default (prior seasons are immutable); pass explicit
+    league_ids/seasons to back-fill older data. NFL player ingest is NOT included;
+    use POST /api/sleeper/refresh separately (rare).
 
     Optional JSON body (POST only):
-      { "league_ids": ["..."], "seasons": ["2025"], "research_week": 1,
+      { "steps": ["ktc"], "league_ids": ["..."], "seasons": ["2025"], "research_week": 1,
         "skip_ktc": false, "skip_leagues": false, "skip_research": false, "skip_prewarm": false }
+    Omitting ``steps`` runs every step; the legacy ``skip_*`` flags still apply.
     """
     if not cron_authorized(request):
         raise ApiError(
@@ -127,57 +175,52 @@ def nightly_sync(request: Request, body: Optional[NightlySyncBody] = Body(None))
 
     # For GET (cron) there is no body; treat as all defaults.
     payload = body or NightlySyncBody()
+    legacy_skips = {
+        "ktc": payload.skip_ktc, "leagues": payload.skip_leagues,
+        "research": payload.skip_research, "prewarm": payload.skip_prewarm,
+    }
+    requested = set(payload.steps or ALL_STEPS)
+    steps = [s for s in ALL_STEPS if s in requested and not legacy_skips.get(s)]
 
     logger.info(
-        "Nightly sync started (remote=%s)",
+        "Nightly sync started steps=%s (remote=%s)",
+        ",".join(steps),
         request.client.host if request.client else None,
     )
 
-    summary = run_daily_refresh(
-        league_ids=payload.league_ids,
-        seasons=payload.seasons,
-        research_week=payload.research_week,
-        skip_ktc=payload.skip_ktc,
-        skip_leagues=payload.skip_leagues,
-        skip_research=payload.skip_research,
-    )
+    summary: Dict[str, Any] = {"errors": []}
+    if any(s in steps for s in _DAILY_STEPS):
+        summary = run_daily_refresh(
+            league_ids=payload.league_ids,
+            seasons=payload.seasons,
+            research_week=payload.research_week,
+            skip_ktc="ktc" not in steps,
+            skip_leagues="leagues" not in steps,
+            skip_research="research" not in steps,
+            skip_weekly_stats="weekly_stats" not in steps,
+            skip_nfl_stats="nfl_stats" not in steps,
+            skip_injuries="injuries" not in steps,
+            skip_news="news" not in steps,
+        )
+    summary["steps"] = steps
 
-    invalidate_rankings_cache()
+    if "ktc" in steps:
+        invalidate_rankings_cache()
 
-    if not payload.skip_prewarm:
+    if "valuations" in steps:
+        try:
+            summary["valuations"] = _ingest_valuations()
+        except Exception as exc:  # noqa: BLE001 - never fail the cron on valuation ingest
+            logger.warning("valuation ingest skipped: %s", exc)
+            summary.setdefault("errors", []).append({"step": "valuations", "error": str(exc)})
+
+    if "prewarm" in steps:
         try:
             summary["prewarm"] = _prewarm_dashboard_caches()
         except Exception as e:
             logger.exception("nightly-sync prewarm failed")
             summary.setdefault("errors", []).append(
                 {"step": "prewarm", "error": str(e)})
-
-    try:
-        from scrapers.pipelines import ingest_valuations
-        from services.valuations.base import SourceUnavailable
-        from services.valuations.sources.sleeper_proj import resolve_current_week
-        current_season = str(datetime.now(UTC).year)
-        # FantasyCalc varies by league config (teams-qbs-ppr), so ingest one snapshot
-        # per distinct example-league config. KTC + sleeper_proj are config-agnostic.
-        EXAMPLE_FC_CONFIGS = [
-            {"total_rosters": 12, "roster_positions": ["SUPER_FLEX"], "scoring_settings": {"rec": 0.5}},
-            {"total_rosters": 12, "roster_positions": ["SUPER_FLEX"], "scoring_settings": {"rec": 1.0}},
-            {"total_rosters": 10, "roster_positions": ["SUPER_FLEX"], "scoring_settings": {"rec": 1.0}},
-            {"total_rosters": 10, "roster_positions": ["QB"], "scoring_settings": {"rec": 1.0}},
-        ]
-        for fmt in ("superflex", "1qb"):
-            for ls in EXAMPLE_FC_CONFIGS:
-                ingest_valuations(["fantasycalc"], season=current_season,
-                                  league_format=fmt, league_settings=ls)
-        try:
-            week_settings = {"current_week": resolve_current_week({})}
-        except SourceUnavailable:
-            week_settings = {}
-        for fmt in ("superflex", "1qb"):
-            ingest_valuations(["ktc", "sleeper_proj", "tank01"], season=current_season,
-                              league_format=fmt, league_settings=week_settings)
-    except Exception as exc:  # noqa: BLE001 - never fail the cron on valuation ingest
-        logger.warning("valuation ingest skipped: %s", exc)
 
     return {"status": "success", "summary": summary}
 

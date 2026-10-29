@@ -126,3 +126,43 @@ def test_scheduled_research_uses_current_nfl_week(app_context, monkeypatch):
         dr.run_daily_refresh(skip_ktc=True, league_ids=["cur_league"])
 
     assert {call.kwargs["week"] for call in m_research.call_args_list} == {8}
+
+
+def _stub_all(stack):
+    mocks = {}
+    for name, rv in (
+        ("refresh_leagues", {"leagues": {}, "errors": [], "seasons": [CURRENT]}),
+        ("persist_research", {"status": "success"}),
+        ("refresh_weekly_stats_for_leagues", {"leagues": [], "errors": []}),
+        ("ingest_nfl_week_stats", {"saved": 0}),
+        ("ingest_nflverse_injuries", {"saved": 0}),
+        ("ingest_player_news", {"saved": 0}),
+    ):
+        mocks[name] = stack.enter_context(patch.object(dr, name, return_value=rv))
+    stack.enter_context(patch.object(
+        dr.SleeperScraper, "fetch_nfl_state", return_value={"week": 8, "season_type": "regular"}))
+    return mocks
+
+
+def test_skip_flags_isolate_each_step(app_context):
+    from contextlib import ExitStack
+    _seed_leagues()
+    with ExitStack() as stack:
+        mocks = _stub_all(stack)
+        dr.run_daily_refresh(skip_ktc=True, skip_leagues=True, skip_research=True,
+                             skip_weekly_stats=True, skip_injuries=True, skip_news=True)
+    assert mocks["ingest_nfl_week_stats"].call_args_list[0].args == (CURRENT,)
+    for name in ("refresh_leagues", "persist_research", "refresh_weekly_stats_for_leagues",
+                 "ingest_nflverse_injuries", "ingest_player_news"):
+        mocks[name].assert_not_called()
+
+
+def test_research_without_leagues_step_defaults_to_current_season(app_context):
+    from contextlib import ExitStack
+    _seed_leagues()
+    with ExitStack() as stack:
+        mocks = _stub_all(stack)
+        dr.run_daily_refresh(skip_ktc=True, skip_leagues=True, skip_weekly_stats=True,
+                             skip_nfl_stats=True, skip_injuries=True, skip_news=True)
+    mocks["refresh_leagues"].assert_not_called()
+    assert {c.args[0] for c in mocks["persist_research"].call_args_list} == {CURRENT}

@@ -292,6 +292,9 @@ def run_daily_refresh(
     skip_leagues: bool = False,
     skip_research: bool = False,
     skip_weekly_stats: bool = False,
+    skip_nfl_stats: bool = False,
+    skip_injuries: bool = False,
+    skip_news: bool = False,
     session: Session | None = None,
 ) -> DailyRefreshSummary:
     """
@@ -306,7 +309,11 @@ def run_daily_refresh(
     When ``seasons`` is omitted, research seasons are derived from
     ``refresh_leagues`` results (each league's API response contains a
     ``season`` field). If ``skip_leagues`` is true and ``seasons`` is not
-    provided, research is skipped and a warning is logged.
+    provided, the scheduled path researches the current season; with explicit
+    ``league_ids`` research is skipped and a warning is logged.
+
+    Each ``skip_*`` flag isolates one step so callers (the chunked GitHub Actions
+    nightly) can run the pipeline as several short requests.
 
     The scheduled (no-argument) path is **scoped to the current season**: prior
     seasons are immutable, so re-scraping them nightly is wasted work. Pass
@@ -353,6 +360,8 @@ def run_daily_refresh(
 
     if not skip_research:
         seas = seasons if seasons is not None else league_seasons
+        if not seas and skip_leagues and league_ids is None:
+            seas = [current_season]
         if not seas:
             logger.warning(
                 "No seasons available for research refresh; pass seasons explicitly "
@@ -414,6 +423,7 @@ def run_daily_refresh(
             logger.exception("Weekly stats refresh failed")
             summary["errors"].append({"step": "weekly_stats", "error": str(e)})
 
+    if not skip_nfl_stats:
         # Ingest league-agnostic raw NFL stat lines once per distinct season so the
         # scoring engine can compute league-accurate points for the whole universe.
         # On the scheduled path (no explicit seasons) this is the current season
@@ -439,7 +449,7 @@ def run_daily_refresh(
     injury_seasons = {
         s for s in (seasons or league_seasons or [_current_season()]) if s and str(s).strip()
     }
-    if injury_seasons:
+    if injury_seasons and not skip_injuries:
         injuries: Dict[str, Any] = {}
         for s in sorted(injury_seasons):
             try:
@@ -449,10 +459,11 @@ def run_daily_refresh(
                 summary["errors"].append({"step": "injuries", "season": s, "error": str(e)})
         summary["injuries"] = injuries
 
-    try:
-        summary["news"] = ingest_player_news(session=session)
-    except Exception as e:
-        logger.exception("Player news ingest failed")
-        summary["errors"].append({"step": "news", "error": str(e)})
+    if not skip_news:
+        try:
+            summary["news"] = ingest_player_news(session=session)
+        except Exception as e:
+            logger.exception("Player news ingest failed")
+            summary["errors"].append({"step": "news", "error": str(e)})
 
     return summary

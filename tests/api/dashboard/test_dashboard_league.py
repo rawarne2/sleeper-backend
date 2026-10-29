@@ -146,6 +146,8 @@ def test_nightly_sync_with_bearer(client, monkeypatch):
     ), patch(
         "routes.maintenance.invalidate_rankings_cache"
     ), patch(
+        "routes.maintenance._ingest_valuations", return_value={}
+    ), patch(
         "routes.maintenance._prewarm_dashboard_caches",
         return_value={"results": [], "failed": 0, "total": 0},
     ) as prewarm_mock:
@@ -166,6 +168,8 @@ def test_nightly_sync_can_skip_prewarm(client, monkeypatch):
         "routes.maintenance.run_daily_refresh", return_value={"steps": "ok"}
     ), patch(
         "routes.maintenance.invalidate_rankings_cache"
+    ), patch(
+        "routes.maintenance._ingest_valuations", return_value={}
     ), patch(
         "routes.maintenance._prewarm_dashboard_caches"
     ) as prewarm_mock:
