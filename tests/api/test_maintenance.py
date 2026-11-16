@@ -123,3 +123,26 @@ def test_nightly_sync_legacy_skip_flags_still_apply(client, monkeypatch):
     assert resp.status_code == 200, resp.text
     assert [c[0] for c in calls] == ["daily", "valuations"]
     assert calls[0][1]["skip_ktc"] is True
+
+
+def test_fc_teams_ppr_defaults_without_leagues(app_context):
+    import routes.maintenance as m
+    assert sorted(m._fc_teams_ppr()) == [(10, 1.0), (12, 0.5), (12, 1.0)]
+
+
+def test_fc_teams_ppr_from_persisted_leagues(app_context):
+    import json
+    from datetime import datetime, UTC
+    import routes.maintenance as m
+    from models.entities import SleeperLeague, SleeperRoster
+    from models.extensions import db
+
+    now = datetime.now(UTC)
+    for lid, teams, scoring in (("L1", 10, {"rec": 1.0}), ("L2", 12, {}), ("L3", 12, {"rec": 0.5})):
+        db.session.add(SleeperLeague(league_id=lid, season="2026",
+                                     scoring_settings=json.dumps(scoring), last_updated=now))
+        for rid in range(1, teams + 1):
+            db.session.add(SleeperRoster(league_id=lid, roster_id=rid))
+    db.session.commit()
+
+    assert m._fc_teams_ppr() == [(10, 1.0), (12, 0.5)]

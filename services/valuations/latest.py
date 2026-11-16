@@ -30,12 +30,39 @@ def _latest_rows(
     join_cond = ((ValueSnapshot.player_id == sub.c.aid)
                  & (ValueSnapshot.source_key == sub.c.source_key)
                  & (ValueSnapshot.metric_key == sub.c.metric_key)
-                 & (ValueSnapshot.as_of == sub.c.mx))
+                 & (ValueSnapshot.as_of == sub.c.mx)
+                 & (ValueSnapshot.league_format == league_format))
     if fc_config_key is not None:
         join_cond = join_cond & cfg_clause
     return session.execute(
         select(ValueSnapshot).join(sub, join_cond)
     ).scalars().all()
+
+
+def latest_snapshots_for(
+    source_key: str,
+    league_format: str,
+    config_key: str | None,
+    session: Session | None = None,
+) -> Dict[tuple[int, str], ValueSnapshot]:
+    """Latest stored row per (player_id, metric_key) for one source/format/config."""
+    session = session or db.session
+    cfg = (ValueSnapshot.config_key.is_(None) if config_key is None
+           else ValueSnapshot.config_key == config_key)
+    scope = ((ValueSnapshot.source_key == source_key)
+             & (ValueSnapshot.league_format == league_format)
+             & ValueSnapshot.player_id.isnot(None) & cfg)
+    sub = select(
+        ValueSnapshot.player_id.label("aid"), ValueSnapshot.metric_key,
+        func.max(ValueSnapshot.as_of).label("mx"),
+    ).where(scope).group_by(ValueSnapshot.player_id, ValueSnapshot.metric_key).subquery()
+    rows = session.execute(
+        select(ValueSnapshot).join(sub, (ValueSnapshot.player_id == sub.c.aid)
+                                   & (ValueSnapshot.metric_key == sub.c.metric_key)
+                                   & (ValueSnapshot.as_of == sub.c.mx)).where(scope)
+        .order_by(ValueSnapshot.id)
+    ).scalars().all()
+    return {(r.player_id, r.metric_key): r for r in rows}
 
 
 def latest_player_values(

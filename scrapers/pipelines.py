@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, UTC
 from typing import Any, Dict, List, Optional
 
@@ -203,6 +204,8 @@ def ingest_valuations(source_keys, *, season, league_format, league_settings, se
     """
     from models.entities import Player, ValueSnapshot, ValueSource
     from services.valuations.resolver import build_sleeper_index, build_name_index, resolve_player_id
+    from services.valuations.latest import latest_snapshots_for
+    from services.valuations.retention import metric_policy
 
     session = session or db.session
     players = session.execute(select(Player)).scalars().all()
@@ -218,7 +221,8 @@ def ingest_valuations(source_keys, *, season, league_format, league_settings, se
             results[key] = f"error: {exc}"
             continue
 
-        written = 0
+        written = updated = unchanged = 0
+        stored: Dict[tuple, Dict[tuple, Any]] = {}
         for row in rows:
             if (row.position or "").upper() in ("PICK", "RDP"):
                 continue  # picks are KTC-only in v1
@@ -233,13 +237,28 @@ def ingest_valuations(source_keys, *, season, league_format, league_settings, se
                     sleeper_index=sleeper_index, name_index=name_index)
             if player_id is None:
                 continue  # drop unmatched, never guess
-            session.add(ValueSnapshot(
+            config_key = getattr(row, "config_key", None)
+            scope = (row.source_key, config_key)
+            if scope not in stored:
+                stored[scope] = latest_snapshots_for(
+                    row.source_key, league_format, config_key, session=session)
+            prev = stored[scope].get((player_id, row.metric_key))
+            as_of = row.as_of or datetime.now(UTC)
+            if prev is not None and _same_value(prev, row):
+                unchanged += 1
+                continue
+            if prev is not None and metric_policy(row.metric_key) == "latest_only":
+                prev.metric_value, prev.rank, prev.as_of = row.metric_value, row.rank, as_of
+                updated += 1
+                continue
+            snap = ValueSnapshot(
                 player_id=player_id, pick_key=None, source_key=row.source_key,
                 league_format=league_format, metric_key=row.metric_key,
                 metric_value=row.metric_value, rank=row.rank,
-                config_key=getattr(row, "config_key", None),
-                as_of=row.as_of or datetime.now(UTC), raw_json=None,
-            ))
+                config_key=config_key, as_of=as_of, raw_json=None,
+            )
+            session.add(snap)
+            stored[scope][(player_id, row.metric_key)] = snap
             written += 1
 
         meta = source.meta
@@ -250,5 +269,13 @@ def ingest_valuations(source_keys, *, season, league_format, league_settings, se
             session.add(src_row)
         src_row.last_synced_at = datetime.now(UTC)
         session.commit()
-        results[key] = f"{written} snapshots"
+        results[key] = f"{written} snapshots, {updated} updated, {unchanged} unchanged"
     return results
+
+
+def _same_value(prev, row) -> bool:
+    if prev.rank != row.rank:
+        return False
+    if prev.metric_value is None or row.metric_value is None:
+        return prev.metric_value is row.metric_value
+    return math.isclose(prev.metric_value, row.metric_value, rel_tol=1e-9, abs_tol=1e-9)

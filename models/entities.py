@@ -812,28 +812,30 @@ class PlayerKTCSuperflexValues(db.Model):
 
 
 class ValueSnapshot(db.Model):
-    """Append-only per-source valuation/projection snapshot.
+    """Per-source valuation/projection snapshot.
 
-    Exactly one of player_id / pick_key is set. Append-only: never updated.
+    Exactly one of player_id / pick_key is set. Written only when a value changes;
+    retention (``services/valuations/retention.py``) keeps daily history for ``value``
+    and a single in-place-updated row for every other metric.
     """
     __tablename__ = "value_snapshots"
 
     id = db.Column(db.Integer, primary_key=True)
-    player_id = db.Column(db.Integer, db.ForeignKey("players.id"), nullable=True, index=True)
-    pick_key = db.Column(db.String(40), nullable=True, index=True)  # e.g. "2026-r1-mid"
-    source_key = db.Column(db.String(30), nullable=False, index=True)
+    player_id = db.Column(db.Integer, db.ForeignKey("players.id"), nullable=True)
+    pick_key = db.Column(db.String(40), nullable=True)  # e.g. "2026-r1-mid"
+    source_key = db.Column(db.String(30), nullable=False)
     league_format = db.Column(db.String(20), nullable=False)  # "1qb" | "superflex"
     metric_key = db.Column(db.String(30), nullable=False)     # value|redraft_value|proj_ros|proj_week|trade_frequency|volatility
     metric_value = db.Column(db.Float)
     rank = db.Column(db.Integer)
-    config_key = db.Column(db.String(24), nullable=True, index=True)
+    config_key = db.Column(db.String(24), nullable=True)
     as_of = db.Column(db.DateTime, nullable=False)
     raw_json = db.Column(db.Text)
 
     __table_args__ = (
         db.Index(
-            "ix_value_snapshots_latest",
-            "player_id", "source_key", "league_format", "metric_key", "as_of",
+            "ix_value_snapshots_config",
+            "player_id", "source_key", "league_format", "config_key", "metric_key", "as_of",
         ),
     )
 

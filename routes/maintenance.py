@@ -98,20 +98,41 @@ NightlyStep = Literal[
 ALL_STEPS: tuple[str, ...] = get_args(NightlyStep)
 _DAILY_STEPS = ("ktc", "leagues", "research", "weekly_stats", "nfl_stats", "injuries", "news")
 
-# FantasyCalc varies by league config (teams-qbs-ppr), so ingest one snapshot
-# per distinct example-league config. KTC + sleeper_proj are config-agnostic.
-_EXAMPLE_FC_CONFIGS = [
-    {"total_rosters": 12, "roster_positions": ["SUPER_FLEX"], "scoring_settings": {"rec": 0.5}},
-    {"total_rosters": 12, "roster_positions": ["SUPER_FLEX"], "scoring_settings": {"rec": 1.0}},
-    {"total_rosters": 10, "roster_positions": ["SUPER_FLEX"], "scoring_settings": {"rec": 1.0}},
-    {"total_rosters": 10, "roster_positions": ["QB"], "scoring_settings": {"rec": 1.0}},
-]
+# Fallback (teams, ppr) pairs when no league is persisted yet. FantasyCalc varies by
+# teams/QBs/PPR; KTC + sleeper_proj are config-agnostic.
+_DEFAULT_FC_TEAMS_PPR = [(12, 0.5), (12, 1.0), (10, 1.0)]
+_FORMAT_ROSTER_POSITIONS = {"superflex": ["SUPER_FLEX"], "1qb": ["QB"]}
+
+
+def _fc_teams_ppr() -> List[tuple[int, float]]:
+    """Distinct (teams, ppr) across persisted leagues, derived like the dashboard's
+    ``_fc_config_key`` (roster count, ``rec`` defaulting to 0.5)."""
+    import json
+    from sqlalchemy import func
+    from models.entities import SleeperRoster
+
+    counts = dict(db.session.execute(
+        select(SleeperRoster.league_id, func.count()).group_by(SleeperRoster.league_id)
+    ).all())
+    pairs = set()
+    for league_id, raw in db.session.execute(
+        select(SleeperLeague.league_id, SleeperLeague.scoring_settings)
+    ).all():
+        scoring = json.loads(raw) if isinstance(raw, str) else dict(raw or {})
+        pairs.add((counts.get(league_id) or 12, float(scoring.get("rec", 0.5) or 0.5)))
+    return sorted(pairs) or list(_DEFAULT_FC_TEAMS_PPR)
 
 
 def _ingest_valuations() -> Dict[str, Any]:
-    """Snapshot every valuation source for both formats; per-source fail-soft."""
+    """Snapshot every valuation source for both formats; per-source fail-soft.
+
+    Ingest is write-on-change, so a second run on the same day (e.g. the vercel.json
+    backup cron after GitHub Actions) writes nothing for unchanged values. Retention
+    pruning runs afterwards so ``value_snapshots`` growth stays bounded.
+    """
     from scrapers.pipelines import ingest_valuations
     from services.valuations.base import SourceUnavailable
+    from services.valuations.retention import prune_value_snapshots
     from services.valuations.sources.sleeper_proj import resolve_current_week
 
     current_season = str(datetime.now(UTC).year)
@@ -119,10 +140,13 @@ def _ingest_valuations() -> Dict[str, Any]:
         week_settings = {"current_week": resolve_current_week({})}
     except SourceUnavailable:
         week_settings = {}
+    teams_ppr = _fc_teams_ppr()
     results: Dict[str, Any] = {}
     for fmt in ("superflex", "1qb"):
         fmt_results: Dict[str, Any] = {"fantasycalc": []}
-        for ls in _EXAMPLE_FC_CONFIGS:
+        for teams, ppr in teams_ppr:
+            ls = {"total_rosters": teams, "roster_positions": _FORMAT_ROSTER_POSITIONS[fmt],
+                  "scoring_settings": {"rec": ppr}}
             fmt_results["fantasycalc"].append(ingest_valuations(
                 ["fantasycalc"], season=current_season, league_format=fmt, league_settings=ls,
             )["fantasycalc"])
@@ -131,6 +155,12 @@ def _ingest_valuations() -> Dict[str, Any]:
             league_format=fmt, league_settings=week_settings,
         ))
         results[fmt] = fmt_results
+    try:
+        results["retention"] = prune_value_snapshots(dry_run=False).deleted
+    except Exception as exc:  # noqa: BLE001 - retention must not fail the ingest
+        logger.warning("value_snapshots retention skipped: %s", exc)
+        db.session.rollback()
+        results["retention"] = f"error: {exc}"
     return results
 
 
