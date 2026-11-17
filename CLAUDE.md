@@ -68,7 +68,15 @@ Both `routes/dashboard_league.py` (roster-scoped bundle) and `routes/players_all
 
 ## FantasyCalc config_key
 
-`value_snapshots.config_key` (VARCHAR 24, nullable) keys FantasyCalc snapshots by a `"{teams}-{num_qbs}-{ppr}"` string (e.g. `"12-2-0.5"`). KTC and `sleeper_proj` rows leave it **NULL** (they are not PPR/team-count sensitive). `latest_player_values(league_format, fc_config_key=...)` filters FantasyCalc rows by `config_key` while leaving non-FC rows unfiltered, so both sources coexist in the same query. The `dashboard_league.py` route derives the key from the league's `total_rosters`, `scoring_settings.rec`, and `league_format`. The nightly maintenance route ingests FC for each distinct example-league config (vary teams/QBs/PPR).
+`value_snapshots.config_key` (VARCHAR 24, nullable) keys FantasyCalc snapshots by a `"{teams}-{num_qbs}-{ppr}"` string (e.g. `"12-2-0.5"`). KTC and `sleeper_proj` rows leave it **NULL** (they are not PPR/team-count sensitive). `latest_player_values(league_format, fc_config_key=...)` filters FantasyCalc rows by `config_key` while leaving non-FC rows unfiltered, so both sources coexist in the same query. The `dashboard_league.py` route derives the key from the league's `total_rosters`, `scoring_settings.rec`, and `league_format`. The nightly maintenance route (`_fc_teams_ppr`) ingests FC for each distinct (teams, ppr) across persisted leagues, once per format with QBs forced by format (superflex → 2, 1qb → 1), so keys match what the dashboard asks for.
+
+## value_snapshots size and retention
+
+Supabase free plan caps the DB at 500 MB; `value_snapshots` once reached 865 MB (2.44M rows, 608 MB of indexes). Rules now in place:
+- **Indexes:** only `value_snapshots_pkey` and `ix_value_snapshots_config`. The latest query is a seq scan + hash aggregate regardless, so do not add per-column indexes back.
+- **Write-on-change ingest** (`scrapers/pipelines.py::ingest_valuations`): an unchanged (player, source, format, config, metric) value is skipped; a changed `latest_only` metric updates its single row in place. Re-running valuations the same day writes nothing. `ValueSource.last_synced_at` is set on every ingest, independent of `as_of`.
+- **Retention** (`services/valuations/retention.py`, `METRIC_POLICY`): `value` is `full` (every row for 30 days, then the latest row per key per day); everything else (`redraft_value`, `trade_frequency`, `trend_30day`, `volatility`, `proj_week`, `proj_ros`, …) is `latest_only`. The nightly `valuations` step prunes after ingesting; `scripts/prune_value_snapshots.py` (dry run by default, `--execute`) runs it by hand. Deletes do not shrink disk; run `VACUUM FULL value_snapshots` (needs free space for a copy) to return it.
+- History readers must only rely on `value` history.
 
 KTC TEP level mapping: the frontend resolves `bonus_rec_te` to the nearest KTC bucket via thresholds 0.25/0.75/1.25 (`< 0.25 → ''`, `< 0.75 → 'tep'`, `< 1.25 → 'tepp'`, else `'teppp'`). See `src/utils/leagueConfig.ts::resolveTepLevel`.
 
