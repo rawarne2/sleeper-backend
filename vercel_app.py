@@ -50,7 +50,6 @@ def _resolve_vercel_db_url() -> str:
         except (ValueError, TypeError) as e:
             logger.warning("Failed to clean database URI: %s", e)
 
-    logger.info("Using database connection: %s...", database_uri[:50])
     return database_uri
 
 

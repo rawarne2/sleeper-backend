@@ -227,7 +227,7 @@ def refresh_weekly_stats_for_league(
     return summary
 
 
-def ingest_nfl_week_stats(season: str) -> Dict[str, int]:
+def ingest_nfl_week_stats(season: str, *, weeks: Iterable[int] = REGULAR_SEASON_WEEKS) -> Dict[str, int]:
     """Ingest league-agnostic raw Sleeper stat lines for a season (weeks 1–18).
 
     One row per player/week in ``nfl_player_week_stats``; the scoring engine
@@ -235,7 +235,7 @@ def ingest_nfl_week_stats(season: str) -> Dict[str, int]:
     Sleeper points for the whole player universe.
     """
     totals = {"saved": 0, "updated": 0, "skipped": 0}
-    for week in REGULAR_SEASON_WEEKS:
+    for week in weeks:
         raw = SleeperScraper.fetch_weekly_player_stats(season, week)
         if not raw:
             continue
@@ -245,10 +245,29 @@ def ingest_nfl_week_stats(season: str) -> Dict[str, int]:
     return totals
 
 
+def _stats_weeks(season: str, nfl_state: dict | None) -> range:
+    """None requests a full backfill. A live state bounds the scheduled refresh."""
+    if nfl_state is None:
+        return REGULAR_SEASON_WEEKS
+    active = nfl_state.get("season")
+    if not active:
+        raise ValueError("Sleeper NFL season unavailable for scheduled stats")
+    if int(season) < int(active):
+        return REGULAR_SEASON_WEEKS
+    if int(season) > int(active) or nfl_state.get("season_type") in ("pre", "off"):
+        return range(0)
+    if nfl_state.get("season_type") == "post":
+        return REGULAR_SEASON_WEEKS
+    if nfl_state.get("season_type") != "regular" or nfl_state.get("week") is None:
+        raise ValueError("Sleeper NFL week unavailable for scheduled stats")
+    return range(1, min(int(nfl_state["week"]), REGULAR_SEASON_WEEKS[-1]) + 1)
+
+
 def refresh_weekly_stats_for_leagues(
     league_ids: List[str],
     *,
-    weeks: Iterable[int] = REGULAR_SEASON_WEEKS,
+    weeks: Iterable[int] | None = None,
+    nfl_state: dict | None = None,
     session: Session | None = None,
 ) -> Dict[str, Any]:
     """Fetch weekly stats for many leagues. Uses each league's stored season."""
@@ -262,7 +281,10 @@ def refresh_weekly_stats_for_leagues(
             continue
         try:
             out["leagues"].append(
-                refresh_weekly_stats_for_league(lid, season, weeks=weeks, session=session)
+                refresh_weekly_stats_for_league(
+                    lid, season, weeks=weeks if weeks is not None else _stats_weeks(season, nfl_state),
+                    session=session,
+                )
             )
         except Exception as exc:
             logger.exception("weekly stats refresh failed for league %s", lid)
@@ -293,6 +315,7 @@ def run_daily_refresh(
     skip_research: bool = False,
     skip_weekly_stats: bool = False,
     skip_nfl_stats: bool = False,
+    backfill_stats: bool = False,
     skip_injuries: bool = False,
     skip_news: bool = False,
     session: Session | None = None,
@@ -320,7 +343,10 @@ def run_daily_refresh(
     explicit ``league_ids`` / ``seasons`` to back-fill older data on demand.
     """
     session = session or db.session
-    current_season = _current_season()
+    nfl_state = None
+    if not backfill_stats and not (skip_weekly_stats and skip_nfl_stats):
+        nfl_state = SleeperScraper.fetch_nfl_state() or {}
+    current_season = str((nfl_state or {}).get("season") or _current_season())
     lids = (
         league_ids
         if league_ids is not None
@@ -416,7 +442,7 @@ def run_daily_refresh(
 
     if not skip_weekly_stats and lids:
         try:
-            summary["weekly_stats"] = refresh_weekly_stats_for_leagues(lids, session=session)
+            summary["weekly_stats"] = refresh_weekly_stats_for_leagues(lids, nfl_state=nfl_state, session=session)
             for err in summary["weekly_stats"].get("errors", []):
                 summary["errors"].append({"step": "weekly_stats", **err})
         except Exception as e:
@@ -436,7 +462,7 @@ def run_daily_refresh(
             nfl_stats: Dict[str, Any] = {}
             for s in sorted(ingest_seasons):
                 try:
-                    nfl_stats[s] = ingest_nfl_week_stats(str(s))
+                    nfl_stats[s] = ingest_nfl_week_stats(str(s), weeks=_stats_weeks(str(s), nfl_state))
                 except Exception as e:
                     logger.exception("NFL week stats ingest failed for season %s", s)
                     summary["errors"].append(

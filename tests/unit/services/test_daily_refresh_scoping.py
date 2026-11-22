@@ -57,7 +57,7 @@ def test_run_daily_refresh_scopes_scraping_to_current_season(app_context):
     ), patch.object(
         dr, "ingest_nfl_week_stats", return_value={"saved": 0}
     ) as m_nfl, patch.object(
-        dr.SleeperScraper, "fetch_nfl_state", return_value={"week": 8, "season_type": "regular"}
+        dr.SleeperScraper, "fetch_nfl_state", return_value={"season": CURRENT, "week": 8, "season_type": "regular"}
     ):
         dr.run_daily_refresh(skip_ktc=True)
 
@@ -87,7 +87,7 @@ def test_explicit_league_ids_override_season_scope(app_context):
     ), patch.object(
         dr, "ingest_nfl_week_stats", return_value={"saved": 0}
     ), patch.object(
-        dr.SleeperScraper, "fetch_nfl_state", return_value={"week": 8, "season_type": "regular"}
+        dr.SleeperScraper, "fetch_nfl_state", return_value={"season": CURRENT, "week": 8, "season_type": "regular"}
     ):
         dr.run_daily_refresh(skip_ktc=True, league_ids=["old_league_1"])
 
@@ -121,7 +121,7 @@ def test_scheduled_research_uses_current_nfl_week(app_context, monkeypatch):
     ), patch.object(
         dr, "ingest_nfl_week_stats", return_value={"saved": 0}
     ), patch.object(
-        dr.SleeperScraper, "fetch_nfl_state", return_value={"week": 8, "season_type": "regular"}
+        dr.SleeperScraper, "fetch_nfl_state", return_value={"season": CURRENT, "week": 8, "season_type": "regular"}
     ):
         dr.run_daily_refresh(skip_ktc=True, league_ids=["cur_league"])
 
@@ -140,7 +140,7 @@ def _stub_all(stack):
     ):
         mocks[name] = stack.enter_context(patch.object(dr, name, return_value=rv))
     stack.enter_context(patch.object(
-        dr.SleeperScraper, "fetch_nfl_state", return_value={"week": 8, "season_type": "regular"}))
+        dr.SleeperScraper, "fetch_nfl_state", return_value={"season": CURRENT, "week": 8, "season_type": "regular"}))
     return mocks
 
 
@@ -166,3 +166,15 @@ def test_research_without_leagues_step_defaults_to_current_season(app_context):
                              skip_nfl_stats=True, skip_injuries=True, skip_news=True)
     mocks["refresh_leagues"].assert_not_called()
     assert {c.args[0] for c in mocks["persist_research"].call_args_list} == {CURRENT}
+
+
+@pytest.mark.parametrize("season, state, last", [
+    ("2026", {"season": "2026", "week": 6, "season_type": "regular"}, 6),
+    ("2026", {"season": "2026", "week": 2, "season_type": "pre"}, 0),
+    ("2026", {"season": "2026", "week": 2, "season_type": "post"}, 18),
+    ("2025", {"season": "2026", "week": 6, "season_type": "regular"}, 18),
+    ("2027", {"season": "2026", "week": 6, "season_type": "regular"}, 0),
+    ("2026", None, 18),
+])
+def test_stats_week_bounds(season, state, last):
+    assert list(dr._stats_weeks(season, state)) == list(range(1, last + 1))

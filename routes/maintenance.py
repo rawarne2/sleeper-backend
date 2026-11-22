@@ -172,6 +172,7 @@ class NightlySyncBody(BaseModel):
     skip_ktc: bool = False
     skip_leagues: bool = False
     skip_research: bool = False
+    backfill_stats: bool = False
     skip_prewarm: bool = False
 
 
@@ -194,6 +195,7 @@ def nightly_sync(request: Request, body: Optional[NightlySyncBody] = Body(None))
     Optional JSON body (POST only):
       { "steps": ["ktc"], "league_ids": ["..."], "seasons": ["2025"], "research_week": 1,
         "skip_ktc": false, "skip_leagues": false, "skip_research": false, "skip_prewarm": false }
+    Set ``backfill_stats`` to scan weeks 1–18 for the selected seasons.
     Omitting ``steps`` runs every step; the legacy ``skip_*`` flags still apply.
     """
     if not cron_authorized(request):
@@ -223,6 +225,7 @@ def nightly_sync(request: Request, body: Optional[NightlySyncBody] = Body(None))
         summary = run_daily_refresh(
             league_ids=payload.league_ids,
             seasons=payload.seasons,
+            backfill_stats=payload.backfill_stats,
             research_week=payload.research_week,
             skip_ktc="ktc" not in steps,
             skip_leagues="leagues" not in steps,

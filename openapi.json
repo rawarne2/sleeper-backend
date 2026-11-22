@@ -1255,6 +1255,11 @@
       },
       "NightlySyncBody": {
         "properties": {
+          "backfill_stats": {
+            "default": false,
+            "title": "Backfill Stats",
+            "type": "boolean"
+          },
           "league_ids": {
             "anyOf": [
               {
@@ -2497,7 +2502,7 @@
     },
     "/api/maintenance/nightly-sync": {
       "get": {
-        "description": "Full ingest pipeline for scheduled jobs (Vercel Cron uses GET + CRON_SECRET).\n\nSchedule: GitHub Actions (``.github/workflows/nightly-sync.yml``) drives it as one\nrequest per step so each stays under Vercel's function limit; the vercel.json\ncron (30 15 * * * UTC) runs every step in one GET as a backup.\n\nSteps, in order: ktc -> leagues -> research -> weekly_stats -> nfl_stats ->\ninjuries -> news -> valuations -> prewarm. Scraping is scoped to the current\nseason by default (prior seasons are immutable); pass explicit\nleague_ids/seasons to back-fill older data. NFL player ingest is NOT included;\nuse POST /api/sleeper/refresh separately (rare).\n\nOptional JSON body (POST only):\n  { \"steps\": [\"ktc\"], \"league_ids\": [\"...\"], \"seasons\": [\"2025\"], \"research_week\": 1,\n    \"skip_ktc\": false, \"skip_leagues\": false, \"skip_research\": false, \"skip_prewarm\": false }\nOmitting ``steps`` runs every step; the legacy ``skip_*`` flags still apply.",
+        "description": "Full ingest pipeline for scheduled jobs (Vercel Cron uses GET + CRON_SECRET).\n\nSchedule: GitHub Actions (``.github/workflows/nightly-sync.yml``) drives it as one\nrequest per step so each stays under Vercel's function limit; the vercel.json\ncron (30 15 * * * UTC) runs every step in one GET as a backup.\n\nSteps, in order: ktc -> leagues -> research -> weekly_stats -> nfl_stats ->\ninjuries -> news -> valuations -> prewarm. Scraping is scoped to the current\nseason by default (prior seasons are immutable); pass explicit\nleague_ids/seasons to back-fill older data. NFL player ingest is NOT included;\nuse POST /api/sleeper/refresh separately (rare).\n\nOptional JSON body (POST only):\n  { \"steps\": [\"ktc\"], \"league_ids\": [\"...\"], \"seasons\": [\"2025\"], \"research_week\": 1,\n    \"skip_ktc\": false, \"skip_leagues\": false, \"skip_research\": false, \"skip_prewarm\": false }\nSet ``backfill_stats`` to scan weeks 1\u201318 for the selected seasons.\nOmitting ``steps`` runs every step; the legacy ``skip_*`` flags still apply.",
         "operationId": "nightly_sync_get",
         "requestBody": {
           "content": {
@@ -2542,7 +2547,7 @@
         ]
       },
       "post": {
-        "description": "Full ingest pipeline for scheduled jobs (Vercel Cron uses GET + CRON_SECRET).\n\nSchedule: GitHub Actions (``.github/workflows/nightly-sync.yml``) drives it as one\nrequest per step so each stays under Vercel's function limit; the vercel.json\ncron (30 15 * * * UTC) runs every step in one GET as a backup.\n\nSteps, in order: ktc -> leagues -> research -> weekly_stats -> nfl_stats ->\ninjuries -> news -> valuations -> prewarm. Scraping is scoped to the current\nseason by default (prior seasons are immutable); pass explicit\nleague_ids/seasons to back-fill older data. NFL player ingest is NOT included;\nuse POST /api/sleeper/refresh separately (rare).\n\nOptional JSON body (POST only):\n  { \"steps\": [\"ktc\"], \"league_ids\": [\"...\"], \"seasons\": [\"2025\"], \"research_week\": 1,\n    \"skip_ktc\": false, \"skip_leagues\": false, \"skip_research\": false, \"skip_prewarm\": false }\nOmitting ``steps`` runs every step; the legacy ``skip_*`` flags still apply.",
+        "description": "Full ingest pipeline for scheduled jobs (Vercel Cron uses GET + CRON_SECRET).\n\nSchedule: GitHub Actions (``.github/workflows/nightly-sync.yml``) drives it as one\nrequest per step so each stays under Vercel's function limit; the vercel.json\ncron (30 15 * * * UTC) runs every step in one GET as a backup.\n\nSteps, in order: ktc -> leagues -> research -> weekly_stats -> nfl_stats ->\ninjuries -> news -> valuations -> prewarm. Scraping is scoped to the current\nseason by default (prior seasons are immutable); pass explicit\nleague_ids/seasons to back-fill older data. NFL player ingest is NOT included;\nuse POST /api/sleeper/refresh separately (rare).\n\nOptional JSON body (POST only):\n  { \"steps\": [\"ktc\"], \"league_ids\": [\"...\"], \"seasons\": [\"2025\"], \"research_week\": 1,\n    \"skip_ktc\": false, \"skip_leagues\": false, \"skip_research\": false, \"skip_prewarm\": false }\nSet ``backfill_stats`` to scan weeks 1\u201318 for the selected seasons.\nOmitting ``steps`` runs every step; the legacy ``skip_*`` flags still apply.",
         "operationId": "nightly_sync_post",
         "requestBody": {
           "content": {
