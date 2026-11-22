@@ -1,6 +1,9 @@
 """Tests for the native FastAPI maintenance routes."""
 
 
+from unittest.mock import MagicMock
+
+
 def test_maintenance_health_ok(client):
     resp = client.get("/api/maintenance/health")
     assert resp.status_code == 200
@@ -58,7 +61,6 @@ DAILY_FLAGS = ("skip_ktc", "skip_leagues", "skip_research", "skip_weekly_stats",
 
 def _patched_pipeline(monkeypatch):
     """Stub every nightly side effect; return the ordered call log."""
-    from unittest.mock import MagicMock
     import routes.maintenance as m
 
     monkeypatch.setenv("CRON_SECRET", "test-cron-secret")
@@ -69,7 +71,7 @@ def _patched_pipeline(monkeypatch):
     monkeypatch.setattr(m, "_ingest_valuations",
                         lambda: calls.append(("valuations", None)) or {"superflex": {}})
     monkeypatch.setattr(m, "_prewarm_dashboard_caches",
-                        lambda: calls.append(("prewarm", None)) or {"results": [], "failed": 0, "total": 0})
+                        lambda app: calls.append(("prewarm", None)) or {"results": [], "failed": 0, "total": 0})
     return calls
 
 
@@ -146,3 +148,15 @@ def test_fc_teams_ppr_from_persisted_leagues(app_context):
     db.session.commit()
 
     assert m._fc_teams_ppr() == [(10, 1.0), (12, 0.5)]
+
+
+
+def test_nightly_prewarm_uses_active_app_and_reports_partial_failure(client, monkeypatch):
+    import routes.maintenance as m
+    monkeypatch.setenv("CRON_SECRET", "test-cron-secret")
+    prewarm = MagicMock(return_value={"failed": 1, "total": 2, "results": []})
+    monkeypatch.setattr(m, "_prewarm_dashboard_caches", prewarm)
+    response = client.post("/api/maintenance/nightly-sync", headers=AUTH,
+                           json={"steps": ["prewarm"]})
+    prewarm.assert_called_once_with(client.app)
+    assert response.json()["summary"]["errors"][0]["step"] == "prewarm"

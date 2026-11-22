@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/maintenance", tags=["Maintenance"])
 logger = setup_logging(__name__)
 
 
-def _prewarm_dashboard_caches() -> Dict[str, Any]:
+def _prewarm_dashboard_caches(app) -> Dict[str, Any]:
     """Hit the dashboard endpoint for every persisted league so Redis is warm."""
     # Build league_id -> season map from DB; fall back to example leagues if DB empty.
     rows = db.session.execute(
@@ -37,8 +37,7 @@ def _prewarm_dashboard_caches() -> Dict[str, Any]:
     # Import lazily to avoid circular imports; drive the dashboard route
     # in-process via the ASGI test client so the cache warms without a network hop.
     from starlette.testclient import TestClient
-    from app import app as fastapi_app
-    client = TestClient(fastapi_app)
+    client = TestClient(app)
 
     results: List[Dict[str, Any]] = []
     failed = 0
@@ -249,7 +248,11 @@ def nightly_sync(request: Request, body: Optional[NightlySyncBody] = Body(None))
 
     if "prewarm" in steps:
         try:
-            summary["prewarm"] = _prewarm_dashboard_caches()
+            summary["prewarm"] = _prewarm_dashboard_caches(request.app)
+            if summary["prewarm"]["failed"]:
+                summary.setdefault("errors", []).append({
+                    "step": "prewarm", "error": f'{summary["prewarm"]["failed"]} league requests failed',
+                })
         except Exception as e:
             logger.exception("nightly-sync prewarm failed")
             summary.setdefault("errors", []).append(
@@ -264,7 +267,7 @@ def prewarm(request: Request):
     if not cron_authorized(request):
         raise ApiError("Unauthorized", 401)
 
-    summary = _prewarm_dashboard_caches()
+    summary = _prewarm_dashboard_caches(request.app)
     if summary["failed"]:
         raise ApiError(
             f"{summary['failed']} of {summary['total']} prewarm requests failed",
